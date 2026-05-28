@@ -564,9 +564,9 @@
             for (let i = 0; i < 9; i++) {
                 reserved[8][i] = true;
                 reserved[i][8] = true;
-                reserved[8][size - 1 - i] = true;
-                reserved[size - 1 - i][8] = true;
             }
+            for (let i = 0; i < 8; i++) reserved[size - 1 - i][8] = true;
+            for (let i = 8; i < 15; i++) reserved[8][size - 15 + i] = true;
             reserved[size - 8][8] = true;
             matrix[size - 8][8] = true;
 
@@ -628,14 +628,12 @@
                     if (!matrix[row][col]) continue;
                     const px = x + (quiet + col) * cell;
                     const py = y + (quiet + row) * cell;
-                    ctx.beginPath();
-                    roundedRectPath(ctx, px + 0.8, py + 0.8, cell - 1.6, cell - 1.6, Math.max(1.2, cell * 0.25));
-                    ctx.fill();
+                    ctx.fillRect(Math.round(px), Math.round(py), Math.ceil(cell), Math.ceil(cell));
                 }
             }
         };
 
-        const downloadSkuQr = async (sku, name = '') => {
+        const downloadSkuQr = async (sku) => {
             sku = String(sku || '').trim();
             if (!sku) {
                 Swal?.fire('Error', 'SKU kosong, QR Code tidak bisa dibuat.', 'error');
@@ -655,61 +653,20 @@
                 const qrMatrix = generateSkuQrMatrix(sku);
 
                 const canvas = document.createElement('canvas');
-                canvas.width = 520;
-                canvas.height = 650;
+                canvas.width = 420;
+                canvas.height = 470;
                 const ctx = canvas.getContext('2d');
 
-                ctx.fillStyle = '#f8fafc';
+                ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                ctx.fillStyle = '#ffffff';
-                ctx.shadowColor = 'rgba(15, 23, 42, 0.18)';
-                ctx.shadowBlur = 24;
-                ctx.shadowOffsetY = 12;
-                ctx.beginPath();
-                roundedRectPath(ctx, 38, 34, 444, 574, 28);
-                ctx.fill();
-                ctx.shadowColor = 'transparent';
-
-                ctx.strokeStyle = '#e5e7eb';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                roundedRectPath(ctx, 38, 34, 444, 574, 28);
-                ctx.stroke();
-
-                ctx.fillStyle = '#2563eb';
-                ctx.beginPath();
-                roundedRectPath(ctx, 84, 76, 352, 38, 19);
-                ctx.fill();
-
-                ctx.fillStyle = '#ffffff';
-                ctx.font = '700 18px Arial, sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText('SKU QR CODE', 260, 95);
-
-                ctx.fillStyle = '#ffffff';
-                ctx.beginPath();
-                roundedRectPath(ctx, 80, 138, 360, 360, 22);
-                ctx.fill();
-                ctx.strokeStyle = '#dbeafe';
-                ctx.lineWidth = 4;
-                ctx.beginPath();
-                roundedRectPath(ctx, 80, 138, 360, 360, 22);
-                ctx.stroke();
-                drawQrMatrix(ctx, qrMatrix, 96, 154, 328);
+                drawQrMatrix(ctx, qrMatrix, 30, 30, 360);
 
                 ctx.fillStyle = '#0f172a';
-                ctx.font = '800 34px Arial, sans-serif';
+                ctx.font = '800 32px Arial, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'top';
-                drawWrappedCenteredText(ctx, sku, 260, 526, 400, 40);
-
-                if (name) {
-                    ctx.fillStyle = '#64748b';
-                    ctx.font = '600 16px Arial, sans-serif';
-                    drawWrappedCenteredText(ctx, name, 260, 604, 400, 22);
-                }
+                drawWrappedCenteredText(ctx, sku, 210, 408, 380, 38);
                 canvas.toBlob((blob) => {
                     if (!blob) {
                         Swal?.fire('Error', 'Gagal membuat file QR Code.', 'error');
@@ -769,7 +726,7 @@
                 { data: 'description' },
                 { data: 'safety_stock', className: 'text-end', render: d => d ?? 0 },
                 { data: 'id', orderable: false, searchable: false, className: 'text-end', render: (id, t, row) => {
-                    const qrItem = `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-download-qr" data-sku="${escapeAttr(row.sku)}" data-name="${escapeAttr(row.name)}">Download QR</a></div>`;
+                    const qrItem = `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-download-qr" data-sku="${escapeAttr(row.sku)}">Download QR</a></div>`;
                     const editItem = canUpdate ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${id}">Edit</a></div>` : '';
                     const delItem  = canDelete ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-danger btn-delete" data-id="${id}">Hapus</a></div>` : '';
                     const actions = `${qrItem}${editItem}${delItem}`;
@@ -829,7 +786,7 @@
 
         tableEl.on('click', '.btn-download-qr', async function(e) {
             e.preventDefault();
-            await downloadSkuQr(this.getAttribute('data-sku'), this.getAttribute('data-name'));
+            await downloadSkuQr(this.getAttribute('data-sku'));
         });
 
         tableEl.on('click', '.btn-edit', async function(e) {
