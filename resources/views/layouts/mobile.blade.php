@@ -11,6 +11,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
         :root {
             --bg: #f5f3ef;
@@ -279,13 +280,58 @@
             opacity: 0.6;
             pointer-events: none;
         }
+
+        .flatpickr-calendar {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            z-index: 1000;
+        }
+
+        .flatpickr-apply-footer {
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            padding: 10px;
+        }
+
+        .flatpickr-apply-footer button {
+            border: none;
+            border-radius: 10px;
+            background: var(--brand);
+            color: #fff;
+            font-weight: 700;
+            padding: 8px 14px;
+        }
     </style>
 </head>
 <body>
     @yield('content')
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script>
         (function () {
+            const addFlatpickrApplyButton = (instance) => {
+                const calendar = instance?.calendarContainer;
+                if (!calendar || calendar.querySelector('.flatpickr-apply-footer')) return;
+
+                const footer = document.createElement('div');
+                footer.className = 'flatpickr-apply-footer';
+                footer.innerHTML = '<button type="button">Apply</button>';
+                footer.querySelector('button')?.addEventListener('click', () => instance.close());
+                calendar.appendChild(footer);
+            };
+
+            if (window.flatpickr) {
+                document.querySelectorAll('input[type="date"]').forEach((input) => {
+                    input.setAttribute('type', 'text');
+                    window.flatpickr(input, {
+                        dateFormat: 'Y-m-d',
+                        allowInput: true,
+                        closeOnSelect: false,
+                        onReady: (_selectedDates, _dateStr, instance) => addFlatpickrApplyButton(instance),
+                    });
+                });
+            }
+
             if (window.__pageExpiredRedirectPatched) return;
             const pageExpiredUrl = document.querySelector('meta[name="page-expired-url"]')?.getAttribute('content') || '/page-expired';
             const originalFetch = window.fetch?.bind(window);

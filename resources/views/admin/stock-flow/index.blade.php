@@ -346,35 +346,15 @@
             }
         };
 
-        const flatpickrWithApply = (el, options = {}) => {
-            return flatpickr(el, {
-                ...options,
-                closeOnSelect: false,
-                onReady: function(selectedDates, dateStr, instance) {
-                    if (typeof options.onReady === 'function') {
-                        options.onReady(selectedDates, dateStr, instance);
-                    }
-                    if (instance.calendarContainer.querySelector('.flatpickr-apply-footer')) {
-                        return;
-                    }
-                    const footer = document.createElement('div');
-                    footer.className = 'flatpickr-apply-footer d-flex justify-content-end border-top p-2';
-                    footer.innerHTML = '<button type="button" class="btn btn-sm btn-primary">Apply</button>';
-                    footer.querySelector('button')?.addEventListener('click', () => instance.close());
-                    instance.calendarContainer.appendChild(footer);
-                },
-            });
-        };
-
         if (typeof flatpickr !== 'undefined') {
             if (dateFromEl) {
-                fpFrom = flatpickrWithApply(dateFromEl, { dateFormat: 'Y-m-d', allowInput: true });
+                fpFrom = flatpickr(dateFromEl, { dateFormat: 'Y-m-d', allowInput: true });
             }
             if (dateToEl) {
-                fpTo = flatpickrWithApply(dateToEl, { dateFormat: 'Y-m-d', allowInput: true });
+                fpTo = flatpickr(dateToEl, { dateFormat: 'Y-m-d', allowInput: true });
             }
             if (transactedAtEl) {
-                fpTransacted = flatpickrWithApply(transactedAtEl, { enableTime: true, dateFormat: 'Y-m-d H:i', allowInput: true });
+                fpTransacted = flatpickr(transactedAtEl, { enableTime: true, dateFormat: 'Y-m-d H:i', allowInput: true });
             }
         }
 

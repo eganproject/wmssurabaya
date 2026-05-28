@@ -124,6 +124,13 @@
             z-index: 1067 !important;
         }
 
+        .flatpickr-apply-footer {
+            border-top: 1px solid #eff2f5;
+            display: flex;
+            justify-content: flex-end;
+            padding: 0.65rem;
+        }
+
         @media (max-width: 575.98px) {
             .modal-dialog,
             .modal-dialog.modal-lg,
@@ -272,6 +279,16 @@
 
                 const originalFlatpickr = window.flatpickr;
                 const asFlatpickrHooks = (hook) => Array.isArray(hook) ? hook : (hook ? [hook] : []);
+                const addFlatpickrApplyButton = (instance) => {
+                    const calendar = instance?.calendarContainer;
+                    if (!calendar || calendar.querySelector('.flatpickr-apply-footer')) return;
+
+                    const footer = document.createElement('div');
+                    footer.className = 'flatpickr-apply-footer';
+                    footer.innerHTML = '<button type="button" class="btn btn-sm btn-primary">Apply</button>';
+                    footer.querySelector('button')?.addEventListener('click', () => instance.close());
+                    calendar.appendChild(footer);
+                };
                 const repositionFlatpickr = (instance) => {
                     requestAnimationFrame(() => {
                         if (instance?.isOpen) {
@@ -296,12 +313,25 @@
                     instance.__modalResponsiveBound = true;
                 };
                 const patchedFlatpickr = function (selector, config = {}) {
+                    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+                        return originalFlatpickr(selector, config);
+                    }
+
                     const elements = typeof selector === 'string'
                         ? Array.from(document.querySelectorAll(selector))
                         : (selector instanceof Element ? [selector] : Array.from(selector || []));
 
                     const shouldPatch = elements.some((el) => isInsideModal(el));
-                    if (shouldPatch && config && typeof config === 'object') {
+                    config = {
+                        ...config,
+                        closeOnSelect: config.closeOnSelect ?? false,
+                        onReady: [
+                            ...asFlatpickrHooks(config.onReady),
+                            (_selectedDates, _dateStr, instance) => addFlatpickrApplyButton(instance),
+                        ],
+                    };
+
+                    if (shouldPatch) {
                         config = {
                             ...config,
                             // Gunakan document.body agar kalender diposisikan dari viewport,
@@ -311,6 +341,7 @@
                                 ...asFlatpickrHooks(config.onReady),
                                 (_selectedDates, _dateStr, instance) => {
                                     bindFlatpickrToModal(instance);
+                                    addFlatpickrApplyButton(instance);
                                     instance.calendarContainer?.addEventListener('mousedown', (event) => event.stopPropagation());
                                     instance.calendarContainer?.addEventListener('click', (event) => event.stopPropagation());
                                 },
