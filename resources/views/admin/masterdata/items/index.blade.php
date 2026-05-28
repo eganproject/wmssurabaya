@@ -387,6 +387,351 @@
             return true;
         };
         const closeSwal = () => typeof Swal !== 'undefined' && Swal.close();
+        const safeFileName = (value) => String(value || 'sku')
+            .replace(/[^a-z0-9\-_]+/gi, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 80) || 'sku';
+        const escapeAttr = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        const drawWrappedCenteredText = (ctx, text, x, y, maxWidth, lineHeight) => {
+            const words = String(text || '').split(/\s+/).filter(Boolean);
+            const lines = [];
+            let line = '';
+            words.forEach((word) => {
+                const test = line ? `${line} ${word}` : word;
+                if (ctx.measureText(test).width <= maxWidth) {
+                    line = test;
+                    return;
+                }
+                if (line) lines.push(line);
+                line = word;
+            });
+            if (line) lines.push(line);
+            const output = lines.length ? lines : [String(text || '')];
+            output.slice(0, 2).forEach((row, idx) => ctx.fillText(row, x, y + (idx * lineHeight)));
+        };
+        const roundedRectPath = (ctx, x, y, width, height, radius) => {
+            const r = Math.min(radius, width / 2, height / 2);
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + width - r, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+            ctx.lineTo(x + width, y + height - r);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+            ctx.lineTo(x + r, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        };
+        const qrGfMul = (x, y) => {
+            let z = 0;
+            for (let i = 7; i >= 0; i--) {
+                z = ((z << 1) ^ ((z >>> 7) * 0x11D)) & 0xFF;
+                if (((y >>> i) & 1) !== 0) z ^= x;
+            }
+            return z;
+        };
+        const qrReedSolomonDivisor = (degree) => {
+            const result = Array(degree).fill(0);
+            result[degree - 1] = 1;
+            let root = 1;
+            for (let i = 0; i < degree; i++) {
+                for (let j = 0; j < degree; j++) {
+                    result[j] = qrGfMul(result[j], root);
+                    if (j + 1 < degree) result[j] ^= result[j + 1];
+                }
+                root = qrGfMul(root, 0x02);
+            }
+            return result;
+        };
+        const qrReedSolomonRemainder = (data, divisor) => {
+            const result = Array(divisor.length).fill(0);
+            data.forEach((byte) => {
+                const factor = byte ^ result.shift();
+                result.push(0);
+                divisor.forEach((coef, idx) => {
+                    result[idx] ^= qrGfMul(coef, factor);
+                });
+            });
+            return result;
+        };
+        const qrAppendBits = (bits, value, length) => {
+            for (let i = length - 1; i >= 0; i--) bits.push((value >>> i) & 1);
+        };
+        const qrBytes = (text) => {
+            const bytes = new TextEncoder().encode(text);
+            if (bytes.length > 106) {
+                throw new Error('SKU terlalu panjang untuk QR lokal. Maksimal sekitar 106 karakter ASCII.');
+            }
+            return Array.from(bytes);
+        };
+        const qrDrawFinder = (matrix, reserved, x, y) => {
+            for (let dy = -1; dy <= 7; dy++) {
+                for (let dx = -1; dx <= 7; dx++) {
+                    const xx = x + dx;
+                    const yy = y + dy;
+                    if (xx < 0 || yy < 0 || yy >= matrix.length || xx >= matrix.length) continue;
+                    const dark = dx >= 0 && dx <= 6 && dy >= 0 && dy <= 6
+                        && (dx === 0 || dx === 6 || dy === 0 || dy === 6 || (dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4));
+                    matrix[yy][xx] = dark;
+                    reserved[yy][xx] = true;
+                }
+            }
+        };
+        const qrDrawAlignment = (matrix, reserved, cx, cy) => {
+            for (let dy = -2; dy <= 2; dy++) {
+                for (let dx = -2; dx <= 2; dx++) {
+                    const dist = Math.max(Math.abs(dx), Math.abs(dy));
+                    matrix[cy + dy][cx + dx] = dist !== 1;
+                    reserved[cy + dy][cx + dx] = true;
+                }
+            }
+        };
+        const qrMask = (mask, x, y) => {
+            switch (mask) {
+                case 0: return (x + y) % 2 === 0;
+                case 1: return y % 2 === 0;
+                case 2: return x % 3 === 0;
+                case 3: return (x + y) % 3 === 0;
+                default: return (Math.floor(y / 2) + Math.floor(x / 3)) % 2 === 0;
+            }
+        };
+        const qrFormatBits = (mask) => {
+            let data = (1 << 3) | mask; // EC level L (01) + mask.
+            let rem = data;
+            for (let i = 0; i < 10; i++) rem = (rem << 1) ^ (((rem >>> 9) & 1) * 0x537);
+            return ((data << 10) | rem) ^ 0x5412;
+        };
+        const qrDrawFormatBits = (matrix, mask) => {
+            const size = matrix.length;
+            const bits = qrFormatBits(mask);
+            for (let i = 0; i <= 5; i++) matrix[8][i] = ((bits >>> i) & 1) !== 0;
+            matrix[8][7] = ((bits >>> 6) & 1) !== 0;
+            matrix[8][8] = ((bits >>> 7) & 1) !== 0;
+            matrix[7][8] = ((bits >>> 8) & 1) !== 0;
+            for (let i = 9; i < 15; i++) matrix[14 - i][8] = ((bits >>> i) & 1) !== 0;
+            for (let i = 0; i < 8; i++) matrix[size - 1 - i][8] = ((bits >>> i) & 1) !== 0;
+            for (let i = 8; i < 15; i++) matrix[8][size - 15 + i] = ((bits >>> i) & 1) !== 0;
+            matrix[size - 8][8] = true;
+        };
+        const qrPenalty = (matrix) => {
+            const size = matrix.length;
+            let penalty = 0;
+            for (let y = 0; y < size; y++) {
+                let runColor = matrix[y][0], runLen = 1;
+                for (let x = 1; x < size; x++) {
+                    if (matrix[y][x] === runColor) runLen++;
+                    else { if (runLen >= 5) penalty += runLen - 2; runColor = matrix[y][x]; runLen = 1; }
+                }
+                if (runLen >= 5) penalty += runLen - 2;
+            }
+            for (let x = 0; x < size; x++) {
+                let runColor = matrix[0][x], runLen = 1;
+                for (let y = 1; y < size; y++) {
+                    if (matrix[y][x] === runColor) runLen++;
+                    else { if (runLen >= 5) penalty += runLen - 2; runColor = matrix[y][x]; runLen = 1; }
+                }
+                if (runLen >= 5) penalty += runLen - 2;
+            }
+            for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++) {
+                const c = matrix[y][x];
+                if (c === matrix[y][x + 1] && c === matrix[y + 1][x] && c === matrix[y + 1][x + 1]) penalty += 3;
+            }
+            const dark = matrix.flat().filter(Boolean).length;
+            penalty += Math.floor(Math.abs((dark * 20 / (size * size)) - 10)) * 10;
+            return penalty;
+        };
+        const generateSkuQrMatrix = (text) => {
+            const version = 5;
+            const size = 17 + version * 4;
+            const dataCodewords = 108;
+            const eccCodewords = 26;
+            const matrix = Array.from({ length: size }, () => Array(size).fill(false));
+            const reserved = Array.from({ length: size }, () => Array(size).fill(false));
+
+            qrDrawFinder(matrix, reserved, 0, 0);
+            qrDrawFinder(matrix, reserved, size - 7, 0);
+            qrDrawFinder(matrix, reserved, 0, size - 7);
+            qrDrawAlignment(matrix, reserved, 30, 30);
+            for (let i = 0; i < size; i++) {
+                if (!reserved[6][i]) { matrix[6][i] = i % 2 === 0; reserved[6][i] = true; }
+                if (!reserved[i][6]) { matrix[i][6] = i % 2 === 0; reserved[i][6] = true; }
+            }
+            for (let i = 0; i < 9; i++) {
+                reserved[8][i] = true;
+                reserved[i][8] = true;
+                reserved[8][size - 1 - i] = true;
+                reserved[size - 1 - i][8] = true;
+            }
+            reserved[size - 8][8] = true;
+            matrix[size - 8][8] = true;
+
+            const bytes = qrBytes(text);
+            const bits = [];
+            qrAppendBits(bits, 0x4, 4);
+            qrAppendBits(bits, bytes.length, 8);
+            bytes.forEach(byte => qrAppendBits(bits, byte, 8));
+            qrAppendBits(bits, 0, Math.min(4, dataCodewords * 8 - bits.length));
+            while (bits.length % 8) bits.push(0);
+            const data = [];
+            for (let i = 0; i < bits.length; i += 8) data.push(bits.slice(i, i + 8).reduce((v, b) => (v << 1) | b, 0));
+            for (let pad = 0; data.length < dataCodewords; pad ^= 1) data.push(pad ? 0x11 : 0xEC);
+            const codewords = data.concat(qrReedSolomonRemainder(data, qrReedSolomonDivisor(eccCodewords)));
+            const dataBits = [];
+            codewords.forEach(byte => qrAppendBits(dataBits, byte, 8));
+
+            let bitIndex = 0;
+            for (let right = size - 1; right >= 1; right -= 2) {
+                if (right === 6) right--;
+                for (let vert = 0; vert < size; vert++) {
+                    const y = (((right + 1) & 2) === 0) ? size - 1 - vert : vert;
+                    for (let dx = 0; dx < 2; dx++) {
+                        const x = right - dx;
+                        if (reserved[y][x]) continue;
+                        matrix[y][x] = bitIndex < dataBits.length && dataBits[bitIndex++] === 1;
+                    }
+                }
+            }
+
+            let bestMatrix = null;
+            let bestMask = 0;
+            let bestPenalty = Infinity;
+            for (let mask = 0; mask < 4; mask++) {
+                const candidate = matrix.map(row => row.slice());
+                for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+                    if (!reserved[y][x] && qrMask(mask, x, y)) candidate[y][x] = !candidate[y][x];
+                }
+                qrDrawFormatBits(candidate, mask);
+                const penalty = qrPenalty(candidate);
+                if (penalty < bestPenalty) {
+                    bestPenalty = penalty;
+                    bestMask = mask;
+                    bestMatrix = candidate;
+                }
+            }
+            qrDrawFormatBits(bestMatrix, bestMask);
+            return bestMatrix;
+        };
+        const drawQrMatrix = (ctx, matrix, x, y, size) => {
+            const count = matrix.length;
+            const quiet = 4;
+            const cell = size / (count + quiet * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(x, y, size, size);
+            ctx.fillStyle = '#111827';
+            for (let row = 0; row < count; row++) {
+                for (let col = 0; col < count; col++) {
+                    if (!matrix[row][col]) continue;
+                    const px = x + (quiet + col) * cell;
+                    const py = y + (quiet + row) * cell;
+                    ctx.beginPath();
+                    roundedRectPath(ctx, px + 0.8, py + 0.8, cell - 1.6, cell - 1.6, Math.max(1.2, cell * 0.25));
+                    ctx.fill();
+                }
+            }
+        };
+
+        const downloadSkuQr = async (sku, name = '') => {
+            sku = String(sku || '').trim();
+            if (!sku) {
+                Swal?.fire('Error', 'SKU kosong, QR Code tidak bisa dibuat.', 'error');
+                return;
+            }
+
+            try {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        title: 'Membuat QR Code...',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        didOpen: () => Swal.showLoading(),
+                    });
+                }
+
+                const qrMatrix = generateSkuQrMatrix(sku);
+
+                const canvas = document.createElement('canvas');
+                canvas.width = 520;
+                canvas.height = 650;
+                const ctx = canvas.getContext('2d');
+
+                ctx.fillStyle = '#f8fafc';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = 'rgba(15, 23, 42, 0.18)';
+                ctx.shadowBlur = 24;
+                ctx.shadowOffsetY = 12;
+                ctx.beginPath();
+                roundedRectPath(ctx, 38, 34, 444, 574, 28);
+                ctx.fill();
+                ctx.shadowColor = 'transparent';
+
+                ctx.strokeStyle = '#e5e7eb';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                roundedRectPath(ctx, 38, 34, 444, 574, 28);
+                ctx.stroke();
+
+                ctx.fillStyle = '#2563eb';
+                ctx.beginPath();
+                roundedRectPath(ctx, 84, 76, 352, 38, 19);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '700 18px Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('SKU QR CODE', 260, 95);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                roundedRectPath(ctx, 80, 138, 360, 360, 22);
+                ctx.fill();
+                ctx.strokeStyle = '#dbeafe';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                roundedRectPath(ctx, 80, 138, 360, 360, 22);
+                ctx.stroke();
+                drawQrMatrix(ctx, qrMatrix, 96, 154, 328);
+
+                ctx.fillStyle = '#0f172a';
+                ctx.font = '800 34px Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                drawWrappedCenteredText(ctx, sku, 260, 526, 400, 40);
+
+                if (name) {
+                    ctx.fillStyle = '#64748b';
+                    ctx.font = '600 16px Arial, sans-serif';
+                    drawWrappedCenteredText(ctx, name, 260, 604, 400, 22);
+                }
+                canvas.toBlob((blob) => {
+                    if (!blob) {
+                        Swal?.fire('Error', 'Gagal membuat file QR Code.', 'error');
+                        return;
+                    }
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `qr-${safeFileName(sku)}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire('Berhasil', `QR Code SKU ${sku} berhasil didownload.`, 'success');
+                    }
+                }, 'image/png');
+            } catch (err) {
+                console.error(err);
+                Swal?.fire('Error', err.message || 'Gagal membuat QR Code.', 'error');
+            }
+        };
 
         // ── DataTable ──────────────────────────────────────────────────────────
 
@@ -424,9 +769,10 @@
                 { data: 'description' },
                 { data: 'safety_stock', className: 'text-end', render: d => d ?? 0 },
                 { data: 'id', orderable: false, searchable: false, className: 'text-end', render: (id, t, row) => {
+                    const qrItem = `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-download-qr" data-sku="${escapeAttr(row.sku)}" data-name="${escapeAttr(row.name)}">Download QR</a></div>`;
                     const editItem = canUpdate ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${id}">Edit</a></div>` : '';
                     const delItem  = canDelete ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-danger btn-delete" data-id="${id}">Hapus</a></div>` : '';
-                    const actions = `${editItem}${delItem}`;
+                    const actions = `${qrItem}${editItem}${delItem}`;
                     if (!actions) return '';
                     return `<div class="text-end">
                         <a href="#" class="btn btn-sm btn-light btn-active-light-primary" data-kt-menu-trigger="click" data-kt-menu-placement="bottom-end">
@@ -480,6 +826,11 @@
         });
 
         // ── Edit item ──────────────────────────────────────────────────────────
+
+        tableEl.on('click', '.btn-download-qr', async function(e) {
+            e.preventDefault();
+            await downloadSkuQr(this.getAttribute('data-sku'), this.getAttribute('data-name'));
+        });
 
         tableEl.on('click', '.btn-edit', async function(e) {
             e.preventDefault();
