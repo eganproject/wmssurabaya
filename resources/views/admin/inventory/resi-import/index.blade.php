@@ -67,6 +67,39 @@
 <div class="card mt-8">
     <div class="card-header border-0 pt-6">
         <div class="card-title">
+            <div class="fw-bold">Batch Import Resi</div>
+        </div>
+        <div class="card-toolbar">
+            <button type="button" class="btn btn-light" id="btn_refresh_batches">Refresh Batch</button>
+        </div>
+    </div>
+    <div class="card-body py-6">
+        <div class="table-responsive">
+            <table class="table align-middle table-row-dashed fs-6 gy-4">
+                <thead>
+                    <tr class="text-start text-gray-400 fw-bolder fs-7 text-uppercase gs-0">
+                        <th>Batch</th>
+                        <th>File</th>
+                        <th>Upload</th>
+                        <th>Jumlah Resi</th>
+                        <th>Detail SKU</th>
+                        <th>Status</th>
+                        <th class="text-end">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="batch_body">
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-6">Memuat batch...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-8">
+    <div class="card-header border-0 pt-6">
+        <div class="card-title">
             <div class="d-flex align-items-center position-relative my-1">
                 <span class="svg-icon svg-icon-1 position-absolute ms-6">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -297,6 +330,45 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="modal_batch_detail" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable mw-900px">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="fw-bolder">Detail Batch <span id="batch_detail_code">-</span></h2>
+                <div class="btn btn-icon btn-sm btn-active-icon-primary" data-bs-dismiss="modal">
+                    <span class="svg-icon svg-icon-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <rect opacity="0.5" x="6" y="17.3137" width="16" height="2" rx="1" transform="rotate(-45 6 17.3137)" fill="black" />
+                            <rect x="7.41422" y="6" width="16" height="2" rx="1" transform="rotate(45 7.41422 6)" fill="black" />
+                        </svg>
+                    </span>
+                </div>
+            </div>
+            <div class="modal-body mx-5 mx-xl-10 my-7">
+                <div class="table-responsive">
+                    <table class="table table-row-dashed align-middle">
+                        <thead>
+                            <tr class="text-start text-gray-400 fw-bolder fs-7 text-uppercase gs-0">
+                                <th>No</th>
+                                <th>ID Pesanan</th>
+                                <th>No Resi</th>
+                                <th>Kurir</th>
+                                <th>SKU</th>
+                                <th>Status DB</th>
+                            </tr>
+                        </thead>
+                        <tbody id="batch_detail_body">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-6">Memuat data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 @endsection
 
 @push('scripts')
@@ -305,6 +377,9 @@
     const dataUrl = '{{ $dataUrl ?? '' }}';
     const summaryUrl = '{{ route('admin.inventory.resi-import.summary') }}';
     const buyerNotesUrl = '{{ $buyerNotesUrl ?? '' }}';
+    const batchesUrl = '{{ $batchesUrl ?? '' }}';
+    const batchDetailUrl = '{{ $batchDetailUrl ?? '' }}';
+    const batchDeleteUrl = '{{ $batchDeleteUrl ?? '' }}';
     const cancelUrl = '{{ route('admin.inventory.resi-import.cancel') }}';
     const uncancelUrl = '{{ route('admin.inventory.resi-import.uncancel') }}';
     const csrfToken = '{{ csrf_token() }}';
@@ -358,6 +433,12 @@
         const summarySkusEl = document.getElementById('summary_skus');
         const summaryBuyerNotesEl = document.getElementById('summary_buyer_notes');
         const labelDateEl = document.getElementById('label_date');
+        const batchBodyEl = document.getElementById('batch_body');
+        const batchRefreshBtn = document.getElementById('btn_refresh_batches');
+        const batchDetailModalEl = document.getElementById('modal_batch_detail');
+        const batchDetailModal = batchDetailModalEl ? new bootstrap.Modal(batchDetailModalEl) : null;
+        const batchDetailCodeEl = document.getElementById('batch_detail_code');
+        const batchDetailBodyEl = document.getElementById('batch_detail_body');
         const tableEl = $('#resi_table');
         let fpDate = null;
         let dt = null;
@@ -369,12 +450,222 @@
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
 
+        const renderBatchStatus = (status) => {
+            if (status === 'deleted') {
+                return '<span class="badge badge-light-danger">Deleted</span>';
+            }
+            return '<span class="badge badge-light-success">Active</span>';
+        };
+
+        const loadBatches = async () => {
+            if (!batchesUrl || !batchBodyEl) return;
+            batchBodyEl.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-6">Memuat batch...</td></tr>';
+            try {
+                const res = await fetch(batchesUrl, { headers: { 'Accept': 'application/json' } });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json?.message || 'Gagal memuat batch.');
+                const rows = Array.isArray(json?.data) ? json.data : [];
+                if (!rows.length) {
+                    batchBodyEl.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-6">Belum ada batch import.</td></tr>';
+                    return;
+                }
+                batchBodyEl.innerHTML = rows.map((row) => {
+                    const canDelete = row.status !== 'deleted';
+                    const deleteBtn = canDelete
+                        ? `<button type="button" class="btn btn-sm btn-light-danger btn-delete-batch" data-id="${row.id}" data-code="${escapeHtml(row.batch_code)}">Hapus Batch</button>`
+                        : '<span class="text-muted">-</span>';
+                    return `
+                        <tr>
+                            <td class="fw-bold">${escapeHtml(row.batch_code || '-')}</td>
+                            <td>${escapeHtml(row.file_name || '-')}</td>
+                            <td>${escapeHtml(row.uploaded_at || '-')}<br><span class="text-muted">${escapeHtml(row.uploaded_by || '-')}</span></td>
+                            <td>${row.total_resis ?? 0}</td>
+                            <td>${row.total_details ?? 0}</td>
+                            <td>${renderBatchStatus(row.status)}</td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-sm btn-light-primary btn-detail-batch" data-id="${row.id}">Detail</button>
+                                ${deleteBtn}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (err) {
+                batchBodyEl.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-6">Gagal memuat batch.</td></tr>';
+            }
+        };
+
+        const showBatchDetail = async (id) => {
+            if (!batchDetailUrl || !id) return;
+            if (batchDetailCodeEl) batchDetailCodeEl.textContent = '-';
+            if (batchDetailBodyEl) {
+                batchDetailBodyEl.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-6">Memuat data...</td></tr>';
+            }
+            batchDetailModal?.show();
+            try {
+                const url = batchDetailUrl.replace('__BATCH__', encodeURIComponent(id));
+                const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json?.message || 'Gagal memuat detail batch.');
+                const rows = Array.isArray(json?.data) ? json.data : [];
+                if (batchDetailCodeEl) batchDetailCodeEl.textContent = json?.batch?.batch_code || '-';
+                if (!rows.length) {
+                    if (batchDetailBodyEl) {
+                        batchDetailBodyEl.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-6">Batch tidak memiliki item.</td></tr>';
+                    }
+                    return;
+                }
+                if (batchDetailBodyEl) {
+                    batchDetailBodyEl.innerHTML = rows.map((row, idx) => {
+                        const skuText = Array.isArray(row.items)
+                            ? row.items.map((item) => `${escapeHtml(item.sku || '-')} (${item.qty || 0})`).join(', ')
+                            : '-';
+                        return `
+                            <tr>
+                                <td>${idx + 1}</td>
+                                <td>${escapeHtml(row.id_pesanan || '-')}</td>
+                                <td>${escapeHtml(row.no_resi || '-')}</td>
+                                <td>${escapeHtml(row.kurir || '-')}</td>
+                                <td>${skuText || '-'}</td>
+                                <td>${row.deleted ? '<span class="badge badge-light-danger">Terhapus</span>' : '<span class="badge badge-light-success">Ada</span>'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            } catch (err) {
+                if (batchDetailBodyEl) {
+                    batchDetailBodyEl.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-6">Gagal memuat detail batch.</td></tr>';
+                }
+            }
+        };
+
+        const deleteBatch = async (id, code) => {
+            if (!batchDeleteUrl || !id) return;
+            const runDelete = async (reason = '') => {
+                const formData = new FormData();
+                formData.append('_method', 'DELETE');
+                if (reason) formData.append('reason', reason);
+                const url = batchDeleteUrl.replace('__BATCH__', encodeURIComponent(id));
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                    },
+                    body: formData,
+                });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const error = new Error(json?.message || 'Gagal menghapus batch.');
+                    error.payload = json;
+                    throw error;
+                }
+                return json;
+            };
+
+            try {
+                let reason = '';
+                if (typeof Swal !== 'undefined') {
+                    const result = await Swal.fire({
+                        title: 'Hapus batch import?',
+                        text: `Batch ${code || ''} hanya akan dihapus jika semua resinya belum pernah diproses QC, scan packer, atau scan out.`,
+                        input: 'text',
+                        inputPlaceholder: 'Alasan hapus batch',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Ya, hapus',
+                        cancelButtonText: 'Batal',
+                    });
+                    if (!result.isConfirmed) return;
+                    reason = result.value || '';
+                } else if (!confirm(`Hapus batch ${code || ''}?`)) {
+                    return;
+                }
+                const json = await runDelete(reason);
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        title: 'Batch Berhasil Dihapus',
+                        icon: 'success',
+                        html: `
+                            <div class="text-start">
+                                <div class="fw-bold mb-2">${escapeHtml(json?.message || 'Batch berhasil dihapus')}</div>
+                                <div class="text-muted mb-3">${escapeHtml(json?.detail || '')}</div>
+                                <div>Batch: <strong>${escapeHtml(json?.batch_code || code || '-')}</strong></div>
+                                <div>Resi terhapus: <strong>${json?.deleted_resis ?? 0}</strong></div>
+                                <div>Detail SKU terhapus: <strong>${json?.deleted_details ?? 0}</strong></div>
+                            </div>
+                        `,
+                    });
+                }
+                loadBatches();
+                reloadTable();
+            } catch (err) {
+                if (typeof Swal !== 'undefined') {
+                    const payload = err.payload || {};
+                    const blockers = Array.isArray(payload.blockers) ? payload.blockers : [];
+                    if (blockers.length) {
+                        const rows = blockers.slice(0, 10).map((row, idx) => `
+                            <tr>
+                                <td>${idx + 1}</td>
+                                <td>${escapeHtml(row.no_resi || '-')}</td>
+                                <td>${escapeHtml(row.id_pesanan || '-')}</td>
+                                <td>${escapeHtml((row.reasons || []).join(', '))}</td>
+                            </tr>
+                        `).join('');
+                        const more = blockers.length > 10
+                            ? `<div class="text-muted mt-2">Dan ${blockers.length - 10} resi lain.</div>`
+                            : '';
+                        Swal.fire({
+                            title: 'Batch Tidak Bisa Dihapus',
+                            icon: 'warning',
+                            width: 760,
+                            html: `
+                                <div class="text-start">
+                                    <div class="fw-bold mb-2">${escapeHtml(payload.message || err.message || 'Batch tidak bisa dihapus.')}</div>
+                                    <div class="text-muted mb-3">${escapeHtml(payload.detail || '')}</div>
+                                    <div class="table-responsive">
+                                        <table class="table table-row-dashed align-middle fs-7">
+                                            <thead>
+                                                <tr class="text-start text-gray-400 fw-bolder text-uppercase">
+                                                    <th>No</th>
+                                                    <th>No Resi</th>
+                                                    <th>ID Pesanan</th>
+                                                    <th>Alasan</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>${rows}</tbody>
+                                        </table>
+                                    </div>
+                                    ${more}
+                                </div>
+                            `,
+                        });
+                    } else {
+                        Swal.fire('Error', err.message || 'Gagal menghapus batch', 'error');
+                    }
+                }
+            }
+        };
+
         const setBuyerNotesCount = (count) => {
             const normalized = Number(count || 0);
             if (summaryBuyerNotesEl) summaryBuyerNotesEl.textContent = normalized;
             if (buyerNotesBtn) buyerNotesBtn.disabled = normalized <= 0;
         };
         setBuyerNotesCount(summaryBuyerNotesEl?.textContent || 0);
+        loadBatches();
+
+        batchRefreshBtn?.addEventListener('click', loadBatches);
+        batchBodyEl?.addEventListener('click', (e) => {
+            const detailBtn = e.target.closest('.btn-detail-batch');
+            if (detailBtn) {
+                showBatchDetail(detailBtn.getAttribute('data-id'));
+                return;
+            }
+            const deleteBtn = e.target.closest('.btn-delete-batch');
+            if (deleteBtn) {
+                deleteBatch(deleteBtn.getAttribute('data-id'), deleteBtn.getAttribute('data-code'));
+            }
+        });
 
         if (typeof flatpickr !== 'undefined' && filterDateEl) {
             fpDate = flatpickr(filterDateEl, { dateFormat: 'Y-m-d', allowInput: true });
@@ -822,6 +1113,7 @@
 
                 if (importInput) importInput.value = '';
                 importModal?.hide();
+                loadBatches();
                 reloadTable();
             } catch (e) {
                 if (typeof Swal !== 'undefined') {

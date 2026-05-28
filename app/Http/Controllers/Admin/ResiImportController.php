@@ -10,13 +10,16 @@ use App\Models\PackerResiScan;
 use App\Models\PackerScanOut;
 use App\Models\PickingList;
 use App\Models\PickingListException;
-use App\Models\QcTransitItem;
 use App\Models\QcScanResi;
+use App\Models\QcTransitItem;
 use App\Models\Resi;
 use App\Models\ResiDetail;
+use App\Models\ResiImportBatch;
+use App\Models\ResiImportBatchItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
@@ -48,6 +51,9 @@ class ResiImportController extends Controller
             'importUrl' => route('admin.inventory.resi-import.import'),
             'dataUrl' => route('admin.inventory.resi-import.data'),
             'buyerNotesUrl' => route('admin.inventory.resi-import.buyer-notes'),
+            'batchesUrl' => route('admin.inventory.resi-import.batches'),
+            'batchDetailUrl' => route('admin.inventory.resi-import.batches.show', ['batch' => '__BATCH__']),
+            'batchDeleteUrl' => route('admin.inventory.resi-import.batches.destroy', ['batch' => '__BATCH__']),
             'filterDate' => $filterDate,
             'filterSearch' => $search,
             'filterStatus' => $status,
@@ -224,6 +230,71 @@ class ResiImportController extends Controller
         ]);
     }
 
+    public function batches(Request $request)
+    {
+        $rows = ResiImportBatch::query()
+            ->with('uploader:id,name')
+            ->withCount('items')
+            ->orderByDesc('uploaded_at')
+            ->orderByDesc('id')
+            ->limit((int) $request->input('limit', 25))
+            ->get()
+            ->map(function ($batch) {
+                return [
+                    'id' => $batch->id,
+                    'batch_code' => $batch->batch_code,
+                    'file_name' => $batch->file_name,
+                    'uploaded_by' => $batch->uploader?->name ?? '-',
+                    'uploaded_at' => $batch->uploaded_at?->format('Y-m-d H:i'),
+                    'total_resis' => (int) $batch->total_resis,
+                    'total_details' => (int) $batch->total_details,
+                    'items_count' => (int) ($batch->items_count ?? 0),
+                    'status' => $batch->status,
+                    'deleted_at' => $batch->deleted_at?->format('Y-m-d H:i'),
+                    'delete_reason' => $batch->delete_reason,
+                ];
+            });
+
+        return response()->json([
+            'data' => $rows,
+        ]);
+    }
+
+    public function showBatch(ResiImportBatch $batch)
+    {
+        $rows = ResiImportBatchItem::query()
+            ->where('resi_import_batch_id', $batch->id)
+            ->orderBy('id')
+            ->get()
+            ->map(function ($item) {
+                $snapshot = $item->snapshot ?? [];
+                return [
+                    'id' => $item->id,
+                    'resi_id' => $item->resi_id,
+                    'id_pesanan' => $item->id_pesanan,
+                    'no_resi' => $item->no_resi,
+                    'action' => $item->action,
+                    'deleted' => $item->resi_id ? ! Resi::whereKey($item->resi_id)->exists() : true,
+                    'kurir' => $snapshot['kurir'] ?? '-',
+                    'tanggal_pesanan' => $snapshot['tanggal_pesanan'] ?? '-',
+                    'items' => $snapshot['items'] ?? [],
+                ];
+            });
+
+        return response()->json([
+            'batch' => [
+                'id' => $batch->id,
+                'batch_code' => $batch->batch_code,
+                'file_name' => $batch->file_name,
+                'status' => $batch->status,
+                'uploaded_at' => $batch->uploaded_at?->format('Y-m-d H:i'),
+                'total_resis' => (int) $batch->total_resis,
+                'total_details' => (int) $batch->total_details,
+            ],
+            'data' => $rows,
+        ]);
+    }
+
     public function import(Request $request)
     {
         $request->validate([
@@ -245,11 +316,19 @@ class ResiImportController extends Controller
             $createdDetails = 0;
             $today = now()->toDateString();
             $defaultKurirId = $this->resolveDefaultKurirId();
+            $batch = ResiImportBatch::create([
+                'batch_code' => $this->generateBatchCode(),
+                'file_name' => $request->file('file')->getClientOriginalName(),
+                'uploaded_by' => auth()->id(),
+                'uploaded_at' => now(),
+                'status' => 'active',
+            ]);
 
             foreach ($groups as $group) {
                 $existing = Resi::where('id_pesanan', $group['id_pesanan'])
                     ->lockForUpdate()
                     ->first();
+                $action = $existing ? 'updated' : 'created';
                 if ($existing && ($existing->status ?? 'active') === 'canceled') {
                     throw ValidationException::withMessages([
                         'file' => 'ID Pesanan '.$group['id_pesanan'].' sudah dibatalkan. Aktifkan kembali resi tersebut sebelum import ulang.',
@@ -301,11 +380,35 @@ class ResiImportController extends Controller
                     $createdDetails++;
                 }
 
+                ResiImportBatchItem::create([
+                    'resi_import_batch_id' => $batch->id,
+                    'resi_id' => $resi->id,
+                    'id_pesanan' => $resi->id_pesanan,
+                    'no_resi' => $resi->no_resi,
+                    'action' => $action,
+                    'snapshot' => [
+                        'id_pesanan' => $resi->id_pesanan,
+                        'no_resi' => $resi->no_resi,
+                        'kurir' => $resi->kurir?->name,
+                        'tanggal_pesanan' => $resi->tanggal_pesanan?->format('Y-m-d'),
+                        'tanggal_upload' => $today,
+                        'items' => collect($group['items'])->map(fn ($row) => [
+                            'sku' => $row['sku'],
+                            'qty' => (int) $row['qty'],
+                        ])->values()->all(),
+                    ],
+                ]);
+
                 if ($existing && $oldTanggalUpload) {
                     $this->adjustPickingList($oldTanggalUpload, $oldDetails, -1);
                 }
                 $this->adjustPickingList($today, $group['items'], 1);
             }
+
+            $batch->update([
+                'total_resis' => $createdResi,
+                'total_details' => $createdDetails,
+            ]);
 
             DB::commit();
 
@@ -313,6 +416,7 @@ class ResiImportController extends Controller
                 'message' => 'Import resi berhasil',
                 'resis' => $createdResi,
                 'details' => $createdDetails,
+                'batch_code' => $batch->batch_code,
             ]);
         } catch (ValidationException $e) {
             DB::rollBack();
@@ -324,6 +428,89 @@ class ResiImportController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function destroyBatch(Request $request, ResiImportBatch $batch)
+    {
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if (($batch->status ?? 'active') === 'deleted') {
+            return response()->json([
+                'message' => 'Batch import ini sudah dihapus sebelumnya.',
+            ], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            $batch->load('items');
+            $resiIds = $batch->items
+                ->pluck('resi_id')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            $blockers = $this->batchDeleteBlockers($batch, $resiIds);
+            if (!empty($blockers)) {
+                DB::rollBack();
+                return response()->json([
+                    'message' => 'Batch import tidak bisa dihapus karena ada resi yang sudah diproses atau merupakan update data lama.',
+                    'detail' => 'Hapus batch hanya diizinkan untuk resi baru yang belum masuk QC scan, scan packer, atau scan out.',
+                    'blocked_count' => count($blockers),
+                    'blockers' => $blockers,
+                ], 422);
+            }
+
+            $resis = Resi::query()
+                ->whereIn('id', $resiIds)
+                ->with(['details'])
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            $deletedResis = 0;
+            $deletedDetails = 0;
+
+            foreach ($resis as $resi) {
+                $details = $resi->details;
+                $deletedDetails += $details->count();
+
+                if (($resi->status ?? 'active') !== 'canceled' && $details->isNotEmpty()) {
+                    $listDate = $resi->tanggal_upload?->format('Y-m-d') ?? now()->toDateString();
+                    $this->adjustPickingList($listDate, $details, -1);
+                }
+
+                $resi->delete();
+                $deletedResis++;
+            }
+
+            $batch->status = 'deleted';
+            $batch->deleted_at = now();
+            $batch->deleted_by = auth()->id();
+            $batch->delete_reason = $validated['reason'] ?? null;
+            $batch->save();
+
+            DB::commit();
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Gagal menghapus batch import resi.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => 'Batch import berhasil dihapus tanpa mengganggu data proses.',
+            'detail' => 'Semua resi pada batch ini belum pernah masuk QC scan, scan packer, atau scan out. Resi dan detail SKU sudah dihapus dari database, dan picking list sudah disesuaikan.',
+            'batch_code' => $batch->batch_code,
+            'deleted_resis' => $deletedResis,
+            'deleted_details' => $deletedDetails,
+        ]);
     }
 
     public function cancel(Request $request)
@@ -465,6 +652,68 @@ class ResiImportController extends Controller
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    private function generateBatchCode(): string
+    {
+        do {
+            $code = 'RIB-'.now()->format('Ymd-His').'-'.Str::upper(Str::random(4));
+        } while (ResiImportBatch::where('batch_code', $code)->exists());
+
+        return $code;
+    }
+
+    private function batchDeleteBlockers(ResiImportBatch $batch, array $resiIds): array
+    {
+        $resiIds = array_values(array_unique(array_map('intval', $resiIds)));
+        $qcResiIds = empty($resiIds)
+            ? []
+            : QcScanResi::whereIn('resi_id', $resiIds)->pluck('resi_id')->map(fn ($id) => (int) $id)->all();
+        $packerResiIds = empty($resiIds)
+            ? []
+            : PackerResiScan::whereIn('resi_id', $resiIds)->pluck('resi_id')->map(fn ($id) => (int) $id)->all();
+        $scanOutResiIds = empty($resiIds)
+            ? []
+            : PackerScanOut::whereIn('resi_id', $resiIds)->pluck('resi_id')->map(fn ($id) => (int) $id)->all();
+
+        $qcLookup = array_flip($qcResiIds);
+        $packerLookup = array_flip($packerResiIds);
+        $scanOutLookup = array_flip($scanOutResiIds);
+        $resis = empty($resiIds)
+            ? collect()
+            : Resi::whereIn('id', $resiIds)->get(['id', 'id_pesanan', 'no_resi'])->keyBy('id');
+
+        $blockers = [];
+        foreach ($batch->items as $item) {
+            $resiId = (int) ($item->resi_id ?? 0);
+            $reasons = [];
+
+            if (($item->action ?? 'created') !== 'created') {
+                $reasons[] = 'Resi ini adalah update data lama, bukan resi baru dari batch ini.';
+            }
+            if ($resiId && isset($qcLookup[$resiId])) {
+                $reasons[] = 'Sudah masuk QC scan.';
+            }
+            if ($resiId && isset($packerLookup[$resiId])) {
+                $reasons[] = 'Sudah masuk scan packer.';
+            }
+            if ($resiId && isset($scanOutLookup[$resiId])) {
+                $reasons[] = 'Sudah scan out.';
+            }
+
+            if (!empty($reasons)) {
+                $resi = $resiId ? $resis->get($resiId) : null;
+                $blockers[] = [
+                    'resi_id' => $resiId ?: null,
+                    'id_pesanan' => $resi?->id_pesanan ?? $item->id_pesanan,
+                    'no_resi' => $resi?->no_resi ?? $item->no_resi,
+                    'action' => $item->action,
+                    'reasons' => $reasons,
+                ];
+            }
+        }
+
+        return $blockers;
     }
 
     private function adjustPickingList(string $date, $items, int $direction): void

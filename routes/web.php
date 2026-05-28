@@ -217,6 +217,9 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::get('/resi-import/data', [ResiImportController::class, 'data'])->name('resi-import.data');
         Route::get('/resi-import/summary', [ResiImportController::class, 'summary'])->name('resi-import.summary');
         Route::get('/resi-import/buyer-notes', [ResiImportController::class, 'buyerNotes'])->name('resi-import.buyer-notes');
+        Route::get('/resi-import/batches', [ResiImportController::class, 'batches'])->name('resi-import.batches');
+        Route::get('/resi-import/batches/{batch}', [ResiImportController::class, 'showBatch'])->name('resi-import.batches.show');
+        Route::delete('/resi-import/batches/{batch}', [ResiImportController::class, 'destroyBatch'])->name('resi-import.batches.destroy');
         Route::post('/resi-import/import', [ResiImportController::class, 'import'])->name('resi-import.import');
         Route::post('/resi-import/cancel', [ResiImportController::class, 'cancel'])->name('resi-import.cancel');
         Route::post('/resi-import/uncancel', [ResiImportController::class, 'uncancel'])->name('resi-import.uncancel');
