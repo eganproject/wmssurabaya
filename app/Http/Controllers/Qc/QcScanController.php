@@ -13,6 +13,7 @@ use App\Models\QcScanResiItem;
 use App\Models\QcTransitItem;
 use App\Models\Resi;
 use App\Models\StockMutation;
+use App\Models\Warehouse;
 use App\Support\BundleService;
 use App\Support\StockService;
 use Illuminate\Http\Request;
@@ -327,14 +328,23 @@ class QcScanController extends Controller
     public function searchItems(Request $request)
     {
         $search = trim((string) $request->input('q', ''));
-        $query = Item::query();
+        $query = Item::with([
+            'warehouseSettings' => fn ($settings) => $settings->where('warehouse_id', Warehouse::defaultId()),
+        ]);
         if ($search !== '') {
             $query->where('sku', 'like', "%{$search}%");
         }
 
-        return response()->json([
-            'items' => $query->orderBy('sku')->get(['id', 'sku', 'name', 'address']),
-        ]);
+        $items = $query->orderBy('sku')
+            ->get(['id', 'sku', 'name'])
+            ->map(fn ($item) => [
+                'id' => $item->id,
+                'sku' => $item->sku,
+                'name' => $item->name,
+                'address' => $item->warehouseSettings->first()?->location ?? '',
+            ]);
+
+        return response()->json(['items' => $items]);
     }
 
     private function ensureQcResi(Resi $resi): QcScanResi

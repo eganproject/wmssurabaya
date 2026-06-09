@@ -11,7 +11,7 @@ class CategoryItemSeeder extends Seeder
     {
         Category::firstOrCreate(
             ['name' => 'Tanpa Kategori'],
-            ['parent_id' => 0]
+            ['parent_id' => null]
         );
     }
 }

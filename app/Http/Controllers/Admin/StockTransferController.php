@@ -157,13 +157,26 @@ class StockTransferController extends Controller
                 ->firstOrFail();
             $qtyInput = (int) $row['qty_input'];
             $conversion = (int) $unit->conversion_qty;
+            $qtyBase = $qtyInput * $conversion;
+            StockService::assertWarehouseQuantity(
+                (int) $transfer->source_warehouse_id,
+                (int) $row['item_id'],
+                $qtyBase,
+                (int) $unit->id
+            );
+            StockService::assertWarehouseQuantity(
+                (int) $transfer->destination_warehouse_id,
+                (int) $row['item_id'],
+                $qtyBase,
+                (int) $unit->id
+            );
             StockTransferItem::create([
                 'stock_transfer_id' => $transfer->id,
                 'item_id' => $row['item_id'],
                 'unit_id' => $unit->id,
                 'qty_input' => $qtyInput,
                 'conversion_qty' => $conversion,
-                'qty_base' => $qtyInput * $conversion,
+                'qty_base' => $qtyBase,
                 'note' => $row['note'] ?? null,
             ]);
         }

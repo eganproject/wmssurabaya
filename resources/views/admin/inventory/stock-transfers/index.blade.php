@@ -58,6 +58,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const csrf='{{ csrf_token() }}';
     const items=@json($items);
+    const warehouses=@json($warehouses->map(fn ($warehouse) => ['id' => $warehouse->id, 'type' => $warehouse->type])->values());
     const dataUrl='{{ route('admin.inventory.stock-transfers.data') }}';
     const storeUrl='{{ route('admin.inventory.stock-transfers.store') }}';
     const showUrl='{{ route('admin.inventory.stock-transfers.show', ':id') }}';
@@ -89,10 +90,21 @@ document.addEventListener('DOMContentLoaded', () => {
         row.innerHTML=`<div class="col-md-5"><label class="form-label">Item</label><select class="form-select item">${itemOptions}</select></div><div class="col-md-3"><label class="form-label">Satuan</label><select class="form-select unit"></select></div><div class="col-md-2"><label class="form-label">Qty</label><input type="number" min="1" value="1" class="form-control qty"></div><div class="col-md-2"><button type="button" class="btn btn-light-danger remove">Hapus</button></div>`;
         transfer_items.appendChild(row);
         if(data.item_id) row.querySelector('.item').value=String(data.item_id);
-        const refresh=()=>{const item=items.find(i=>i.id==row.querySelector('.item').value);row.querySelector('.unit').innerHTML=(item?.units||[]).map(u=>`<option value="${u.id}">${u.name} (${u.conversion_qty})</option>`).join('');if(data.unit_id)row.querySelector('.unit').value=String(data.unit_id);};
+        const refresh=()=>{
+            const item=items.find(i=>i.id==row.querySelector('.item').value);
+            const sourceBulk=warehouses.find(w=>String(w.id)===String(transfer_source.value))?.type==='bulk';
+            const destinationBulk=warehouses.find(w=>String(w.id)===String(transfer_destination.value))?.type==='bulk';
+            const allUnits=item?.units||[];
+            const units=(sourceBulk||destinationBulk)?allUnits.filter(unit=>!unit.is_base):allUnits;
+            row.querySelector('.unit').innerHTML=units.length
+                ? units.map(u=>`<option value="${u.id}">${u.name} (${u.conversion_qty})</option>`).join('')
+                : '<option value="">Atur satuan koli pada master item</option>';
+            if(data.unit_id&&units.some(unit=>String(unit.id)===String(data.unit_id)))row.querySelector('.unit').value=String(data.unit_id);
+        };
         row.querySelector('.item').addEventListener('change',refresh); row.querySelector('.remove').addEventListener('click',()=>row.remove()); refresh();
         if(data.qty_input) row.querySelector('.qty').value=data.qty_input;
     }
+    [transfer_source,transfer_destination].forEach(select=>select.addEventListener('change',()=>document.querySelectorAll('.transfer-row').forEach(row=>row.querySelector('.item').dispatchEvent(new Event('change')))));
     transfer_add_item.addEventListener('click',addRow);
     transfer_add.addEventListener('click',()=>{editId=null;transfer_modal_title.textContent='Buat Transfer';transfer_form.reset();transfer_items.innerHTML='';transfer_date.value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);addRow();modal.show();});
     transfer_form.addEventListener('submit',async e=>{

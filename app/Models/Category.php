@@ -14,6 +14,10 @@ class Category extends Model
         'parent_id',
     ];
 
+    protected $casts = [
+        'parent_id' => 'integer',
+    ];
+
     public function parent()
     {
         return $this->belongsTo(self::class, 'parent_id');

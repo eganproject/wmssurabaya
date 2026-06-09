@@ -63,16 +63,15 @@ class CategoryController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:150'],
-            'parent_id' => ['nullable', 'integer', 'min:0', function($attr, $value, $fail) {
-                if ((int)$value === 0) return;
-                if (!Category::where('id', $value)->exists()) {
-                    $fail('Parent tidak valid');
+            'parent_id' => ['nullable', 'integer', 'min:0', function ($attribute, $value, $fail) {
+                if ((int) $value !== 0 && !Category::whereKey($value)->exists()) {
+                    $fail('Parent tidak valid.');
                 }
             }],
         ]);
 
         $parentId = $request->input('parent_id');
-        $validated['parent_id'] = ($parentId === null || (int) $parentId === 0) ? 0 : $parentId;
+        $validated['parent_id'] = ($parentId === null || (int) $parentId === 0) ? null : (int) $parentId;
 
         DB::beginTransaction();
         try {
@@ -100,16 +99,15 @@ class CategoryController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:150'],
-            'parent_id' => ['nullable', 'integer', 'min:0', function($attr, $value, $fail) {
-                if ((int)$value === 0) return;
-                if (!Category::where('id', $value)->exists()) {
-                    $fail('Parent tidak valid');
+            'parent_id' => ['nullable', 'integer', 'min:0', 'not_in:'.$category->id, function ($attribute, $value, $fail) {
+                if ((int) $value !== 0 && !Category::whereKey($value)->exists()) {
+                    $fail('Parent tidak valid.');
                 }
             }],
         ]);
 
         $parentId = $request->input('parent_id');
-        $validated['parent_id'] = ($parentId === null || (int) $parentId === 0) ? 0 : $parentId;
+        $validated['parent_id'] = ($parentId === null || (int) $parentId === 0) ? null : (int) $parentId;
 
         DB::beginTransaction();
         try {

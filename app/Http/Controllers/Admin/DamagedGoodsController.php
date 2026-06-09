@@ -470,6 +470,8 @@ class DamagedGoodsController extends Controller
                     InboundItem::create([
                         'inbound_transaction_id' => $existing->id,
                         'item_id' => $row->item_id,
+                        'qty_input' => $row->qty,
+                        'conversion_qty' => 1,
                         'qty' => $row->qty,
                         'qty_received' => $row->qty,
                         'qty_good' => 0,
@@ -505,6 +507,8 @@ class DamagedGoodsController extends Controller
             InboundItem::create([
                 'inbound_transaction_id' => $tx->id,
                 'item_id' => $row->item_id,
+                'qty_input' => $row->qty,
+                'conversion_qty' => 1,
                 'qty' => $row->qty,
                 'qty_received' => $row->qty,
                 'qty_good' => 0,

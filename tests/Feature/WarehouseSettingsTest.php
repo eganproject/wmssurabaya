@@ -40,7 +40,7 @@ class WarehouseSettingsTest extends TestCase
         $response = $this->actingAs($user)->postJson(route('admin.masterdata.items.store'), [
             'sku' => 'SET-WH-001',
             'name' => 'Warehouse Setting Item',
-            'category_id' => 0,
+            'category_id' => null,
             'base_unit_name' => 'PCS',
             'warehouse_settings' => [
                 ['warehouse_id' => $small->id, 'location' => 'Rak K-01', 'safety_stock' => 10],
@@ -65,7 +65,7 @@ class WarehouseSettingsTest extends TestCase
 
     public function test_item_stock_seeder_creates_each_item_warehouse_combination(): void
     {
-        $item = Item::create(['sku' => 'SEED-WH', 'name' => 'Seeder Warehouse', 'category_id' => 0]);
+        $item = Item::create(['sku' => 'SEED-WH', 'name' => 'Seeder Warehouse', 'category_id' => null]);
         $this->seed(ItemStockSeeder::class);
 
         $this->assertSame(

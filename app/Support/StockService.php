@@ -60,6 +60,8 @@ class StockService
                     ]);
                 }
 
+                self::assertWarehouseQuantity($warehouseId, $itemId, $qty, $unitId);
+
                 $stock = self::lockStock($warehouseId, $itemId);
 
                 if ($idempotencyKey) {
@@ -154,6 +156,39 @@ class StockService
             ->implode('|');
 
         return hash('sha256', $normalized);
+    }
+
+    public static function assertWarehouseQuantity(
+        int $warehouseId,
+        int $itemId,
+        int $qtyBase,
+        ?int $unitId = null
+    ): void {
+        $warehouseType = Warehouse::whereKey($warehouseId)->value('type');
+        if ($warehouseType !== Warehouse::TYPE_BULK) {
+            return;
+        }
+
+        $packageUnit = ItemUnit::where('item_id', $itemId)
+            ->where('is_base', false)
+            ->first();
+        if (!$packageUnit || (int) $packageUnit->conversion_qty < 2) {
+            throw ValidationException::withMessages([
+                'qty' => 'Item belum memiliki satuan koli untuk transaksi Gudang Besar.',
+            ]);
+        }
+
+        if ($unitId !== null && (int) $packageUnit->id !== $unitId) {
+            throw ValidationException::withMessages([
+                'unit_id' => 'Gudang Besar wajib menggunakan satuan koli, bukan satuan dasar.',
+            ]);
+        }
+
+        if ($qtyBase <= 0 || $qtyBase % (int) $packageUnit->conversion_qty !== 0) {
+            throw ValidationException::withMessages([
+                'qty' => "Qty Gudang Besar wajib kelipatan 1 {$packageUnit->name} ({$packageUnit->conversion_qty} satuan dasar).",
+            ]);
+        }
     }
 
     private static function normalizeIdempotencyKey(mixed $key): ?string

@@ -312,6 +312,16 @@ class StockOpnameController extends Controller
                 ];
             })->values();
 
+        foreach ($items as $row) {
+            if ((int) $row['counted_qty'] > 0) {
+                StockService::assertWarehouseQuantity(
+                    $validated['warehouse_id'],
+                    (int) $row['item_id'],
+                    (int) $row['counted_qty']
+                );
+            }
+        }
+
         $duplicates = $items->groupBy('item_id')->filter(fn ($rows) => $rows->count() > 1);
         if ($duplicates->isNotEmpty()) {
             throw ValidationException::withMessages([

@@ -51,8 +51,8 @@ class ItemStockController extends Controller
             'isBundle' => $isBundle,
             'mutations' => $mutations,
             'warehouse' => $warehouse,
-            'warehouseLocation' => $warehouseSetting?->location ?? $item->address,
-            'warehouseSafetyStock' => (int) ($warehouseSetting?->safety_stock ?? $item->safety_stock ?? 0),
+            'warehouseLocation' => $warehouseSetting?->location,
+            'warehouseSafetyStock' => (int) ($warehouseSetting?->safety_stock ?? 0),
         ]);
     }
 
@@ -69,7 +69,6 @@ class ItemStockController extends Controller
             $query->where(function ($q) use ($search, $warehouseId) {
                 $q->where('sku', 'like', "%{$search}%")
                     ->orWhere('name', 'like', "%{$search}%")
-                    ->orWhere('address', 'like', "%{$search}%")
                     ->orWhereHas('warehouseSettings', fn ($settings) => $settings
                         ->where('warehouse_id', $warehouseId)
                         ->where('location', 'like', "%{$search}%"))
@@ -102,8 +101,8 @@ class ItemStockController extends Controller
                 'sku' => $i->sku,
                 'name' => $i->name,
                 'stock' => $stock,
-                'location' => $i->warehouseSettings->first()?->location ?? $i->address ?? '',
-                'safety_stock' => (int) ($i->warehouseSettings->first()?->safety_stock ?? $i->safety_stock ?? 0),
+                'location' => $i->warehouseSettings->first()?->location ?? '',
+                'safety_stock' => (int) ($i->warehouseSettings->first()?->safety_stock ?? 0),
                 'is_bundle' => $isBundle,
             ];
         });

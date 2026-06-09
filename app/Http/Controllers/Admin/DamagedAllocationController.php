@@ -336,6 +336,8 @@ class DamagedAllocationController extends Controller
             OutboundItem::create([
                 'outbound_transaction_id' => $tx->id,
                 'item_id' => $row->item_id,
+                'qty_input' => $row->qty,
+                'conversion_qty' => 1,
                 'stock_source' => 'damaged',
                 'qty' => $row->qty,
                 'note' => $row->note ?? 'Dari alokasi barang rusak '.$allocation->code,

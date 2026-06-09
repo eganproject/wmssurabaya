@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\DamagedItemStock;
 use App\Models\DamagedStockMutation;
+use App\Models\ItemUnit;
 use App\Models\Warehouse;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -36,6 +37,8 @@ class DamagedStockService
                         'qty' => 'Qty stok rusak tidak valid',
                     ]);
                 }
+
+                self::assertBulkMultiple($warehouseId, $itemId, $qty);
 
                 $stock = self::lockStock($warehouseId, $itemId);
 
@@ -100,6 +103,7 @@ class DamagedStockService
                 throw ValidationException::withMessages(['qty' => 'Qty reservasi tidak valid']);
             }
 
+            self::assertBulkMultiple($warehouseId, $itemId, $qty);
             $stock = self::lockStock($warehouseId, $itemId);
 
             $available = $stock->stock - ($stock->reserved_stock ?? 0);
@@ -181,6 +185,27 @@ class DamagedStockService
         }
 
         return strlen($key) > 120 ? hash('sha256', $key) : $key;
+    }
+
+    private static function assertBulkMultiple(int $warehouseId, int $itemId, int $qty): void
+    {
+        if (Warehouse::whereKey($warehouseId)->value('type') !== Warehouse::TYPE_BULK) {
+            return;
+        }
+
+        $packageUnit = ItemUnit::where('item_id', $itemId)
+            ->where('is_base', false)
+            ->first();
+        if (!$packageUnit || (int) $packageUnit->conversion_qty < 2) {
+            throw ValidationException::withMessages([
+                'qty' => 'Item belum memiliki satuan koli untuk transaksi Gudang Besar.',
+            ]);
+        }
+        if ($qty % (int) $packageUnit->conversion_qty !== 0) {
+            throw ValidationException::withMessages([
+                'qty' => "Qty Gudang Besar wajib kelipatan 1 {$packageUnit->name} ({$packageUnit->conversion_qty} satuan dasar).",
+            ]);
+        }
     }
 
     private static function lockStock(int $warehouseId, int $itemId): DamagedItemStock

@@ -165,6 +165,8 @@ class InboundController extends Controller
                     InboundItem::create([
                         'inbound_transaction_id' => $tx->id,
                         'item_id' => $row['item_id'],
+                        'qty_input' => $row['qty_received'] ?? $row['qty'],
+                        'conversion_qty' => 1,
                         'qty' => $row['qty_received'] ?? $row['qty'],
                         'qty_received' => $row['qty_received'] ?? $row['qty'],
                         'qty_good' => $row['qty_good'] ?? 0,
@@ -240,6 +242,8 @@ class InboundController extends Controller
                     InboundItem::create([
                         'inbound_transaction_id' => $tx->id,
                         'item_id' => $row['item_id'],
+                        'qty_input' => $row['qty'],
+                        'conversion_qty' => 1,
                         'qty' => $row['qty'],
                         'qty_received' => $row['qty'],
                         'qty_good' => $row['qty'],
@@ -275,7 +279,7 @@ class InboundController extends Controller
         $items = Item::with(['units' => fn ($q) => $q->orderByDesc('is_base')->orderBy('conversion_qty')])
             ->orderBy('name')
             ->get(['id', 'sku', 'name']);
-        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']);
+        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'type', 'is_default']);
         $baseOptions = $this->typeOptions();
         $typeOptions = ['all' => 'Semua'] + $baseOptions;
         $routeMap = [
@@ -944,6 +948,34 @@ class InboundController extends Controller
                 if ((int) $row['qty_good'] + (int) $row['qty_damaged'] !== (int) $row['qty_received']) {
                     throw ValidationException::withMessages(["items.{$idx}.qty_received" => 'Qty bagus + qty rusak harus sama dengan qty diterima']);
                 }
+                StockService::assertWarehouseQuantity(
+                    $validated['warehouse_id'],
+                    (int) $row['item_id'],
+                    (int) $row['qty_received']
+                );
+                if ((int) $row['qty_good'] > 0) {
+                    StockService::assertWarehouseQuantity(
+                        $validated['warehouse_id'],
+                        (int) $row['item_id'],
+                        (int) $row['qty_good']
+                    );
+                }
+                if ((int) $row['qty_damaged'] > 0) {
+                    StockService::assertWarehouseQuantity(
+                        $validated['warehouse_id'],
+                        (int) $row['item_id'],
+                        (int) $row['qty_damaged']
+                    );
+                }
+            }
+        } else {
+            foreach ($items as $row) {
+                StockService::assertWarehouseQuantity(
+                    $validated['warehouse_id'],
+                    (int) $row['item_id'],
+                    (int) $row['qty'],
+                    $row['unit_id']
+                );
             }
         }
 

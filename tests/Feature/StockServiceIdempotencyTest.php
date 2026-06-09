@@ -18,7 +18,7 @@ class StockServiceIdempotencyTest extends TestCase
         $item = Item::create([
             'sku' => 'SKU-IDEMPOTENT',
             'name' => 'Item Idempotent',
-            'category_id' => 0,
+            'category_id' => null,
         ]);
 
         $key = StockService::idempotencyKey(['test', 'inbound', 1, $item->id]);

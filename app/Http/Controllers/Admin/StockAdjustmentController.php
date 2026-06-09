@@ -419,6 +419,14 @@ class StockAdjustmentController extends Controller
             ]);
         }
 
+        foreach ($items as $row) {
+            StockService::assertWarehouseQuantity(
+                $validated['warehouse_id'],
+                (int) $row['item_id'],
+                (int) $row['qty']
+            );
+        }
+
         $duplicates = $items->groupBy('item_id')->filter(fn ($rows) => $rows->count() > 1);
         if ($duplicates->isNotEmpty()) {
             throw ValidationException::withMessages([

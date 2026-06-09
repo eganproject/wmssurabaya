@@ -247,6 +247,8 @@ class OutboundController extends Controller
                     OutboundItem::create([
                         'outbound_transaction_id' => $tx->id,
                         'item_id' => $row['item_id'],
+                        'qty_input' => $row['qty'],
+                        'conversion_qty' => 1,
                         'qty' => $row['qty'],
                         'note' => $row['note'] ?? null,
                     ]);
@@ -328,6 +330,8 @@ class OutboundController extends Controller
                     OutboundItem::create([
                         'outbound_transaction_id' => $tx->id,
                         'item_id' => $row['item_id'],
+                        'qty_input' => $row['qty'],
+                        'conversion_qty' => 1,
                         'qty' => $row['qty'],
                         'note' => $row['note'] ?? null,
                     ]);
@@ -360,7 +364,7 @@ class OutboundController extends Controller
         $items = Item::with(['units' => fn ($q) => $q->orderByDesc('is_base')->orderBy('conversion_qty')])
             ->orderBy('name')
             ->get(['id', 'sku', 'name']);
-        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']);
+        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'type', 'is_default']);
         $baseOptions = $this->typeOptions();
         $typeOptions = ['all' => 'Semua'] + $baseOptions;
         $routeMap = [
@@ -937,6 +941,15 @@ class OutboundController extends Controller
             throw ValidationException::withMessages([
                 'items' => 'Minimal 1 item diperlukan',
             ]);
+        }
+
+        foreach ($items as $row) {
+            StockService::assertWarehouseQuantity(
+                $validated['warehouse_id'],
+                (int) $row['item_id'],
+                (int) $row['qty'],
+                $row['unit_id']
+            );
         }
 
         $duplicates = $items->groupBy(fn ($row) => $row['item_id'].'|'.$row['stock_source'])

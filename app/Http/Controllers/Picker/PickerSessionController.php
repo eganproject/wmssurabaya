@@ -10,6 +10,7 @@ use App\Models\PickerTransitItem;
 use App\Models\PickingList;
 use App\Models\PickingListException;
 use App\Models\StockMutation;
+use App\Models\Warehouse;
 use App\Support\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -347,13 +348,21 @@ class PickerSessionController extends Controller
     public function searchItems(Request $request)
     {
         $search = trim((string) $request->input('q', ''));
-        $query = Item::query();
+        $query = Item::with([
+            'warehouseSettings' => fn ($settings) => $settings->where('warehouse_id', Warehouse::defaultId()),
+        ]);
         if ($search !== '') {
             $query->where('sku', 'like', "%{$search}%");
         }
 
         $items = $query->orderBy('sku')
-            ->get(['id', 'sku', 'name', 'address']);
+            ->get(['id', 'sku', 'name'])
+            ->map(fn ($item) => [
+                'id' => $item->id,
+                'sku' => $item->sku,
+                'name' => $item->name,
+                'address' => $item->warehouseSettings->first()?->location ?? '',
+            ]);
 
         return response()->json([
             'items' => $items,
@@ -553,7 +562,6 @@ class PickerSessionController extends Controller
                     'sku' => $row->item?->sku ?? '',
                     'name' => $row->item?->name ?? '',
                     'address' => $row->item?->warehouseSettings?->first()?->location
-                        ?? $row->item?->address
                         ?? '',
                     'qty' => (int) $row->qty,
                     'note' => $row->note,

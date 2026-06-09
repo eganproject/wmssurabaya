@@ -27,7 +27,6 @@ class ItemStocksExport implements FromCollection, WithHeadings, WithMapping, Sho
             $query->where(function ($q) use ($search, $warehouseId) {
                 $q->where('sku', 'like', "%{$search}%")
                     ->orWhere('name', 'like', "%{$search}%")
-                    ->orWhere('address', 'like', "%{$search}%")
                     ->orWhereHas('warehouseSettings', fn ($settings) => $settings
                         ->where('warehouse_id', $warehouseId)
                         ->where('location', 'like', "%{$search}%"))
@@ -48,8 +47,8 @@ class ItemStocksExport implements FromCollection, WithHeadings, WithMapping, Sho
             $row->id,
             $row->sku,
             $row->name,
-            $row->warehouseSettings->first()?->location ?? $row->address,
-            (int) ($row->warehouseSettings->first()?->safety_stock ?? $row->safety_stock ?? 0),
+            $row->warehouseSettings->first()?->location,
+            (int) ($row->warehouseSettings->first()?->safety_stock ?? 0),
             (int) ($row->stocks->first()?->stock ?? 0),
         ];
     }

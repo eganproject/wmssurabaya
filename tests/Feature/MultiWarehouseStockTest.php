@@ -16,6 +16,7 @@ use App\Support\DamagedStockService;
 use App\Models\DamagedItemStock;
 use App\Support\Permission;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class MultiWarehouseStockTest extends TestCase
@@ -27,10 +28,16 @@ class MultiWarehouseStockTest extends TestCase
         $item = Item::create([
             'sku' => 'MW-001',
             'name' => 'Multi Warehouse Item',
-            'category_id' => 0,
+            'category_id' => null,
         ]);
         $small = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
         $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
+        ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'KOLI',
+            'conversion_qty' => 24,
+            'is_base' => false,
+        ]);
 
         $first = StockService::mutate([
             'warehouse_id' => $bulk->id,
@@ -59,7 +66,7 @@ class MultiWarehouseStockTest extends TestCase
 
     public function test_mutation_can_record_package_unit_while_storing_base_quantity(): void
     {
-        $item = Item::create(['sku' => 'BOX-001', 'name' => 'Box Item', 'category_id' => 0]);
+        $item = Item::create(['sku' => 'BOX-001', 'name' => 'Box Item', 'category_id' => null]);
         $warehouse = Warehouse::where('code', 'WH-BULK')->firstOrFail();
         $unit = ItemUnit::create([
             'item_id' => $item->id,
@@ -86,10 +93,97 @@ class MultiWarehouseStockTest extends TestCase
         $this->assertSame(1, StockMutation::whereKey($mutation->id)->count());
     }
 
+    public function test_bulk_warehouse_rejects_base_unit_and_fractional_package_quantity(): void
+    {
+        $item = Item::create(['sku' => 'BULK-RULE', 'name' => 'Bulk Rule', 'category_id' => null]);
+        $base = ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'PCS',
+            'conversion_qty' => 1,
+            'is_base' => true,
+        ]);
+        ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'KOLI',
+            'conversion_qty' => 12,
+            'is_base' => false,
+        ]);
+        $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
+
+        try {
+            StockService::mutate([
+                'warehouse_id' => $bulk->id,
+                'item_id' => $item->id,
+                'unit_id' => $base->id,
+                'qty_input' => 12,
+                'direction' => 'in',
+                'qty' => 12,
+                'source_type' => 'test',
+                'source_id' => 31,
+            ]);
+            $this->fail('Satuan dasar seharusnya ditolak untuk Gudang Besar.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('unit_id', $e->errors());
+        }
+
+        $this->expectException(ValidationException::class);
+        StockService::mutate([
+            'warehouse_id' => $bulk->id,
+            'item_id' => $item->id,
+            'direction' => 'in',
+            'qty' => 13,
+            'source_type' => 'test',
+            'source_id' => 32,
+        ]);
+    }
+
+    public function test_package_conversion_cannot_change_after_bulk_activity(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $item = Item::create(['sku' => 'BULK-LOCK', 'name' => 'Bulk Lock', 'category_id' => null]);
+        ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'PCS',
+            'conversion_qty' => 1,
+            'is_base' => true,
+        ]);
+        $package = ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'KOLI',
+            'conversion_qty' => 12,
+            'is_base' => false,
+        ]);
+        $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
+        StockService::mutate([
+            'warehouse_id' => $bulk->id,
+            'item_id' => $item->id,
+            'unit_id' => $package->id,
+            'qty_input' => 2,
+            'direction' => 'in',
+            'qty' => 24,
+            'source_type' => 'test',
+            'source_id' => 33,
+        ]);
+
+        $this->actingAs($user)
+            ->putJson(route('admin.masterdata.items.update', $item), [
+                'sku' => $item->sku,
+                'name' => $item->name,
+                'category_id' => 0,
+                'base_unit_name' => 'PCS',
+                'package_unit_name' => 'KOLI',
+                'package_conversion_qty' => 10,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['package_conversion_qty']);
+
+        $this->assertSame(12, (int) $package->fresh()->conversion_qty);
+    }
+
     public function test_transfer_ship_and_receive_moves_stock_between_warehouses(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);
-        $item = Item::create(['sku' => 'TRF-ITEM', 'name' => 'Transfer Item', 'category_id' => 0]);
+        $item = Item::create(['sku' => 'TRF-ITEM', 'name' => 'Transfer Item', 'category_id' => null]);
         $unit = ItemUnit::create([
             'item_id' => $item->id,
             'name' => 'DUS',
@@ -147,7 +241,7 @@ class MultiWarehouseStockTest extends TestCase
     public function test_inbound_and_outbound_accept_package_units_while_posting_base_stock(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);
-        $item = Item::create(['sku' => 'FLOW-KOLI', 'name' => 'Flow Koli', 'category_id' => 0]);
+        $item = Item::create(['sku' => 'FLOW-KOLI', 'name' => 'Flow Koli', 'category_id' => null]);
         ItemUnit::create([
             'item_id' => $item->id,
             'name' => 'PCS',
@@ -199,7 +293,8 @@ class MultiWarehouseStockTest extends TestCase
 
     public function test_damaged_stock_is_separated_by_warehouse(): void
     {
-        $item = Item::create(['sku' => 'DMG-WH', 'name' => 'Damaged Warehouse', 'category_id' => 0]);
+        $item = Item::create(['sku' => 'DMG-WH', 'name' => 'Damaged Warehouse', 'category_id' => null]);
+        ItemUnit::create(['item_id' => $item->id, 'name' => 'KOLI', 'conversion_qty' => 7, 'is_base' => false]);
         $small = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
         $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
 
@@ -227,8 +322,8 @@ class MultiWarehouseStockTest extends TestCase
     public function test_transfer_draft_can_be_edited_and_cancelled(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);
-        $item = Item::create(['sku' => 'TRF-EDIT', 'name' => 'Transfer Edit', 'category_id' => 0]);
-        $unit = ItemUnit::create(['item_id' => $item->id, 'name' => 'PCS', 'conversion_qty' => 1, 'is_base' => true]);
+        $item = Item::create(['sku' => 'TRF-EDIT', 'name' => 'Transfer Edit', 'category_id' => null]);
+        $unit = ItemUnit::create(['item_id' => $item->id, 'name' => 'KOLI', 'conversion_qty' => 10, 'is_base' => false]);
         $small = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
         $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
 
@@ -261,7 +356,7 @@ class MultiWarehouseStockTest extends TestCase
     public function test_transfer_can_receive_partial_quantity_with_discrepancy(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);
-        $item = Item::create(['sku' => 'TRF-PART', 'name' => 'Transfer Partial', 'category_id' => 0]);
+        $item = Item::create(['sku' => 'TRF-PART', 'name' => 'Transfer Partial', 'category_id' => null]);
         $unit = ItemUnit::create(['item_id' => $item->id, 'name' => 'KOLI', 'conversion_qty' => 10, 'is_base' => false]);
         $small = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
         $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();

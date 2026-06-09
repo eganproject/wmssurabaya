@@ -13,14 +13,11 @@ class Item extends Model
         'sku',
         'name',
         'category_id',
-        'address',
         'description',
-        'safety_stock',
         'is_bundle',
     ];
 
     protected $casts = [
-        'safety_stock' => 'integer',
         'is_bundle' => 'boolean',
     ];
 
@@ -53,6 +50,11 @@ class Item extends Model
     public function baseUnit()
     {
         return $this->hasOne(ItemUnit::class)->where('is_base', true);
+    }
+
+    public function packageUnit()
+    {
+        return $this->hasOne(ItemUnit::class)->where('is_base', false);
     }
 
     /** Components that make up this bundle (only meaningful when is_bundle = true). */

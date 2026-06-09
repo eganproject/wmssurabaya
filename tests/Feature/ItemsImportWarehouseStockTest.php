@@ -77,7 +77,7 @@ class ItemsImportWarehouseStockTest extends TestCase
         $this->assertSame(240, $largeMutation->stock_after);
     }
 
-    public function test_legacy_stock_column_still_posts_to_small_warehouse(): void
+    public function test_import_rejects_ambiguous_legacy_stock_column(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);
         $path = tempnam(sys_get_temp_dir(), 'items-import-legacy-').'.xlsx';
@@ -100,17 +100,13 @@ class ItemsImportWarehouseStockTest extends TestCase
                         true
                     ),
                 ], ['Accept' => 'application/json'])
-                ->assertOk();
+                ->assertStatus(422)
+                ->assertJsonValidationErrors(['file']);
         } finally {
             @unlink($path);
         }
 
-        $item = Item::where('sku', 'IMP-LEGACY')->firstOrFail();
-        $small = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
-        $large = Warehouse::where('code', 'WH-BULK')->firstOrFail();
-
-        $this->assertSame(15, (int) ItemStock::where('warehouse_id', $small->id)->where('item_id', $item->id)->value('stock'));
-        $this->assertSame(0, (int) ItemStock::where('warehouse_id', $large->id)->where('item_id', $item->id)->value('stock'));
+        $this->assertDatabaseMissing('items', ['sku' => 'IMP-LEGACY']);
     }
 
     public function test_existing_item_keeps_optional_fields_when_headers_are_absent(): void
@@ -119,7 +115,7 @@ class ItemsImportWarehouseStockTest extends TestCase
         $item = Item::create([
             'sku' => 'IMP-KEEP',
             'name' => 'Nama Lama',
-            'category_id' => 0,
+            'category_id' => null,
             'description' => 'Deskripsi lama',
         ]);
         ItemUnit::create([
@@ -144,7 +140,7 @@ class ItemsImportWarehouseStockTest extends TestCase
     public function test_import_rejects_opening_stock_for_item_with_stock_history(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);
-        $item = Item::create(['sku' => 'IMP-REPEAT', 'name' => 'Repeat', 'category_id' => 0]);
+        $item = Item::create(['sku' => 'IMP-REPEAT', 'name' => 'Repeat', 'category_id' => null]);
         ItemUnit::create([
             'item_id' => $item->id,
             'name' => 'PCS',

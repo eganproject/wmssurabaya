@@ -34,13 +34,13 @@ class LowStockReportController extends Controller
                     ->where('ws.warehouse_id', '=', $warehouseId);
             })
             ->leftJoin('categories as c', 'c.id', '=', 'i.category_id')
-            ->whereRaw('COALESCE(ws.safety_stock, i.safety_stock, 0) > 0')
-            ->whereRaw('COALESCE(s.stock, 0) < COALESCE(ws.safety_stock, i.safety_stock, 0)');
+            ->whereRaw('COALESCE(ws.safety_stock, 0) > 0')
+            ->whereRaw('COALESCE(s.stock, 0) < COALESCE(ws.safety_stock, 0)');
 
         $catFilter = $request->input('category_id');
         if ($catFilter !== null && $catFilter !== '') {
             if ((int) $catFilter === 0) {
-                $baseQuery->where('i.category_id', 0);
+                $baseQuery->whereNull('i.category_id');
             } else {
                 $baseQuery->where('i.category_id', (int) $catFilter);
             }
@@ -61,7 +61,6 @@ class LowStockReportController extends Controller
                 $q->where('i.sku', 'like', "%{$search}%")
                     ->orWhere('i.name', 'like', "%{$search}%")
                     ->orWhere('ws.location', 'like', "%{$search}%")
-                    ->orWhere('i.address', 'like', "%{$search}%")
                     ->orWhere('i.description', 'like', "%{$search}%");
             });
         }
@@ -75,7 +74,7 @@ class LowStockReportController extends Controller
             ->whereRaw('COALESCE(s.stock, 0) <= 0')
             ->count();
         $summaryGap = (int) ((clone $summaryQuery)
-            ->selectRaw('COALESCE(SUM(COALESCE(ws.safety_stock, i.safety_stock, 0) - COALESCE(s.stock, 0)), 0) as gap')
+            ->selectRaw('COALESCE(SUM(COALESCE(ws.safety_stock, 0) - COALESCE(s.stock, 0)), 0) as gap')
             ->value('gap') ?? 0);
 
         $start = (int) $request->input('start', 0);
@@ -86,12 +85,12 @@ class LowStockReportController extends Controller
             'i.id',
             'i.sku',
             'i.name',
-            DB::raw('COALESCE(ws.location, i.address) as address'),
-            DB::raw('COALESCE(ws.safety_stock, i.safety_stock, 0) as safety_stock'),
+            DB::raw('ws.location as address'),
+            DB::raw('COALESCE(ws.safety_stock, 0) as safety_stock'),
             DB::raw('COALESCE(s.stock, 0) as stock'),
-            DB::raw("CASE WHEN i.category_id = 0 THEN 'Tanpa Kategori' ELSE COALESCE(c.name, '-') END as category"),
+            DB::raw("COALESCE(c.name, 'Tanpa Kategori') as category"),
         ])
-        ->orderByRaw('(COALESCE(ws.safety_stock, i.safety_stock, 0) - COALESCE(s.stock, 0)) desc')
+        ->orderByRaw('(COALESCE(ws.safety_stock, 0) - COALESCE(s.stock, 0)) desc')
         ->orderBy('i.sku');
 
         if ($length > 0) {

@@ -26,4 +26,9 @@ class ItemUnit extends Model
     {
         return $this->belongsTo(Item::class);
     }
+
+    public function getIsPackageAttribute(): bool
+    {
+        return !$this->is_base;
+    }
 }

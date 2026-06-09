@@ -25,8 +25,6 @@ use Illuminate\Validation\ValidationException;
 
 class ItemController extends Controller
 {
-    protected ?int $defaultCategoryId = null;
-
     public function index()
     {
         $categories = Category::orderBy('name')->get(['id', 'name']);
@@ -44,9 +42,7 @@ class ItemController extends Controller
             'sku' => $item->sku,
             'name' => $item->name,
             'category_id' => $item->category_id,
-            'address' => $item->address ?? '',
             'description' => $item->description ?? '',
-            'safety_stock' => (int) ($item->safety_stock ?? 0),
             'warehouse_settings' => $item->warehouseSettings->map(fn ($setting) => [
                 'warehouse_id' => $setting->warehouse_id,
                 'safety_stock' => (int) $setting->safety_stock,
@@ -67,14 +63,20 @@ class ItemController extends Controller
 
     public function data(Request $request)
     {
-        $query = Item::with('category')->orderBy('name');
+        $defaultWarehouseId = Warehouse::defaultId();
+        $query = Item::with([
+            'category',
+            'warehouseSettings' => fn ($settings) => $settings->where('warehouse_id', $defaultWarehouseId),
+        ])->orderBy('name');
 
         $search = trim((string) $request->input('q', ''));
         if ($search !== '') {
-            $query->where(function ($q) use ($search) {
+            $query->where(function ($q) use ($search, $defaultWarehouseId) {
                 $q->where('sku', 'like', "%{$search}%")
                     ->orWhere('name', 'like', "%{$search}%")
-                    ->orWhere('address', 'like', "%{$search}%")
+                    ->orWhereHas('warehouseSettings', fn ($settings) => $settings
+                        ->where('warehouse_id', $defaultWarehouseId)
+                        ->where('location', 'like', "%{$search}%"))
                     ->orWhere('description', 'like', "%{$search}%");
             });
         }
@@ -82,7 +84,7 @@ class ItemController extends Controller
         $catFilter = $request->input('category_id');
         if ($catFilter !== null && $catFilter !== '') {
             if ((int)$catFilter === 0) {
-                $query->where('category_id', 0);
+                $query->whereNull('category_id');
             } else {
                 $query->where('category_id', (int)$catFilter);
             }
@@ -104,9 +106,9 @@ class ItemController extends Controller
                 'name' => $i->name,
                 'category' => $i->category?->name ?? '-',
                 'category_id' => $i->category_id,
-                'address' => $i->address ?? '',
+                'default_location' => $i->warehouseSettings->first()?->location ?? '',
                 'description' => $i->description ?? '',
-                'safety_stock' => (int) ($i->safety_stock ?? 0),
+                'default_safety_stock' => (int) ($i->warehouseSettings->first()?->safety_stock ?? 0),
                 'is_bundle' => (bool) $i->is_bundle,
             ];
         });
@@ -124,15 +126,12 @@ class ItemController extends Controller
         $validated = $request->validate([
             'sku' => ['required', 'string', 'max:100', 'unique:items,sku'],
             'name' => ['required', 'string', 'max:150'],
-            'category_id' => ['nullable', 'integer', 'min:0', function($attr, $value, $fail) {
-                if ((int)$value === 0) return;
-                if (!Category::where('id', $value)->exists()) {
-                    $fail('Kategori tidak valid');
+            'category_id' => ['nullable', 'integer', 'min:0', function ($attribute, $value, $fail) {
+                if ((int) $value !== 0 && !Category::whereKey($value)->exists()) {
+                    $fail('Kategori tidak valid.');
                 }
             }],
-            'address' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
-            'safety_stock' => ['nullable', 'integer', 'min:0'],
             'is_bundle' => ['nullable', 'boolean'],
             'components' => ['nullable', 'array'],
             'components.*.component_item_id' => ['required_with:components', 'integer', 'exists:items,id'],
@@ -156,15 +155,11 @@ class ItemController extends Controller
         }
 
         $catId = $request->input('category_id');
-        $validated['category_id'] = ($catId === null || (int)$catId === 0) ? 0 : $catId;
-        if (array_key_exists('safety_stock', $validated)) {
-            $validated['safety_stock'] = max(0, (int) $validated['safety_stock']);
-        }
+        $validated['category_id'] = ($catId === null || (int)$catId === 0) ? null : (int) $catId;
         $validated['is_bundle'] = $isBundle;
         $warehouseSettings = $validated['warehouse_settings'] ?? [];
         $unitPayload = $this->unitPayload($validated);
         unset($validated['components'], $validated['base_unit_name'], $validated['package_unit_name'], $validated['package_conversion_qty'], $validated['warehouse_settings']);
-        $this->applyLegacyWarehouseDefaults($validated, $warehouseSettings);
 
         DB::beginTransaction();
         try {
@@ -174,10 +169,7 @@ class ItemController extends Controller
             if ($isBundle) {
                 $this->syncBundleComponents($item, $components);
             } else {
-                ItemStock::firstOrCreate([
-                    'warehouse_id' => Warehouse::defaultId(),
-                    'item_id' => $item->id,
-                ], ['stock' => 0]);
+                $this->ensureWarehouseStocks($item);
                 $this->syncItemUnits($item, $unitPayload);
             }
 
@@ -210,15 +202,12 @@ class ItemController extends Controller
         $validated = $request->validate([
             'sku' => ['required', 'string', 'max:100', Rule::unique('items', 'sku')->ignore($item->id)],
             'name' => ['required', 'string', 'max:150'],
-            'category_id' => ['nullable', 'integer', 'min:0', function($attr, $value, $fail) {
-                if ((int)$value === 0) return;
-                if (!Category::where('id', $value)->exists()) {
-                    $fail('Kategori tidak valid');
+            'category_id' => ['nullable', 'integer', 'min:0', function ($attribute, $value, $fail) {
+                if ((int) $value !== 0 && !Category::whereKey($value)->exists()) {
+                    $fail('Kategori tidak valid.');
                 }
             }],
-            'address' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
-            'safety_stock' => ['nullable', 'integer', 'min:0'],
             'is_bundle' => ['nullable', 'boolean'],
             'components' => ['nullable', 'array'],
             'components.*.component_item_id' => ['required_with:components', 'integer', 'exists:items,id'],
@@ -247,15 +236,11 @@ class ItemController extends Controller
         }
 
         $catId = $request->input('category_id');
-        $validated['category_id'] = ($catId === null || (int)$catId === 0) ? 0 : $catId;
-        if (array_key_exists('safety_stock', $validated)) {
-            $validated['safety_stock'] = max(0, (int) $validated['safety_stock']);
-        }
+        $validated['category_id'] = ($catId === null || (int)$catId === 0) ? null : (int) $catId;
         $validated['is_bundle'] = $isBundle;
         $warehouseSettings = $validated['warehouse_settings'] ?? [];
         $unitPayload = $this->unitPayload($validated);
         unset($validated['components'], $validated['base_unit_name'], $validated['package_unit_name'], $validated['package_conversion_qty'], $validated['warehouse_settings']);
-        $this->applyLegacyWarehouseDefaults($validated, $warehouseSettings);
 
         DB::beginTransaction();
         try {
@@ -269,10 +254,7 @@ class ItemController extends Controller
             } else {
                 // Switching from bundle to regular: ensure item_stocks row exists, clear components
                 ItemBundle::where('bundle_item_id', $item->id)->delete();
-                ItemStock::firstOrCreate([
-                    'warehouse_id' => Warehouse::defaultId(),
-                    'item_id' => $item->id,
-                ], ['stock' => 0]);
+                $this->ensureWarehouseStocks($item);
                 $this->syncItemUnits($item, $unitPayload);
             }
 
@@ -367,6 +349,9 @@ class ItemController extends Controller
                     InboundItem::create([
                         'inbound_transaction_id' => $tx->id,
                         'item_id' => $itemId,
+                        'unit_id' => $stockPayload['unit_id'] ?? null,
+                        'qty_input' => (int) ($stockPayload['qty_input'] ?? $qtyBase),
+                        'conversion_qty' => (int) ($stockPayload['conversion_qty'] ?? 1),
                         'qty' => $qtyBase,
                         'note' => 'Saldo awal import '.$warehouse->name,
                     ]);
@@ -470,16 +455,6 @@ class ItemController extends Controller
         ];
     }
 
-    private function applyLegacyWarehouseDefaults(array &$validated, array $settings): void
-    {
-        $defaultWarehouseId = Warehouse::defaultId();
-        $default = collect($settings)->firstWhere('warehouse_id', $defaultWarehouseId);
-        if ($default) {
-            $validated['address'] = $default['location'] ?? null;
-            $validated['safety_stock'] = max(0, (int) ($default['safety_stock'] ?? 0));
-        }
-    }
-
     private function syncWarehouseSettings(Item $item, array $settings): void
     {
         foreach ($settings as $setting) {
@@ -496,6 +471,16 @@ class ItemController extends Controller
         }
     }
 
+    private function ensureWarehouseStocks(Item $item): void
+    {
+        Warehouse::query()->pluck('id')->each(function ($warehouseId) use ($item) {
+            ItemStock::firstOrCreate([
+                'warehouse_id' => $warehouseId,
+                'item_id' => $item->id,
+            ], ['stock' => 0]);
+        });
+    }
+
     private function syncItemUnits(Item $item, array $payload): void
     {
         $packageName = $payload['package_name'];
@@ -506,6 +491,18 @@ class ItemController extends Controller
         }
 
         $base = ItemUnit::where('item_id', $item->id)->where('is_base', true)->first();
+        $existingPackage = ItemUnit::where('item_id', $item->id)->where('is_base', false)->first();
+        $packageChanged = $existingPackage && (
+            $packageName === ''
+            || strcasecmp($existingPackage->name, $packageName) !== 0
+            || (int) $existingPackage->conversion_qty !== (int) $payload['package_conversion_qty']
+        );
+        if ($packageChanged && $this->hasBulkActivity($item->id)) {
+            throw ValidationException::withMessages([
+                'package_conversion_qty' => 'Satuan atau isi per koli tidak dapat diubah karena item sudah memiliki saldo atau riwayat Gudang Besar.',
+            ]);
+        }
+
         ItemUnit::where('item_id', $item->id)
             ->where('is_base', false)
             ->whereRaw('LOWER(name) = ?', [mb_strtolower($payload['base_name'])])
@@ -537,6 +534,24 @@ class ItemController extends Controller
         );
     }
 
+    private function hasBulkActivity(int $itemId): bool
+    {
+        $bulkWarehouseIds = Warehouse::where('type', Warehouse::TYPE_BULK)->pluck('id');
+
+        return ItemStock::where('item_id', $itemId)
+                ->whereIn('warehouse_id', $bulkWarehouseIds)
+                ->where('stock', '!=', 0)
+                ->exists()
+            || DB::table('stock_mutations')
+                ->where('item_id', $itemId)
+                ->whereIn('warehouse_id', $bulkWarehouseIds)
+                ->exists()
+            || DB::table('damaged_stock_mutations')
+                ->where('item_id', $itemId)
+                ->whereIn('warehouse_id', $bulkWarehouseIds)
+                ->exists();
+    }
+
     /**
      * Prevent toggling is_bundle if the item already has stock-related history.
      */
@@ -560,27 +575,6 @@ class ItemController extends Controller
                 ]);
             }
         }
-    }
-
-    protected function findOrCreateCategory(string $name, int $parentId = 0): ?Category
-    {
-        $trimmed = trim($name);
-        if ($trimmed === '') {
-            return null;
-        }
-        $normalized = mb_strtolower($trimmed);
-        $category = Category::whereRaw('LOWER(name) = ?', [$normalized])->first();
-        if ($category) {
-            if ($parentId !== 0 && $category->parent_id !== $parentId) {
-                $category->parent_id = $parentId;
-                $category->save();
-            }
-            return $category;
-        }
-        return Category::create([
-            'name' => $trimmed,
-            'parent_id' => $parentId,
-        ]);
     }
 
     private function assertItemCanBeDeleted(Item $item): void
@@ -648,16 +642,4 @@ class ItemController extends Controller
         }
     }
 
-    protected function getDefaultCategoryId(): int
-    {
-        if ($this->defaultCategoryId !== null) {
-            return $this->defaultCategoryId;
-        }
-        $default = Category::firstOrCreate(
-            ['name' => 'Tanpa Kategori'],
-            ['parent_id' => 0]
-        );
-        $this->defaultCategoryId = $default->id;
-        return $this->defaultCategoryId;
-    }
 }

@@ -81,9 +81,9 @@
                         <th>Nama</th>
                         <th>Tipe</th>
                         <th>Kategori</th>
-                        <th>Alamat</th>
+                        <th>Lokasi Gudang Kecil</th>
                         <th>Deskripsi</th>
-                        <th class="text-end">Stok Pengaman</th>
+                        <th class="text-end">Safety Stock Gudang Kecil</th>
                         <th class="text-end">Aksi</th>
                     </tr>
                 </thead>
@@ -235,9 +235,6 @@
                         <li><strong>package_conversion_qty</strong> (wajib jika package_unit atau stok Gudang Besar diisi; contoh <code>24</code> berarti 1 KOLI = 24 PCS)</li>
                         <li><strong>small_warehouse_stock</strong> (opsional, stok awal Gudang Kecil dalam satuan dasar)</li>
                         <li><strong>large_warehouse_stock</strong> (opsional, stok awal Gudang Besar dalam satuan kemasan; package_unit default <code>KOLI</code>)</li>
-                        <li><strong>stock</strong> / <strong>stok</strong> / <strong>qty</strong> tetap didukung sebagai format lama dan dianggap stok Gudang Kecil</li>
-                        <li><strong>safety_stock</strong> / <strong>stok_pengaman</strong> (opsional, jumlah stok pengaman)</li>
-                        <li><strong>address</strong> (opsional)</li>
                         <li><strong>small_warehouse_safety_stock</strong> dan <strong>small_warehouse_location</strong> (opsional)</li>
                         <li><strong>large_warehouse_safety_stock</strong> dan <strong>large_warehouse_location</strong> (opsional)</li>
                         <li><strong>description</strong> (opsional)</li>
@@ -575,9 +572,9 @@
                     ? '<span class="badge badge-light-primary">Bundle</span>'
                     : '<span class="badge badge-light-secondary">Regular</span>' },
                 { data: 'category' },
-                { data: 'address' },
+                { data: 'default_location' },
                 { data: 'description' },
-                { data: 'safety_stock', className: 'text-end', render: d => d ?? 0 },
+                { data: 'default_safety_stock', className: 'text-end', render: d => d ?? 0 },
                 { data: 'id', orderable: false, searchable: false, className: 'text-end', render: (id, t, row) => {
                     const qrItem = `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-download-qr" data-sku="${escapeAttr(row.sku)}">Download QR</a></div>`;
                     const editItem = canUpdate ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${id}">Edit</a></div>` : '';

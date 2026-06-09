@@ -121,7 +121,7 @@
                         <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
                         <select class="form-select form-select-solid" name="warehouse_id" id="flow_warehouse_id" required>
                             @foreach($warehouses as $warehouse)
-                                <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                                <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -368,15 +368,21 @@
             const itemId = row?.querySelector('.flow-item-select')?.value || '';
             const unitEl = row?.querySelector('.flow-unit-select');
             if (!unitEl) return;
-            const units = itemUnits[String(itemId)] || [];
+            const isBulkWarehouse = warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
+            const allUnits = itemUnits[String(itemId)] || [];
+            const units = isBulkWarehouse ? allUnits.filter(unit => !unit.is_base) : allUnits;
             unitEl.innerHTML = units.length ? units.map(unit => {
                 const suffix = unit.conversion_qty > 1 ? ` (1 = ${unit.conversion_qty})` : '';
                 return `<option value="${unit.id}">${unit.name}${suffix}</option>`;
-            }).join('') : '<option value="">Satuan dasar (1)</option>';
+            }).join('') : `<option value="">${isBulkWarehouse ? 'Atur satuan koli pada master item' : 'Satuan dasar (1)'}</option>`;
             if (selectedUnitId && units.some(unit => String(unit.id) === String(selectedUnitId))) {
                 unitEl.value = String(selectedUnitId);
             }
         };
+
+        warehouseEl?.addEventListener('change', () => {
+            itemsContainer?.querySelectorAll('.flow-item-row').forEach(row => syncUnitOptions(row));
+        });
 
         if (typeof flatpickr !== 'undefined') {
             if (dateFromEl) {
