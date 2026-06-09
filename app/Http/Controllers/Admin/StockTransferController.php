@@ -30,27 +30,58 @@ class StockTransferController extends Controller
 
     public function data(Request $request)
     {
-        $query = StockTransfer::with(['sourceWarehouse', 'destinationWarehouse', 'items'])
+        $query = StockTransfer::with([
+            'sourceWarehouse',
+            'destinationWarehouse',
+            'items.unit',
+            'items.receivedUnit',
+            'creator',
+        ])
             ->orderByDesc('transacted_at');
         if ($search = trim((string) $request->input('q'))) {
             $query->where(fn ($q) => $q
                 ->where('code', 'like', "%{$search}%")
                 ->orWhereHas('sourceWarehouse', fn ($w) => $w->where('name', 'like', "%{$search}%"))
-                ->orWhereHas('destinationWarehouse', fn ($w) => $w->where('name', 'like', "%{$search}%")));
+                ->orWhereHas('destinationWarehouse', fn ($w) => $w->where('name', 'like', "%{$search}%"))
+                ->orWhereHas('items.item', fn ($item) => $item
+                    ->where('sku', 'like', "%{$search}%")
+                    ->orWhere('name', 'like', "%{$search}%")));
+        }
+        if ($status = trim((string) $request->input('status'))) {
+            $query->where('status', $status);
+        }
+        if ($warehouseId = $request->integer('warehouse_id')) {
+            $query->where(fn ($q) => $q
+                ->where('source_warehouse_id', $warehouseId)
+                ->orWhere('destination_warehouse_id', $warehouseId));
         }
 
-        $rows = $query->get()->map(fn ($transfer) => [
-            'id' => $transfer->id,
-            'code' => $transfer->code,
-            'source' => $transfer->sourceWarehouse?->name ?? '-',
-            'destination' => $transfer->destinationWarehouse?->name ?? '-',
-            'status' => $transfer->status,
-            'transacted_at' => $transfer->transacted_at?->format('Y-m-d H:i'),
-            'items_count' => $transfer->items->count(),
-            'qty_base' => (int) $transfer->items->sum('qty_base'),
-            'qty_received_base' => (int) $transfer->items->sum('qty_received_base'),
-            'note' => $transfer->note ?? '',
-        ]);
+        $rows = $query->get()->map(function ($transfer) {
+            $sentSummary = $transfer->items
+                ->groupBy(fn ($item) => $item->unit?->name ?? 'UNIT')
+                ->map(fn ($items, $unit) => $items->sum('qty_input').' '.$unit)
+                ->implode(', ');
+            $sentBase = (int) $transfer->items->sum('qty_base');
+            $receivedBase = (int) $transfer->items->sum('qty_received_base');
+            $discrepancyBase = (int) $transfer->items->sum('qty_discrepancy_base');
+
+            return [
+                'id' => $transfer->id,
+                'code' => $transfer->code,
+                'source' => $transfer->sourceWarehouse?->name ?? '-',
+                'destination' => $transfer->destinationWarehouse?->name ?? '-',
+                'destination_type' => $transfer->destinationWarehouse?->type,
+                'status' => $transfer->status,
+                'transacted_at' => $transfer->transacted_at?->format('Y-m-d H:i'),
+                'items_count' => $transfer->items->count(),
+                'sent_summary' => $sentSummary ?: '-',
+                'qty_base' => $sentBase,
+                'qty_received_base' => $receivedBase,
+                'qty_discrepancy_base' => $discrepancyBase,
+                'creator' => $transfer->creator?->name ?? '-',
+                'note' => $transfer->note ?? '',
+            ];
+        });
 
         return response()->json(['data' => $rows]);
     }
@@ -184,10 +215,56 @@ class StockTransferController extends Controller
 
     public function show(int $id)
     {
-        $transfer = StockTransfer::with(['sourceWarehouse', 'destinationWarehouse', 'items.item', 'items.unit'])
+        $transfer = StockTransfer::with([
+            'sourceWarehouse',
+            'destinationWarehouse',
+            'creator',
+            'shipper',
+            'receiver',
+            'canceller',
+            'items.item.baseUnit',
+            'items.item.packageUnit',
+            'items.unit',
+            'items.receivedUnit',
+        ])
             ->findOrFail($id);
 
-        return response()->json($transfer);
+        return response()->json([
+            'id' => $transfer->id,
+            'code' => $transfer->code,
+            'source_warehouse_id' => $transfer->source_warehouse_id,
+            'destination_warehouse_id' => $transfer->destination_warehouse_id,
+            'source_warehouse' => $transfer->sourceWarehouse,
+            'destination_warehouse' => $transfer->destinationWarehouse,
+            'status' => $transfer->status,
+            'transacted_at' => $transfer->transacted_at?->toIso8601String(),
+            'shipped_at' => $transfer->shipped_at?->toIso8601String(),
+            'received_at' => $transfer->received_at?->toIso8601String(),
+            'cancelled_at' => $transfer->cancelled_at?->toIso8601String(),
+            'note' => $transfer->note,
+            'discrepancy_note' => $transfer->discrepancy_note,
+            'creator' => $transfer->creator?->name,
+            'shipper' => $transfer->shipper?->name,
+            'receiver' => $transfer->receiver?->name,
+            'canceller' => $transfer->canceller?->name,
+            'items' => $transfer->items->map(fn ($row) => [
+                'id' => $row->id,
+                'item_id' => $row->item_id,
+                'item' => $row->item,
+                'unit_id' => $row->unit_id,
+                'unit' => $row->unit,
+                'qty_input' => (int) $row->qty_input,
+                'conversion_qty' => (int) $row->conversion_qty,
+                'qty_base' => (int) $row->qty_base,
+                'received_unit_id' => $row->received_unit_id,
+                'received_unit' => $row->receivedUnit,
+                'qty_received_unit' => (int) $row->qty_received_unit,
+                'qty_received_base' => (int) $row->qty_received_base,
+                'qty_discrepancy_base' => (int) $row->qty_discrepancy_base,
+                'note' => $row->note,
+                'discrepancy_note' => $row->discrepancy_note,
+            ])->values(),
+        ]);
     }
 
     public function ship(int $id)
@@ -232,7 +309,7 @@ class StockTransferController extends Controller
         $validated = $request->validate([
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_id' => ['required', 'integer'],
-            'items.*.qty_received_input' => ['required', 'integer', 'min:0'],
+            'items.*.qty_received' => ['required', 'integer', 'min:0'],
             'items.*.discrepancy_note' => ['nullable', 'string'],
             'discrepancy_note' => ['nullable', 'string'],
         ]);
@@ -246,7 +323,7 @@ class StockTransferController extends Controller
                 throw ValidationException::withMessages(['status' => 'Transfer harus dikirim sebelum diterima']);
             }
 
-            $transfer->load('items');
+            $transfer->load(['items.item.baseUnit', 'items.item.packageUnit', 'destinationWarehouse']);
             $receivedRows = collect($validated['items'])->keyBy(fn ($row) => (int) $row['item_id']);
             if ($receivedRows->count() !== $transfer->items->count()) {
                 throw ValidationException::withMessages(['items' => 'Seluruh item transfer wajib dikonfirmasi']);
@@ -258,12 +335,27 @@ class StockTransferController extends Controller
                 if (!$received) {
                     throw ValidationException::withMessages(['items' => 'Item penerimaan transfer tidak valid']);
                 }
-                $qtyReceivedInput = (int) $received['qty_received_input'];
-                if ($qtyReceivedInput > (int) $row->qty_input) {
-                    throw ValidationException::withMessages(['items' => 'Qty diterima tidak boleh melebihi qty dikirim']);
+                $qtyReceivedUnit = (int) $received['qty_received'];
+                $isDestinationBulk = $transfer->destinationWarehouse?->type === Warehouse::TYPE_BULK;
+                $receivedUnit = $isDestinationBulk
+                    ? $row->item?->packageUnit
+                    : $row->item?->baseUnit;
+                if (!$receivedUnit) {
+                    throw ValidationException::withMessages([
+                        'items' => $isDestinationBulk
+                            ? 'Satuan koli item belum dikonfigurasi.'
+                            : 'Satuan dasar item belum dikonfigurasi.',
+                    ]);
                 }
-                $qtyReceivedBase = $qtyReceivedInput * (int) $row->conversion_qty;
-                $isDiscrepancy = $qtyReceivedInput !== (int) $row->qty_input;
+
+                $qtyReceivedBase = $qtyReceivedUnit * (int) $receivedUnit->conversion_qty;
+                if ($qtyReceivedBase > (int) $row->qty_base) {
+                    throw ValidationException::withMessages([
+                        'items' => 'Qty diterima tidak boleh melebihi qty yang dikirim.',
+                    ]);
+                }
+                $qtyDiscrepancyBase = (int) $row->qty_base - $qtyReceivedBase;
+                $isDiscrepancy = $qtyDiscrepancyBase !== 0;
                 $hasDiscrepancy = $hasDiscrepancy || $isDiscrepancy;
                 if ($isDiscrepancy && trim((string) ($received['discrepancy_note'] ?? '')) === '') {
                     throw ValidationException::withMessages(['items' => 'Alasan selisih wajib diisi untuk qty yang tidak lengkap']);
@@ -273,11 +365,11 @@ class StockTransferController extends Controller
                 StockService::mutate([
                     'warehouse_id' => $transfer->destination_warehouse_id,
                     'item_id' => $row->item_id,
-                    'unit_id' => $row->unit_id,
+                    'unit_id' => $receivedUnit->id,
                     'direction' => 'in',
                     'qty' => $qtyReceivedBase,
-                    'qty_input' => $qtyReceivedInput,
-                    'conversion_qty' => $row->conversion_qty,
+                    'qty_input' => $qtyReceivedUnit,
+                    'conversion_qty' => $receivedUnit->conversion_qty,
                     'source_type' => 'transfer',
                     'source_subtype' => 'receive',
                     'source_id' => $transfer->id,
@@ -290,7 +382,9 @@ class StockTransferController extends Controller
                 }
                 $row->update([
                     'qty_received_base' => $qtyReceivedBase,
-                    'qty_received_input' => $qtyReceivedInput,
+                    'received_unit_id' => $receivedUnit->id,
+                    'qty_received_unit' => $qtyReceivedUnit,
+                    'qty_discrepancy_base' => $qtyDiscrepancyBase,
                     'discrepancy_note' => $received['discrepancy_note'] ?? null,
                 ]);
             }

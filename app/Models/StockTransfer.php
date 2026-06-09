@@ -47,4 +47,24 @@ class StockTransfer extends Model
     {
         return $this->belongsTo(Warehouse::class, 'destination_warehouse_id');
     }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function shipper()
+    {
+        return $this->belongsTo(User::class, 'shipped_by');
+    }
+
+    public function receiver()
+    {
+        return $this->belongsTo(User::class, 'received_by');
+    }
+
+    public function canceller()
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
+    }
 }

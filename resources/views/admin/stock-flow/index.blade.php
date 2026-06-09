@@ -203,6 +203,21 @@
 @endif
 @endsection
 
+@php
+    $itemUnitsJson = $items->mapWithKeys(function ($item) {
+        return [
+            (string) $item->id => $item->units->map(function ($unit) {
+                return [
+                    'id' => $unit->id,
+                    'name' => $unit->name,
+                    'conversion_qty' => (int) $unit->conversion_qty,
+                    'is_base' => (bool) $unit->is_base,
+                ];
+            })->values(),
+        ];
+    });
+@endphp
+
 @push('scripts')
 <script>
     const dataUrl = '{{ $dataUrl }}';
@@ -217,14 +232,7 @@
     const typeLabelMap = @json($typeOptions ?? []);
     const csrfToken = '{{ csrf_token() }}';
     const itemOptionsHtml = `@foreach($items as $item)<option value="{{ $item->id }}">{{ $item->sku }} - {{ $item->name }}</option>@endforeach`;
-    const itemUnits = @json($items->mapWithKeys(fn ($item) => [
-        (string) $item->id => $item->units->map(fn ($unit) => [
-            'id' => $unit->id,
-            'name' => $unit->name,
-            'conversion_qty' => (int) $unit->conversion_qty,
-            'is_base' => (bool) $unit->is_base,
-        ])->values(),
-    ]));
+    const itemUnits = @json($itemUnitsJson);
     const defaultTypeFilter = '{{ $typeDefault ?? '' }}';
     const permMap = @json($permMap ?? []);
     const canCreateDefault = {{ $canCreateDefault ? 'true' : 'false' }};

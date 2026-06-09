@@ -17,7 +17,9 @@ class StockTransferItem extends Model
         'conversion_qty',
         'qty_base',
         'qty_received_base',
-        'qty_received_input',
+        'received_unit_id',
+        'qty_received_unit',
+        'qty_discrepancy_base',
         'note',
         'discrepancy_note',
     ];
@@ -35,5 +37,10 @@ class StockTransferItem extends Model
     public function unit()
     {
         return $this->belongsTo(ItemUnit::class, 'unit_id');
+    }
+
+    public function receivedUnit()
+    {
+        return $this->belongsTo(ItemUnit::class, 'received_unit_id');
     }
 }
