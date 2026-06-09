@@ -35,6 +35,12 @@ class Warehouse extends Model
             ?: (int) static::query()->where('code', self::DEFAULT_CODE)->value('id');
     }
 
+    public static function smallId(): int
+    {
+        return (int) static::query()->where('code', self::DEFAULT_CODE)->value('id')
+            ?: static::defaultId();
+    }
+
     public function stocks()
     {
         return $this->hasMany(ItemStock::class);

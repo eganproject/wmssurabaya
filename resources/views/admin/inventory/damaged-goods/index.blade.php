@@ -18,11 +18,10 @@
             <h3 class="fw-bolder text-dark">Saldo Stok Barang Rusak</h3>
         </div>
         <div class="card-toolbar">
-            <select class="form-select form-select-solid w-200px me-3" id="damaged_stock_warehouse_filter">
-                @foreach($warehouses as $warehouse)
-                    <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
-                @endforeach
-            </select>
+            <input type="hidden" id="damaged_stock_warehouse_filter" value="{{ $smallWarehouse->id }}">
+            <span class="badge badge-light-success me-3">
+                <i class="fa-solid fa-warehouse me-2"></i>{{ $smallWarehouse->name }}
+            </span>
             <div class="d-flex align-items-center position-relative my-1">
                 <i class="fa-solid fa-magnifying-glass position-absolute ms-5 text-gray-500"></i>
                 <input type="text" class="form-control form-control-solid w-250px ps-14" placeholder="Cari SKU / Nama" id="stock_summary_search" />
@@ -112,13 +111,13 @@
                     @csrf
                     <div class="row g-3 mb-6">
                         <div class="col-md-6">
-                            <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
-                            <select class="form-select form-select-solid" name="warehouse_id" id="damage_warehouse_id" required>
-                                @foreach($warehouses as $warehouse)
-                                    <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
-                                @endforeach
-                            </select>
-                            <div class="form-text" id="damage_warehouse_unit_info"></div>
+                            <input type="hidden" name="warehouse_id" id="damage_warehouse_id" value="{{ $smallWarehouse->id }}">
+                            <label class="fs-6 fw-bold form-label mb-2">Lokasi Stok Rusak</label>
+                            <div class="rounded border border-success border-dashed bg-light-success p-4">
+                                <div class="fw-bolder text-success">{{ $smallWarehouse->name }}</div>
+                                <div class="text-muted fs-8">Otomatis menggunakan satuan PCS/SET.</div>
+                            </div>
+                            <div id="damage_warehouse_unit_info" class="d-none"></div>
                         </div>
                         <div class="col-md-6">
                             <label class="required fs-6 fw-bold form-label mb-2">Sumber</label>
@@ -183,19 +182,15 @@
                 <div class="mb-6">
                     <div class="text-muted fs-7">
                         Header minimal: <strong>sku</strong>, <strong>qty_input</strong>.<br>
-                        Pada Gudang Besar, <strong>qty_input</strong> adalah jumlah koli. Pada Gudang Kecil, nilainya adalah PCS/SET. Header lama <strong>qty</strong> tetap didukung.<br>
+                        <strong>qty_input</strong> selalu dalam PCS/SET karena barang rusak hanya dikelola di Gudang Kecil. Header lama <strong>qty</strong> tetap didukung.<br>
                         Opsional: <strong>source_type</strong> (display / inbound_return, default display), <strong>source_ref</strong>, <strong>note</strong>, <strong>item_note</strong>, <strong>transacted_at</strong>.<br>
                         Baris dengan <strong>source_ref</strong> sama akan digabung menjadi satu transaksi. Data hasil import berstatus Menunggu dan perlu disetujui.
                     </div>
                     <a href="{{ $templateUrl }}" class="btn btn-sm btn-light-success mt-3">Download Template Excel</a>
                 </div>
-                <div class="fv-row mb-6">
-                    <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
-                    <select class="form-select form-select-solid" id="import_damage_warehouse_id">
-                        @foreach($warehouses as $warehouse)
-                            <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
-                        @endforeach
-                    </select>
+                <input type="hidden" id="import_damage_warehouse_id" value="{{ $smallWarehouse->id }}">
+                <div class="alert bg-light-success border border-success border-dashed mb-6">
+                    Import otomatis masuk ke <strong>{{ $smallWarehouse->name }}</strong>.
                 </div>
                 <div class="fv-row mb-6">
                     <label class="required fs-6 fw-bold form-label mb-2">File Excel</label>
@@ -622,7 +617,7 @@
                 }
                 form.dataset.editId = id;
                 if (modalTitle) modalTitle.textContent = `Edit ${json.code || ''}`.trim();
-                document.getElementById('damage_warehouse_id').value = json.warehouse_id || '';
+                document.getElementById('damage_warehouse_id').value = '{{ $smallWarehouse->id }}';
                 document.getElementById('damage_source_type').value = json.source_type || '';
                 document.getElementById('damage_source_ref').value = json.source_ref || '';
                 document.getElementById('damage_note').value = json.note || '';

@@ -30,11 +30,11 @@ class DamagedGoodsController extends Controller
     {
         $items = Item::with(['units' => fn ($query) => $query->orderByDesc('is_base')->orderBy('conversion_qty')])
             ->orderBy('name')->get(['id', 'sku', 'name']);
-        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'type', 'is_default']);
+        $smallWarehouse = Warehouse::findOrFail(Warehouse::smallId());
 
         return view('admin.inventory.damaged-goods.index', [
             'items' => $items,
-            'warehouses' => $warehouses,
+            'smallWarehouse' => $smallWarehouse,
             'dataUrl' => route('admin.inventory.damaged-goods.data'),
             'storeUrl' => route('admin.inventory.damaged-goods.store'),
             'stockSummaryUrl' => route('admin.inventory.damaged-goods.stock-summary'),
@@ -55,9 +55,8 @@ class DamagedGoodsController extends Controller
     {
         $request->validate([
             'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
-            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
         ]);
-        $warehouseId = $request->integer('warehouse_id') ?: Warehouse::defaultId();
+        $warehouseId = Warehouse::smallId();
 
         $import = new DamagedGoodsImport();
         DB::beginTransaction();
@@ -134,7 +133,7 @@ class DamagedGoodsController extends Controller
 
     public function stockSummary(Request $request)
     {
-        $warehouseId = $request->integer('warehouse_id') ?: Warehouse::defaultId();
+        $warehouseId = Warehouse::smallId();
         $query = Item::query()
             ->join('damaged_item_stocks', 'damaged_item_stocks.item_id', '=', 'items.id')
             ->where('damaged_item_stocks.warehouse_id', $warehouseId)
@@ -633,7 +632,7 @@ class DamagedGoodsController extends Controller
             'transacted_at' => ['required', 'date'],
         ]);
 
-        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
+        $validated['warehouse_id'] = Warehouse::smallId();
         $items = collect($validated['items'] ?? [])
             ->filter(fn ($row) => (int) ($row['qty_input'] ?? $row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)
             ->map(function ($row, $index) use ($validated, $rawItems) {
@@ -699,6 +698,9 @@ class DamagedGoodsController extends Controller
 
         if (!$unit || ($warehouse->type === Warehouse::TYPE_BULK && $unit->is_base)) {
             throw ValidationException::withMessages(['items' => 'Gudang Besar wajib menggunakan satuan koli/kemasan.']);
+        }
+        if ($warehouse->type === Warehouse::TYPE_FULFILLMENT && !$unit->is_base) {
+            throw ValidationException::withMessages(['items' => 'Barang rusak Gudang Kecil wajib menggunakan satuan PCS/SET.']);
         }
 
         return $unit;

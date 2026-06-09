@@ -63,13 +63,13 @@
                     @csrf
                     <div class="row g-3 mb-6">
                         <div class="col-md-6">
-                            <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
-                            <select class="form-select form-select-solid" name="warehouse_id" id="allocation_warehouse_id" required>
-                                @foreach($warehouses as $warehouse)
-                                    <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
-                                @endforeach
-                            </select>
-                            <div class="form-text" id="allocation_warehouse_unit_info"></div>
+                            <input type="hidden" name="warehouse_id" id="allocation_warehouse_id" value="{{ $smallWarehouse->id }}">
+                            <label class="fs-6 fw-bold form-label mb-2">Sumber Barang Rusak</label>
+                            <div class="rounded border border-success border-dashed bg-light-success p-4">
+                                <div class="fw-bolder text-success">{{ $smallWarehouse->name }}</div>
+                                <div class="text-muted fs-8">Alokasi selalu mengambil stok rusak dalam PCS/SET dari Gudang Kecil.</div>
+                            </div>
+                            <div id="allocation_warehouse_unit_info" class="d-none"></div>
                         </div>
                         <div class="col-md-6">
                             <label class="required fs-6 fw-bold form-label mb-2">Jenis Alokasi</label>
@@ -77,7 +77,7 @@
                                 <option value="">Pilih alokasi</option>
                                 <option value="dispose">Dimusnahkan</option>
                                 <option value="repair">Diperbaiki</option>
-                                <option value="return_vendor">Dikembalikan ke Gudang Besar</option>
+                                <option value="return_vendor">Retur ke Gudang Besar (dari Gudang Kecil)</option>
                                 <option value="other">Lainnya</option>
                             </select>
                             <div class="invalid-feedback" id="error_allocation_type"></div>
@@ -322,7 +322,7 @@
             form.dataset.editId = id;
             if (titleEl) titleEl.textContent = `Edit ${json.code || ''}`.trim();
             document.getElementById('allocation_type').value = json.allocation_type || '';
-            if (warehouseEl) warehouseEl.value = json.warehouse_id || warehouseEl.value;
+            if (warehouseEl) warehouseEl.value = '{{ $smallWarehouse->id }}';
             document.getElementById('allocation_ref_no').value = json.ref_no || '';
             document.getElementById('allocation_note').value = json.note || '';
             if (fpDate) fpDate.setDate(json.transacted_at || null, true, 'Y-m-d H:i');

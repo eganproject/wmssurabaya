@@ -316,6 +316,7 @@ class OutboundController extends Controller
                 }
 
                 $tx = OutboundTransaction::create([
+                    'warehouse_id' => Warehouse::smallId(),
                     'code' => $this->generateCode('OUT-RET'),
                     'type' => 'return',
                     'ref_no' => $group['ref_no'] ?? null,
@@ -404,6 +405,8 @@ class OutboundController extends Controller
             'detailUrlTpl' => route("admin.outbound.{$routeBase}.detail", ':id'),
             'items' => $items,
             'warehouses' => $warehouses,
+            'smallWarehouse' => Warehouse::findOrFail(Warehouse::smallId()),
+            'locksToSmallWarehouse' => $type === 'return',
             'typeOptions' => $typeOptions,
             'typeDefault' => $type,
             'routeMap' => $routeMap,
@@ -561,7 +564,7 @@ class OutboundController extends Controller
 
     private function store(Request $request, string $type)
     {
-        $validated = $this->validatePayload($request);
+        $validated = $this->validatePayload($request, $type);
         if ($type === 'return') {
             $this->assertOutboundReturnStockAvailable($validated['items'], $validated['warehouse_id']);
         }
@@ -621,7 +624,7 @@ class OutboundController extends Controller
 
     private function update(Request $request, string $type, int $id)
     {
-        $validated = $this->validatePayload($request);
+        $validated = $this->validatePayload($request, $type);
         if ($type === 'return') {
             $this->assertOutboundReturnStockAvailable($validated['items'], $validated['warehouse_id']);
         }
@@ -893,7 +896,7 @@ class OutboundController extends Controller
         }
     }
 
-    private function validatePayload(Request $request): array
+    private function validatePayload(Request $request, ?string $type = null): array
     {
         $validated = $request->validate([
             'items' => ['required', 'array', 'min:1'],
@@ -907,7 +910,9 @@ class OutboundController extends Controller
             'transacted_at' => ['required', 'date'],
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
         ]);
-        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
+        $validated['warehouse_id'] = $type === 'return'
+            ? Warehouse::smallId()
+            : (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
 
         $items = collect($validated['items'] ?? [])
             ->filter(fn ($row) => (int) ($row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)
@@ -944,6 +949,15 @@ class OutboundController extends Controller
         }
 
         foreach ($items as $row) {
+            if (
+                $type === 'return'
+                && $row['unit_id']
+                && !ItemUnit::whereKey($row['unit_id'])->where('is_base', true)->exists()
+            ) {
+                throw ValidationException::withMessages([
+                    'items' => 'Retur Gudang Kecil wajib menggunakan satuan PCS/SET.',
+                ]);
+            }
             StockService::assertWarehouseQuantity(
                 $validated['warehouse_id'],
                 (int) $row['item_id'],

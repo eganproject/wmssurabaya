@@ -101,7 +101,7 @@
 </div>
 
 <div class="modal fade" id="modal_stock_flow" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered mw-900px">
+    <div class="modal-dialog modal-dialog-centered mw-1100px">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="fw-bolder" id="flow_modal_title">Tambah</h2>
@@ -117,15 +117,29 @@
             <div class="modal-body scroll-y mx-5 mx-xl-15 my-7">
                 <form class="form" id="stock_flow_form">
                     @csrf
-                    <div class="fv-row mb-7">
-                        <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
-                        <select class="form-select form-select-solid" name="warehouse_id" id="flow_warehouse_id" required>
-                            @foreach($warehouses as $warehouse)
-                                <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
-                            @endforeach
-                        </select>
-                        <div class="form-text" id="flow_warehouse_unit_info"></div>
-                    </div>
+                    @if($locksToSmallWarehouse ?? false)
+                        <input type="hidden" name="warehouse_id" id="flow_warehouse_id" value="{{ $smallWarehouse->id }}">
+                        <div class="alert bg-light-success border border-success border-dashed d-flex align-items-center p-5 mb-7">
+                            <i class="fa-solid fa-warehouse fs-2 text-success me-4"></i>
+                            <div>
+                                <div class="fw-bolder text-gray-800">Gudang Kecil Otomatis</div>
+                                <div class="text-gray-600 fs-7">
+                                    Transaksi retur selalu diproses di {{ $smallWarehouse->name }} menggunakan satuan PCS/SET.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="flow_warehouse_unit_info" class="d-none"></div>
+                    @else
+                        <div class="fv-row mb-7">
+                            <label class="required fs-6 fw-bold form-label mb-2">Gudang Tujuan</label>
+                            <select class="form-select form-select-solid" name="warehouse_id" id="flow_warehouse_id" required>
+                                @foreach($warehouses as $warehouse)
+                                    <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                                @endforeach
+                            </select>
+                            <div class="form-text" id="flow_warehouse_unit_info"></div>
+                        </div>
+                    @endif
                     <div id="flow_items_container"></div>
                     <div class="mb-7">
                         <button type="button" class="btn btn-light" id="btn_add_flow_item">Tambah Item</button>
@@ -188,6 +202,19 @@
                             <a href="{{ $templateUrl }}" class="btn btn-sm btn-light-success mt-3">Download Template Excel</a>
                         @endif
                     </div>
+                    @if(($typeDefault ?? '') === 'receipt')
+                        <div class="fv-row mb-6">
+                            <label class="required fs-6 fw-bold form-label mb-2">Gudang Tujuan</label>
+                            <select class="form-select form-select-solid" id="import_flow_warehouse_id">
+                                @foreach($warehouses as $warehouse)
+                                    <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>
+                                        {{ $warehouse->name }} {{ $warehouse->type === 'bulk' ? '(qty file = koli)' : '(qty file = PCS/SET)' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <div class="form-text">Gudang besar membaca qty sebagai jumlah koli; gudang kecil membaca qty sebagai PCS/SET.</div>
+                        </div>
+                    @endif
                     <div class="fv-row mb-6">
                         <label class="required fs-6 fw-bold form-label mb-2">File Excel</label>
                         <input type="file" class="form-control form-control-solid" id="import_flow_file" accept=".xlsx,.xls" />
@@ -237,6 +264,8 @@
     const defaultTypeFilter = '{{ $typeDefault ?? '' }}';
     const permMap = @json($permMap ?? []);
     const canCreateDefault = {{ $canCreateDefault ? 'true' : 'false' }};
+    const locksToSmallWarehouse = {{ ($locksToSmallWarehouse ?? false) ? 'true' : 'false' }};
+    const smallWarehouseId = '{{ $smallWarehouse->id ?? '' }}';
     const isInboundReturnFlow = defaultTypeFilter === 'return' && !!routeMap?.receipt;
     const isOutboundReturnFlow = defaultTypeFilter === 'return' && !!routeMap?.picker;
 
@@ -286,7 +315,7 @@
         const statusLabel = (status, row = {}) => {
             if (status === 'finalized') return '<span class="badge badge-light-success">Finalisasi</span>';
             if (status === 'approved' && row?.type === 'return' && isInboundReturnFlow) {
-                return '<span class="badge badge-light-primary">Gudang Retur</span>';
+                return '<span class="badge badge-light-primary">Area Retur Gudang Kecil</span>';
             }
             if (status === 'approved') return '<span class="badge badge-light-success">Disetujui</span>';
             return '<span class="badge badge-light-warning">Menunggu</span>';
@@ -410,7 +439,9 @@
             if (!unitEl) return;
             const isBulkWarehouse = warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
             const allUnits = itemUnits[String(itemId)] || [];
-            const units = isBulkWarehouse ? allUnits.filter(unit => !unit.is_base) : allUnits;
+            const units = isBulkWarehouse
+                ? allUnits.filter(unit => !unit.is_base)
+                : allUnits.filter(unit => unit.is_base);
             const baseUnit = allUnits.find(unit => unit.is_base);
             unitEl.innerHTML = units.length ? units.map(unit => {
                 const suffix = unit.conversion_qty > 1 ? ` - 1 ${unit.name} = ${unit.conversion_qty} ${baseUnit?.name || 'dasar'}` : '';
@@ -496,8 +527,8 @@
                 <div class="col-md-2">
                     <label class="required fs-6 fw-bold form-label mb-2">Sumber</label>
                     <select class="form-select form-select-solid" data-name="stock_source">
-                        <option value="regular">Gudang Reguler</option>
-                        <option value="damaged">Gudang Rusak</option>
+                        <option value="regular">Stok Normal Gudang Kecil</option>
+                        <option value="damaged">Stok Rusak Gudang Kecil</option>
                     </select>
                     <div class="invalid-feedback" data-error-for="stock_source"></div>
                 </div>
@@ -662,9 +693,22 @@
                 { data: 'item' },
                 { data: 'qty', render: (data, type, row) => {
                     const qty = Number(data || 0).toLocaleString('id-ID');
+                    const details = Array.isArray(row?.qty_details) ? row.qty_details : [];
+                    if (row?.type === 'receipt' && details.length) {
+                        return details.map(detail => {
+                            const input = Number(detail.qty_input || 0).toLocaleString('id-ID');
+                            const base = Number(detail.qty_base || 0).toLocaleString('id-ID');
+                            const unit = String(detail.unit || 'PCS/SET').replace(/[&<>"']/g, char => ({
+                                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+                            }[char]));
+                            return Number(detail.conversion_qty || 1) > 1
+                                ? `<div class="fw-bold text-primary">${input} ${unit}</div><div class="text-muted fs-8">= ${base} PCS/SET</div>`
+                                : `<div class="fw-semibold">${input} ${unit}</div>`;
+                        }).join('<div class="separator separator-dashed my-1"></div>');
+                    }
                     const returnQty = Number(row?.return_warehouse_qty || 0);
                     if (returnQty > 0) {
-                        return `${qty}<div class="text-primary fs-8 fw-bold">Gudang retur: ${returnQty.toLocaleString('id-ID')}</div>`;
+                        return `${qty}<div class="text-primary fs-8 fw-bold">Area retur Gudang Kecil: ${returnQty.toLocaleString('id-ID')} PCS/SET</div>`;
                     }
                     return qty;
                 } },
@@ -739,6 +783,8 @@
             }
             const formData = new FormData();
             formData.append('file', file);
+            const importWarehouse = document.getElementById('import_flow_warehouse_id');
+            if (importWarehouse) formData.append('warehouse_id', importWarehouse.value);
             try {
                 const res = await fetch(importUrl, {
                     method: 'POST',
@@ -789,7 +835,11 @@
             form.dataset.editId = id;
             form.dataset.flowType = rowType;
             if (modalTitle) modalTitle.textContent = `Edit ${json.code || ''}`.trim();
-                if (warehouseEl) warehouseEl.value = json.warehouse_id || warehouseEl.value;
+                if (warehouseEl) {
+                    warehouseEl.value = locksToSmallWarehouse
+                        ? smallWarehouseId
+                        : (json.warehouse_id || warehouseEl.value);
+                }
                 document.getElementById('flow_ref_no').value = json.ref_no || '';
                 document.getElementById('flow_note').value = json.note || '';
                 if (fpTransacted) {

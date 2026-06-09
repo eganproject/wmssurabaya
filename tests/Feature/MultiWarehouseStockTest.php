@@ -282,6 +282,12 @@ class MultiWarehouseStockTest extends TestCase
 
         $this->assertSame(24, (int) ItemStock::where('warehouse_id', $bulk->id)->where('item_id', $item->id)->value('stock'));
         $this->assertSame(2, (int) $inbound->items()->firstOrFail()->qty_input);
+        $this->actingAs($user)
+            ->getJson(route('admin.inbound.receipts.data', ['draw' => 1]))
+            ->assertOk()
+            ->assertJsonPath('data.0.qty_details.0.qty_input', 2)
+            ->assertJsonPath('data.0.qty_details.0.unit', 'KOLI')
+            ->assertJsonPath('data.0.qty_details.0.qty_base', 24);
 
         $this->actingAs($user)->postJson(route('admin.outbound.manuals.store'), [
             'warehouse_id' => $bulk->id,
@@ -440,11 +446,11 @@ class MultiWarehouseStockTest extends TestCase
         $this->assertSame(12, (int) ItemStock::where('warehouse_id', $bulk->id)->where('item_id', $item->id)->value('stock'));
     }
 
-    public function test_remaining_inventory_forms_store_bulk_input_as_packages(): void
+    public function test_bulk_inventory_forms_use_packages_while_damaged_flows_are_forced_to_small_warehouse(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);
         $item = Item::create(['sku' => 'FORM-KOLI', 'name' => 'Form Koli', 'category_id' => null]);
-        ItemUnit::create([
+        $base = ItemUnit::create([
             'item_id' => $item->id,
             'name' => 'PCS',
             'conversion_qty' => 1,
@@ -457,6 +463,7 @@ class MultiWarehouseStockTest extends TestCase
             'is_base' => false,
         ]);
         $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
+        $small = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
 
         $payload = [
             'warehouse_id' => $bulk->id,
@@ -484,13 +491,13 @@ class MultiWarehouseStockTest extends TestCase
             'source_type' => 'inbound_return',
             'items' => [[
                 'item_id' => $item->id,
-                'unit_id' => $package->id,
-                'qty_input' => 2,
+                'unit_id' => $base->id,
+                'qty_input' => 24,
             ]],
         ])->assertOk();
 
         DamagedStockService::mutate([
-            'warehouse_id' => $bulk->id,
+            'warehouse_id' => $small->id,
             'item_id' => $item->id,
             'direction' => 'in',
             'qty' => 24,
@@ -501,8 +508,8 @@ class MultiWarehouseStockTest extends TestCase
             'allocation_type' => 'dispose',
             'items' => [[
                 'item_id' => $item->id,
-                'unit_id' => $package->id,
-                'qty_input' => 1,
+                'unit_id' => $base->id,
+                'qty_input' => 12,
             ]],
         ])->assertOk();
 
@@ -520,8 +527,10 @@ class MultiWarehouseStockTest extends TestCase
             'conversion_qty' => 12,
             'counted_qty' => 36,
         ]);
+        $this->assertDatabaseHas('damaged_goods', ['warehouse_id' => $small->id]);
+        $this->assertDatabaseHas('damaged_allocations', ['warehouse_id' => $small->id]);
         $this->assertSame(24, (int) DamagedGoodItem::latest('id')->value('qty'));
-        $this->assertSame(1, (int) DamagedAllocationItem::latest('id')->value('qty_input'));
+        $this->assertSame(12, (int) DamagedAllocationItem::latest('id')->value('qty_input'));
         $this->assertSame(24, (int) StockAdjustmentItem::latest('id')->value('qty'));
         $this->assertSame(36, (int) StockOpnameItem::latest('id')->value('counted_qty'));
     }

@@ -7,6 +7,7 @@ use App\Models\InboundTransaction;
 use App\Models\Item;
 use App\Models\ItemStock;
 use App\Models\User;
+use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -53,9 +54,12 @@ class InboundReturnFinalizationTest extends TestCase
             'sku' => 'RET-002',
             'name' => 'Return Item 2',
         ]);
+        $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
+        $small = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
 
         $this->actingAs($user)
             ->postJson(route('admin.inbound.returns.store'), [
+                'warehouse_id' => $bulk->id,
                 'transacted_at' => now()->format('Y-m-d H:i'),
                 'items' => [
                     [
@@ -67,11 +71,12 @@ class InboundReturnFinalizationTest extends TestCase
                 ],
             ])
             ->assertOk()
-            ->assertJsonPath('message', 'Retur berhasil masuk Gudang Retur. Lakukan finalisasi untuk distribusi stok.');
+            ->assertJsonPath('message', 'Retur berhasil masuk Area Retur Gudang Kecil. Lakukan finalisasi untuk distribusi stok.');
 
         $tx = InboundTransaction::where('type', 'return')->firstOrFail();
 
         $tx->refresh();
+        $this->assertSame($small->id, (int) $tx->warehouse_id);
         $this->assertSame('approved', $tx->status);
         $this->assertNotNull($tx->approved_at);
         $this->assertNull($tx->finalized_at);

@@ -8,6 +8,7 @@ use App\Models\Item;
 use App\Models\ItemStock;
 use App\Models\OutboundTransaction;
 use App\Models\User;
+use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -52,7 +53,9 @@ class OutboundReturnDamagedAllocationTest extends TestCase
 
         $allocation->refresh();
         $outbound = OutboundTransaction::with('items')->findOrFail($allocation->outbound_transaction_id);
+        $small = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
         $this->assertSame('return', $outbound->type);
+        $this->assertSame($small->id, (int) $outbound->warehouse_id);
         $this->assertSame('approved', $outbound->status);
         $this->assertNotNull($outbound->approved_at);
         $this->assertSame($allocation->code, $outbound->ref_no);
@@ -76,9 +79,11 @@ class OutboundReturnDamagedAllocationTest extends TestCase
             'item_id' => $item->id,
             'stock' => 1,
         ]);
+        $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
 
         $this->actingAs($user)
             ->postJson(route('admin.outbound.returns.store'), [
+                'warehouse_id' => $bulk->id,
                 'transacted_at' => now()->format('Y-m-d H:i'),
                 'items' => [
                     ['item_id' => $item->id, 'stock_source' => 'regular', 'qty' => 2],

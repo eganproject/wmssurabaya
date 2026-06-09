@@ -23,9 +23,11 @@ class DamagedAllocationController extends Controller
 {
     public function index()
     {
+        $smallWarehouse = Warehouse::findOrFail(Warehouse::smallId());
         $items = Item::with(['units' => fn ($query) => $query->orderByDesc('is_base')->orderBy('conversion_qty')])
             ->orderBy('name')->get(['id', 'sku', 'name']);
         $damagedStocks = DamagedItemStock::query()
+            ->where('warehouse_id', $smallWarehouse->id)
             ->get(['warehouse_id', 'item_id', 'stock', 'reserved_stock'])
             ->groupBy('warehouse_id')
             ->map(fn ($rows) => $rows->mapWithKeys(fn ($row) => [
@@ -35,7 +37,7 @@ class DamagedAllocationController extends Controller
         return view('admin.inventory.damaged-allocations.index', [
             'items' => $items,
             'damagedStocks' => $damagedStocks,
-            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'type', 'is_default']),
+            'smallWarehouse' => $smallWarehouse,
             'dataUrl' => route('admin.inventory.damaged-allocations.data'),
             'storeUrl' => route('admin.inventory.damaged-allocations.store'),
         ]);
@@ -411,7 +413,7 @@ class DamagedAllocationController extends Controller
             'transacted_at' => ['required', 'date'],
         ]);
 
-        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
+        $validated['warehouse_id'] = Warehouse::smallId();
         $items = collect($validated['items'] ?? [])
             ->filter(fn ($row) => (int) ($row['qty_input'] ?? $row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)
             ->map(function ($row, $index) use ($validated, $rawItems) {
@@ -469,6 +471,9 @@ class DamagedAllocationController extends Controller
         if (!$unit || ($warehouse->type === Warehouse::TYPE_BULK && $unit->is_base)) {
             throw ValidationException::withMessages(['items' => 'Gudang Besar wajib menggunakan satuan koli/kemasan.']);
         }
+        if ($warehouse->type === Warehouse::TYPE_FULFILLMENT && !$unit->is_base) {
+            throw ValidationException::withMessages(['items' => 'Alokasi barang rusak wajib menggunakan satuan PCS/SET.']);
+        }
 
         return $unit;
     }
@@ -478,7 +483,7 @@ class DamagedAllocationController extends Controller
         return [
             'dispose' => 'Dimusnahkan',
             'repair' => 'Diperbaiki',
-            'return_vendor' => 'Dikembalikan ke Gudang Besar',
+            'return_vendor' => 'Retur ke Gudang Besar dari Gudang Kecil',
             'other' => 'Lainnya',
         ];
     }

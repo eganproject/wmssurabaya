@@ -149,6 +149,7 @@ class InboundController extends Controller
                     }
                 }
                 $tx = InboundTransaction::create([
+                    'warehouse_id' => Warehouse::smallId(),
                     'code' => $this->generateCode('INB-RET'),
                     'type' => 'return',
                     'ref_no' => $group['ref_no'] ?? null,
@@ -181,7 +182,7 @@ class InboundController extends Controller
             DB::commit();
 
             return response()->json([
-                'message' => 'Import retur inbound berhasil masuk Gudang Retur',
+                'message' => 'Import retur inbound berhasil masuk Area Retur Gudang Kecil',
                 'transactions' => $createdTx,
                 'items' => $createdItems,
             ]);
@@ -201,7 +202,9 @@ class InboundController extends Controller
     {
         $request->validate([
             'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
+            'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
         ]);
+        $warehouseId = $request->integer('warehouse_id');
 
         $import = new InboundReceiptsImport();
         DB::beginTransaction();
@@ -228,6 +231,7 @@ class InboundController extends Controller
                     }
                 }
                 $tx = InboundTransaction::create([
+                    'warehouse_id' => $warehouseId,
                     'code' => $this->generateCode('INB-RCV'),
                     'type' => 'receipt',
                     'ref_no' => $group['ref_no'] ?? null,
@@ -239,14 +243,19 @@ class InboundController extends Controller
                 $createdTx++;
 
                 foreach ($group['items'] as $row) {
+                    $unit = $this->defaultUnitForWarehouse($warehouseId, (int) $row['item_id']);
+                    $qtyInput = (int) $row['qty'];
+                    $conversionQty = (int) $unit->conversion_qty;
+                    $qty = $qtyInput * $conversionQty;
                     InboundItem::create([
                         'inbound_transaction_id' => $tx->id,
                         'item_id' => $row['item_id'],
-                        'qty_input' => $row['qty'],
-                        'conversion_qty' => 1,
-                        'qty' => $row['qty'],
-                        'qty_received' => $row['qty'],
-                        'qty_good' => $row['qty'],
+                        'unit_id' => $unit->id,
+                        'qty_input' => $qtyInput,
+                        'conversion_qty' => $conversionQty,
+                        'qty' => $qty,
+                        'qty_received' => $qty,
+                        'qty_good' => $qty,
                         'qty_damaged' => 0,
                         'note' => $row['note'] ?? null,
                     ]);
@@ -312,6 +321,8 @@ class InboundController extends Controller
             'detailUrlTpl' => route("admin.inbound.{$routeBase}.detail", ':id'),
             'items' => $items,
             'warehouses' => $warehouses,
+            'smallWarehouse' => Warehouse::findOrFail(Warehouse::smallId()),
+            'locksToSmallWarehouse' => $type === 'return',
             'typeOptions' => $typeOptions,
             'typeDefault' => $type,
             'routeMap' => $routeMap,
@@ -346,7 +357,7 @@ class InboundController extends Controller
         }
 
         $query = InboundTransaction::query()
-            ->with(['items.item', 'creator', 'warehouse'])
+            ->with(['items.item', 'items.unit', 'creator', 'warehouse'])
             ->select([
                 'inbound_transactions.id',
                 'inbound_transactions.code',
@@ -408,7 +419,13 @@ class InboundController extends Controller
                     );
                 }
 
-                return sprintf('%s (%d)', $sku, (int) ($it->qty ?? 0));
+                $qtyInput = (int) ($it->qty_input ?: $it->qty);
+                $qtyBase = (int) ($it->qty ?? 0);
+                $unitName = $it->unit?->name ?: 'PCS/SET';
+
+                return (int) ($it->conversion_qty ?: 1) > 1
+                    ? sprintf('%s (%d %s = %d PCS/SET)', $sku, $qtyInput, $unitName, $qtyBase)
+                    : sprintf('%s (%d %s)', $sku, $qtyInput, $unitName);
             })->filter()->values();
             $itemLabel = $labels->implode(', ');
             $totalQty = (int) $items->sum(fn ($it) => (int) ($it->qty_received ?? $it->qty ?? 0));
@@ -420,6 +437,13 @@ class InboundController extends Controller
                 'warehouse' => $row->warehouse?->name ?? '-',
                 'item' => $itemLabel ?: '-',
                 'qty' => $totalQty,
+                'qty_details' => $items->map(fn ($it) => [
+                    'sku' => $it->item?->sku ?? '-',
+                    'qty_input' => (int) ($it->qty_input ?: $it->qty),
+                    'unit' => $it->unit?->name ?: 'PCS/SET',
+                    'qty_base' => (int) ($it->qty ?? 0),
+                    'conversion_qty' => (int) ($it->conversion_qty ?: 1),
+                ])->values(),
                 'note' => $row->note ?? '',
                 'type' => $row->type,
                 'status' => $row->status ?? 'pending',
@@ -543,7 +567,7 @@ class InboundController extends Controller
 
         return response()->json([
             'message' => $type === 'return'
-                ? 'Retur berhasil masuk Gudang Retur. Lakukan finalisasi untuk distribusi stok.'
+                ? 'Retur berhasil masuk Area Retur Gudang Kecil. Lakukan finalisasi untuk distribusi stok.'
                 : 'Inbound berhasil disimpan',
         ]);
     }
@@ -884,7 +908,9 @@ class InboundController extends Controller
         }
 
         $validated = $request->validate($rules);
-        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
+        $validated['warehouse_id'] = $isReturn
+            ? Warehouse::smallId()
+            : (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
 
         $items = collect($validated['items'] ?? [])
             ->filter(fn ($row) => (int) ($row['item_id'] ?? 0) > 0)
@@ -970,6 +996,15 @@ class InboundController extends Controller
             }
         } else {
             foreach ($items as $row) {
+                if (
+                    Warehouse::whereKey($validated['warehouse_id'])->value('type') === Warehouse::TYPE_FULFILLMENT
+                    && $row['unit_id']
+                    && !ItemUnit::whereKey($row['unit_id'])->where('is_base', true)->exists()
+                ) {
+                    throw ValidationException::withMessages([
+                        'items' => 'Penerimaan Gudang Kecil wajib menggunakan satuan PCS/SET.',
+                    ]);
+                }
                 StockService::assertWarehouseQuantity(
                     $validated['warehouse_id'],
                     (int) $row['item_id'],
@@ -1023,6 +1058,25 @@ class InboundController extends Controller
             'return' => 'Retur',
             'opening' => 'Saldo Awal',
         ];
+    }
+
+    private function defaultUnitForWarehouse(int $warehouseId, int $itemId): ItemUnit
+    {
+        $warehouse = Warehouse::findOrFail($warehouseId);
+        $unit = ItemUnit::where('item_id', $itemId)
+            ->where('is_base', $warehouse->type !== Warehouse::TYPE_BULK)
+            ->orderBy('conversion_qty')
+            ->first();
+
+        if (!$unit) {
+            throw ValidationException::withMessages([
+                'file' => $warehouse->type === Warehouse::TYPE_BULK
+                    ? 'Item import belum memiliki satuan koli.'
+                    : 'Item import belum memiliki satuan dasar PCS/SET.',
+            ]);
+        }
+
+        return $unit;
     }
 
     private function applyDateFilter($query, Request $request): void
