@@ -93,7 +93,7 @@
 {{-- End Card Transaksi --}}
 
 <div class="modal fade" id="modal_damaged_goods" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered mw-900px">
+    <div class="modal-dialog modal-dialog-centered mw-1000px">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="fw-bolder" id="damage_modal_title">Tambah Barang Rusak</h2>

@@ -86,6 +86,18 @@
             max-width: calc(100vw - 1.5rem) !important;
         }
 
+        .modal-dialog.mw-1000px {
+            --bs-modal-width: 1320px;
+            width: min(96vw, 1320px);
+            max-width: calc(100vw - 1.5rem) !important;
+        }
+
+        .modal-dialog.mw-1100px {
+            --bs-modal-width: 1480px;
+            width: min(97vw, 1480px);
+            max-width: calc(100vw - 1.5rem) !important;
+        }
+
         .modal .modal-content,
         .modal-dialog-scrollable .modal-content {
             max-height: calc(100dvh - 1.5rem);
@@ -96,6 +108,8 @@
         }
 
         .modal-dialog.mw-900px .modal-body,
+        .modal-dialog.mw-1000px .modal-body,
+        .modal-dialog.mw-1100px .modal-body,
         .modal-dialog.modal-lg .modal-body,
         .modal-dialog.modal-xl .modal-body {
             padding-left: clamp(1rem, 2vw, 2.25rem) !important;
@@ -138,7 +152,9 @@
             .modal-dialog.mw-500px,
             .modal-dialog.mw-650px,
             .modal-dialog.mw-700px,
-            .modal-dialog.mw-900px {
+            .modal-dialog.mw-900px,
+            .modal-dialog.mw-1000px,
+            .modal-dialog.mw-1100px {
                 width: calc(100% - 1rem);
                 max-width: calc(100% - 1rem);
                 margin: 0.5rem auto;
