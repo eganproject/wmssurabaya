@@ -3,7 +3,9 @@
 namespace App\Support;
 
 use App\Models\ItemStock;
+use App\Models\ItemUnit;
 use App\Models\StockMutation;
+use App\Models\Warehouse;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -17,8 +19,25 @@ class StockService
         try {
             return DB::transaction(function () use ($payload, $idempotencyKey) {
                 $itemId = (int) ($payload['item_id'] ?? 0);
+                $warehouseId = (int) ($payload['warehouse_id'] ?? Warehouse::defaultId());
                 $direction = $payload['direction'] ?? 'in';
                 $qty = (int) ($payload['qty'] ?? 0);
+                $qtyInput = (int) ($payload['qty_input'] ?? $qty);
+                $unitId = isset($payload['unit_id']) ? (int) $payload['unit_id'] : null;
+                $conversionQty = (int) ($payload['conversion_qty'] ?? 1);
+
+                if ($unitId) {
+                    $unit = ItemUnit::where('id', $unitId)
+                        ->where('item_id', $itemId)
+                        ->first();
+                    if (!$unit) {
+                        throw ValidationException::withMessages([
+                            'unit_id' => 'Satuan item tidak valid',
+                        ]);
+                    }
+                    $conversionQty = (int) $unit->conversion_qty;
+                    $qty = $qtyInput * $conversionQty;
+                }
 
                 if ($idempotencyKey) {
                     $existing = StockMutation::where('idempotency_key', $idempotencyKey)
@@ -29,16 +48,19 @@ class StockService
                     }
                 }
 
-                if ($itemId <= 0 || $qty <= 0) {
+                if (!in_array($direction, ['in', 'out'], true)) {
+                    throw ValidationException::withMessages([
+                        'direction' => 'Arah mutasi stok tidak valid',
+                    ]);
+                }
+
+                if ($itemId <= 0 || $warehouseId <= 0 || $qty <= 0 || $qtyInput <= 0 || $conversionQty <= 0) {
                     throw ValidationException::withMessages([
                         'qty' => 'Qty tidak valid',
                     ]);
                 }
 
-                $stock = ItemStock::where('item_id', $itemId)->lockForUpdate()->first();
-                if (!$stock) {
-                    $stock = ItemStock::create(['item_id' => $itemId, 'stock' => 0]);
-                }
+                $stock = self::lockStock($warehouseId, $itemId);
 
                 if ($idempotencyKey) {
                     $existing = StockMutation::where('idempotency_key', $idempotencyKey)->first();
@@ -53,9 +75,11 @@ class StockService
                     ]);
                 }
 
-                $stock->stock = $direction === 'out'
-                    ? ($stock->stock - $qty)
-                    : ($stock->stock + $qty);
+                $stockBefore = (int) $stock->stock;
+                $stockAfter = $direction === 'out'
+                    ? ($stockBefore - $qty)
+                    : ($stockBefore + $qty);
+                $stock->stock = $stockAfter;
                 $stock->save();
 
                 $sourceType = $payload['source_type'] ?? null;
@@ -67,9 +91,15 @@ class StockService
                 }
 
                 return StockMutation::create([
+                    'warehouse_id' => $warehouseId,
                     'item_id' => $itemId,
+                    'unit_id' => $unitId,
                     'direction' => $direction,
                     'qty' => $qty,
+                    'qty_input' => $qtyInput,
+                    'conversion_qty' => $conversionQty,
+                    'stock_before' => $stockBefore,
+                    'stock_after' => $stockAfter,
                     'source_type' => $sourceType,
                     'source_subtype' => $payload['source_subtype'] ?? null,
                     'source_id' => $sourceId,
@@ -97,10 +127,8 @@ class StockService
             ->get();
 
         foreach ($mutations as $mutation) {
-            $stock = ItemStock::where('item_id', $mutation->item_id)->lockForUpdate()->first();
-            if (!$stock) {
-                $stock = ItemStock::create(['item_id' => $mutation->item_id, 'stock' => 0]);
-            }
+            $warehouseId = (int) ($mutation->warehouse_id ?: Warehouse::defaultId());
+            $stock = self::lockStock($warehouseId, (int) $mutation->item_id);
 
             if ($mutation->direction === 'in') {
                 $newStock = $stock->stock - $mutation->qty;
@@ -136,6 +164,23 @@ class StockService
         }
 
         return strlen($key) > 120 ? hash('sha256', $key) : $key;
+    }
+
+    private static function lockStock(int $warehouseId, int $itemId): ItemStock
+    {
+        $now = now();
+        DB::table('item_stocks')->insertOrIgnore([
+            'warehouse_id' => $warehouseId,
+            'item_id' => $itemId,
+            'stock' => 0,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return ItemStock::where('warehouse_id', $warehouseId)
+            ->where('item_id', $itemId)
+            ->lockForUpdate()
+            ->firstOrFail();
     }
 
     private static function isUniqueConstraintViolation(QueryException $e): bool

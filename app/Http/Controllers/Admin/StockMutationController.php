@@ -10,6 +10,8 @@ use App\Models\PickerSession;
 use App\Models\QcScanResi;
 use App\Models\StockMutation;
 use App\Models\StockOpname;
+use App\Models\StockTransfer;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -17,14 +19,19 @@ class StockMutationController extends Controller
 {
     public function index()
     {
-        return view('admin.inventory.stock-mutations.index');
+        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        return view('admin.inventory.stock-mutations.index', compact('warehouses'));
     }
 
     public function data(Request $request)
     {
         $query = StockMutation::query()
-            ->with(['item', 'creator'])
+            ->with(['item', 'creator', 'warehouse', 'unit'])
             ->orderBy('occurred_at', 'desc');
+
+        if ($warehouseId = $request->integer('warehouse_id')) {
+            $query->where('warehouse_id', $warehouseId);
+        }
 
         $search = trim((string) $request->input('q', ''));
         if ($search !== '') {
@@ -63,9 +70,14 @@ class StockMutationController extends Controller
                 'id' => $m->id,
                 'occurred_at' => $ts,
                 'item' => $itemLabel,
+                'warehouse' => $m->warehouse?->name ?? '-',
                 'user' => $m->creator?->name ?? '-',
                 'direction' => $direction,
                 'qty' => (int) $m->qty,
+                'qty_input' => (int) ($m->qty_input ?? $m->qty),
+                'unit' => $m->unit?->name ?? '',
+                'stock_before' => $m->stock_before,
+                'stock_after' => $m->stock_after,
                 'source' => trim($source),
                 'source_code' => $m->source_code ?? '',
                 'note' => $m->note ?? '',
@@ -101,7 +113,7 @@ class StockMutationController extends Controller
 
     public function show(int $id)
     {
-        $mutation = StockMutation::with(['item', 'creator'])->findOrFail($id);
+        $mutation = StockMutation::with(['item', 'creator', 'warehouse', 'unit'])->findOrFail($id);
         [$sourceSummary, $sourceItems] = $this->resolveSource($mutation);
 
         $itemLabel = trim(($mutation->item?->sku ?? '').' - '.($mutation->item?->name ?? ''));
@@ -113,8 +125,13 @@ class StockMutationController extends Controller
                 'id' => $mutation->id,
                 'occurred_at' => $mutation->occurred_at?->format('Y-m-d H:i'),
                 'item' => $itemLabel,
+                'warehouse' => $mutation->warehouse?->name ?? '-',
                 'direction' => $direction,
                 'qty' => (int) $mutation->qty,
+                'qty_input' => (int) ($mutation->qty_input ?? $mutation->qty),
+                'unit' => $mutation->unit?->name ?? '',
+                'stock_before' => $mutation->stock_before,
+                'stock_after' => $mutation->stock_after,
                 'source' => trim($source),
                 'source_code' => $mutation->source_code ?? '',
                 'note' => $mutation->note ?? '',
@@ -186,6 +203,25 @@ class StockMutationController extends Controller
                             'meta' => 'System '.$row->system_qty.', Counted '.$row->counted_qty.', Adj '.$row->adjustment,
                         ];
                     })->values()->all();
+                }
+                break;
+            case 'transfer':
+                $transfer = StockTransfer::with(['items.item', 'items.unit', 'sourceWarehouse', 'destinationWarehouse'])
+                    ->find($mutation->source_id);
+                if ($transfer) {
+                    $sourceSummary = [
+                        'label' => 'Transfer Antar Gudang',
+                        'code' => $transfer->code,
+                        'ref' => ($transfer->sourceWarehouse?->name ?? '-').' -> '.($transfer->destinationWarehouse?->name ?? '-'),
+                        'date' => $transfer->transacted_at?->format('Y-m-d H:i'),
+                        'note' => $transfer->note ?? '-',
+                    ];
+                    $sourceItems = $transfer->items->map(fn ($row) => [
+                        'label' => trim(($row->item?->sku ?? '').' - '.($row->item?->name ?? '')),
+                        'qty' => (int) $row->qty_base,
+                        'note' => $row->note ?? '-',
+                        'meta' => $row->qty_input.' '.($row->unit?->name ?? 'unit').' x '.$row->conversion_qty,
+                    ])->values()->all();
                 }
                 break;
             case 'adjustment':

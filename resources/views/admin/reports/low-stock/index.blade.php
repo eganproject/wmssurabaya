@@ -20,6 +20,14 @@
         <div class="card-toolbar">
             <div class="d-flex align-items-end gap-3 flex-wrap">
                 <div class="min-w-200px">
+                    <label class="text-muted fs-7 mb-1">Gudang</label>
+                    <select id="filter_warehouse" class="form-select form-select-solid w-200px">
+                        @foreach($warehouses as $warehouse)
+                            <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="min-w-200px">
                     <label class="text-muted fs-7 mb-1">Kategori</label>
                     <select id="filter_category" class="form-select form-select-solid w-200px">
                         <option value="">Semua Kategori</option>
@@ -120,6 +128,7 @@
         const tableEl = $('#low_stock_table');
         const searchInput = document.getElementById('report_search');
         const categoryFilter = document.getElementById('filter_category');
+        const warehouseFilter = document.getElementById('filter_warehouse');
         const statusFilter = document.getElementById('filter_status');
         const limitFilter = document.getElementById('filter_limit');
         const resetBtn = document.getElementById('filter_reset');
@@ -134,6 +143,7 @@
 
         if (typeof $ !== 'undefined' && $.fn.select2) {
             $(categoryFilter).select2({ placeholder: 'Semua', allowClear: true, width: '100%' });
+            $(warehouseFilter).select2({ width: '100%' });
             $(statusFilter).select2({ placeholder: 'Semua', allowClear: true, width: '100%' });
         }
 
@@ -154,6 +164,7 @@
                 },
                 data: function (params) {
                     params.q = searchInput?.value || '';
+                    params.warehouse_id = warehouseFilter?.value || '';
                     params.category_id = categoryFilter?.value || '';
                     params.status = statusFilter?.value || '';
                 }
@@ -186,12 +197,20 @@
         });
         categoryFilter?.addEventListener('change', reloadTable);
         statusFilter?.addEventListener('change', reloadTable);
+        warehouseFilter?.addEventListener('change', reloadTable);
         limitFilter?.addEventListener('change', () => {
             const val = Number(limitFilter.value || 10);
             dt.page.len(val).draw();
         });
         resetBtn?.addEventListener('click', () => {
             if (searchInput) searchInput.value = '';
+            if (warehouseFilter) {
+                const defaultOption = warehouseFilter.querySelector('option[selected]') || warehouseFilter.options[0];
+                warehouseFilter.value = defaultOption?.value || '';
+                if (typeof $ !== 'undefined' && $(warehouseFilter).data('select2')) {
+                    $(warehouseFilter).val(warehouseFilter.value).trigger('change.select2');
+                }
+            }
             if (categoryFilter) {
                 categoryFilter.value = '';
                 if (typeof $ !== 'undefined' && $(categoryFilter).data('select2')) {

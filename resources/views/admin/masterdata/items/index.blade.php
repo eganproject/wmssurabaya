@@ -133,19 +133,42 @@
                         <div class="invalid-feedback" id="error_category_id"></div>
                     </div>
                     <div class="fv-row mb-7">
-                        <label class="fs-6 fw-bold form-label mb-2">Alamat</label>
-                        <textarea class="form-control form-control-solid" name="address" id="item_address" rows="2"></textarea>
-                        <div class="invalid-feedback" id="error_address"></div>
-                    </div>
-                    <div class="fv-row mb-7">
                         <label class="fs-6 fw-bold form-label mb-2">Deskripsi</label>
                         <textarea class="form-control form-control-solid" name="description" id="item_description" rows="3"></textarea>
                         <div class="invalid-feedback" id="error_description"></div>
                     </div>
-                    <div class="fv-row mb-7">
-                        <label class="fs-6 fw-bold form-label mb-2">Jumlah Stok Pengaman</label>
-                        <input type="number" min="0" class="form-control form-control-solid" name="safety_stock" id="item_safety_stock" value="0" />
-                        <div class="invalid-feedback" id="error_safety_stock"></div>
+                    <div class="mb-7">
+                        <label class="fs-6 fw-bold form-label mb-3">Pengaturan Per Gudang</label>
+                        <div class="row g-4">
+                            @foreach($warehouses as $index => $warehouse)
+                                <div class="col-md-6 warehouse-setting-row" data-warehouse-id="{{ $warehouse->id }}">
+                                    <div class="border rounded p-4">
+                                        <div class="fw-bold mb-3">{{ $warehouse->name }}</div>
+                                        <input type="hidden" name="warehouse_settings[{{ $index }}][warehouse_id]" value="{{ $warehouse->id }}">
+                                        <label class="form-label">Lokasi/Rak</label>
+                                        <input class="form-control form-control-solid warehouse-location mb-3" name="warehouse_settings[{{ $index }}][location]" placeholder="Contoh: Rak A-01">
+                                        <label class="form-label">Safety Stock</label>
+                                        <input type="number" min="0" value="0" class="form-control form-control-solid warehouse-safety" name="warehouse_settings[{{ $index }}][safety_stock]">
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div class="row g-4 mb-7">
+                        <div class="col-md-4">
+                            <label class="required fs-6 fw-bold form-label mb-2">Satuan Dasar</label>
+                            <input type="text" class="form-control form-control-solid" name="base_unit_name" id="item_base_unit_name" value="PCS" placeholder="PCS / SET" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="fs-6 fw-bold form-label mb-2">Satuan Kemasan</label>
+                            <input type="text" class="form-control form-control-solid" name="package_unit_name" id="item_package_unit_name" placeholder="DUS / BOX / KOLI" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="fs-6 fw-bold form-label mb-2">Isi per Kemasan</label>
+                            <input type="number" min="2" class="form-control form-control-solid" name="package_conversion_qty" id="item_package_conversion_qty" value="2" />
+                            <div class="form-text">Contoh: 1 DUS = 24 PCS.</div>
+                        </div>
                     </div>
 
                     {{-- Bundle toggle --}}
@@ -207,14 +230,24 @@
                         <li><strong>name</strong> (wajib)</li>
                         <li><strong>parent_category</strong> (opsional, parent kategori; akan dibuat jika belum ada)</li>
                         <li><strong>category</strong> (opsional, anak kategori; jika kosong akan dimasukkan ke kategori default "Tanpa Kategori")</li>
-                        <li><strong>stock</strong> / <strong>stok</strong> / <strong>qty</strong> (opsional, stok awal; akan dicatat sebagai inbound saldo awal)</li>
+                        <li><strong>base_unit</strong> (opsional, default <code>PCS</code>; dapat diisi <code>SET</code>)</li>
+                        <li><strong>package_unit</strong> (opsional, contoh <code>KOLI</code>, <code>DUS</code>, atau <code>BOX</code>)</li>
+                        <li><strong>package_conversion_qty</strong> (wajib jika package_unit atau stok Gudang Besar diisi; contoh <code>24</code> berarti 1 KOLI = 24 PCS)</li>
+                        <li><strong>small_warehouse_stock</strong> (opsional, stok awal Gudang Kecil dalam satuan dasar)</li>
+                        <li><strong>large_warehouse_stock</strong> (opsional, stok awal Gudang Besar dalam satuan kemasan; package_unit default <code>KOLI</code>)</li>
+                        <li><strong>stock</strong> / <strong>stok</strong> / <strong>qty</strong> tetap didukung sebagai format lama dan dianggap stok Gudang Kecil</li>
                         <li><strong>safety_stock</strong> / <strong>stok_pengaman</strong> (opsional, jumlah stok pengaman)</li>
                         <li><strong>address</strong> (opsional)</li>
+                        <li><strong>small_warehouse_safety_stock</strong> dan <strong>small_warehouse_location</strong> (opsional)</li>
+                        <li><strong>large_warehouse_safety_stock</strong> dan <strong>large_warehouse_location</strong> (opsional)</li>
                         <li><strong>description</strong> (opsional)</li>
                     </ul>
-                    <p class="text-muted small mb-1">Contoh header: <code>sku,name,parent_category,category,stock,safety_stock,address,description</code></p>
+                    <p class="text-muted small mb-1">Contoh header baru:</p>
+                    <code class="d-block text-wrap">sku,name,parent_category,category,base_unit,package_unit,package_conversion_qty,small_warehouse_stock,large_warehouse_stock,small_warehouse_safety_stock,small_warehouse_location,large_warehouse_safety_stock,large_warehouse_location,description</code>
+                    <p class="text-muted small mt-3 mb-1">Contoh nilai: <code>SKU-001 | Produk A | PCS | KOLI | 24 | 100 | 10</code> berarti Gudang Kecil 100 PCS dan Gudang Besar 10 KOLI = 240 PCS.</p>
                     <p class="text-muted small mb-1">Gunakan format Excel (.xlsx/.xls) dengan header di baris pertama.</p>
                     <p class="text-muted small mb-0">Jika kolom category dikosongkan, item otomatis dimasukkan ke kategori "Tanpa Kategori".</p>
+                    <a href="{{ route('admin.masterdata.items.template') }}" class="btn btn-sm btn-light-success mt-4">Download Template Excel</a>
                 </div>
                 <div class="mb-10">
                     <label class="required fs-6 fw-bold form-label mb-2">File Excel</label>
@@ -259,9 +292,10 @@
         const formName       = document.getElementById('item_name');
         const formCategory   = document.getElementById('item_category_id');
         const formId         = document.getElementById('item_id');
-        const formAddress    = document.getElementById('item_address');
         const formDescription = document.getElementById('item_description');
-        const formSafetyStock = document.getElementById('item_safety_stock');
+        const formBaseUnit    = document.getElementById('item_base_unit_name');
+        const formPackageUnit = document.getElementById('item_package_unit_name');
+        const formPackageConversion = document.getElementById('item_package_conversion_qty');
         const formIsBundle   = document.getElementById('item_is_bundle');
         const bundleSection  = document.getElementById('bundle_components_section');
         const bundleContainer = document.getElementById('bundle_components_container');
@@ -592,7 +626,11 @@
             if (!form) return;
             form.reset();
             formId.value = '';
-            formSafetyStock && (formSafetyStock.value = 0);
+            document.querySelectorAll('.warehouse-location').forEach(el => el.value = '');
+            document.querySelectorAll('.warehouse-safety').forEach(el => el.value = 0);
+            formBaseUnit && (formBaseUnit.value = 'PCS');
+            formPackageUnit && (formPackageUnit.value = '');
+            formPackageConversion && (formPackageConversion.value = 2);
             formIsBundle.checked = false;
             bundleSection.classList.add('d-none');
             bundleContainer.innerHTML = '';
@@ -620,9 +658,15 @@
                 formId.value = id;
                 formSku && (formSku.value = json.sku || '');
                 formName && (formName.value = json.name || '');
-                formAddress && (formAddress.value = json.address || '');
                 formDescription && (formDescription.value = json.description || '');
-                formSafetyStock && (formSafetyStock.value = json.safety_stock ?? 0);
+                document.querySelectorAll('.warehouse-setting-row').forEach(row => {
+                    const setting = (json.warehouse_settings || []).find(value => String(value.warehouse_id) === String(row.dataset.warehouseId));
+                    row.querySelector('.warehouse-location').value = setting?.location || '';
+                    row.querySelector('.warehouse-safety').value = setting?.safety_stock ?? 0;
+                });
+                formBaseUnit && (formBaseUnit.value = json.base_unit_name || 'PCS');
+                formPackageUnit && (formPackageUnit.value = json.package_unit_name || '');
+                formPackageConversion && (formPackageConversion.value = json.package_conversion_qty || 2);
                 setCategoryValue(json.category_id || '0');
 
                 // Bundle state

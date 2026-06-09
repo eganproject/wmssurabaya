@@ -9,6 +9,8 @@ use App\Http\Controllers\Admin\OutboundController;
 use App\Http\Controllers\Admin\StockMutationController;
 use App\Http\Controllers\Admin\StockOpnameController;
 use App\Http\Controllers\Admin\StockAdjustmentController;
+use App\Http\Controllers\Admin\StockTransferController;
+use App\Http\Controllers\Admin\WarehouseController;
 use App\Http\Controllers\Admin\DamagedGoodsController;
 use App\Http\Controllers\Admin\DamagedAllocationController;
 use App\Http\Controllers\Admin\ResiImportController;
@@ -147,6 +149,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
 
         // Items
         Route::get('/items/data', [\App\Http\Controllers\Admin\ItemController::class, 'data'])->name('items.data');
+        Route::get('/items/template', [\App\Http\Controllers\Admin\ItemController::class, 'template'])->name('items.template');
         Route::get('/items/{item}', [\App\Http\Controllers\Admin\ItemController::class, 'show'])->name('items.show');
         Route::resource('items', \App\Http\Controllers\Admin\ItemController::class)->except(['create','show','edit'])->names('items');
         Route::post('/items/import', [\App\Http\Controllers\Admin\ItemController::class, 'import'])->name('items.import');
@@ -154,6 +157,9 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         // Stores
         Route::get('/stores/data', [\App\Http\Controllers\Admin\StoreController::class, 'data'])->name('stores.data');
         Route::resource('stores', \App\Http\Controllers\Admin\StoreController::class)->except(['create','show','edit'])->names('stores');
+
+        Route::get('/warehouses/data', [WarehouseController::class, 'data'])->name('warehouses.data');
+        Route::resource('warehouses', WarehouseController::class)->except(['create','show','edit'])->names('warehouses');
 
         // Permissions management
         Route::get('/permissions', [PermissionController::class, 'index'])->name('permissions.index');
@@ -173,9 +179,19 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::get('/stock-mutations/data', [StockMutationController::class, 'data'])->name('stock-mutations.data');
         Route::get('/stock-mutations/{id}', [StockMutationController::class, 'show'])->name('stock-mutations.show');
 
+        Route::get('/stock-transfers', [StockTransferController::class, 'index'])->name('stock-transfers.index');
+        Route::get('/stock-transfers/data', [StockTransferController::class, 'data'])->name('stock-transfers.data');
+        Route::post('/stock-transfers', [StockTransferController::class, 'store'])->name('stock-transfers.store');
+        Route::get('/stock-transfers/{id}', [StockTransferController::class, 'show'])->name('stock-transfers.show');
+        Route::put('/stock-transfers/{id}', [StockTransferController::class, 'update'])->name('stock-transfers.update');
+        Route::post('/stock-transfers/{id}/cancel', [StockTransferController::class, 'cancel'])->name('stock-transfers.cancel');
+        Route::post('/stock-transfers/{id}/ship', [StockTransferController::class, 'ship'])->name('stock-transfers.ship');
+        Route::post('/stock-transfers/{id}/receive', [StockTransferController::class, 'receive'])->name('stock-transfers.receive');
+
         // Stock Opname
         Route::get('/stock-opname', [StockOpnameController::class, 'index'])->name('stock-opname.index');
         Route::get('/stock-opname/data', [StockOpnameController::class, 'data'])->name('stock-opname.data');
+        Route::get('/stock-opname/items', [StockOpnameController::class, 'items'])->name('stock-opname.items');
         Route::post('/stock-opname', [StockOpnameController::class, 'store'])->name('stock-opname.store');
         Route::get('/stock-opname/{id}', [StockOpnameController::class, 'show'])->name('stock-opname.show');
         Route::get('/stock-opname/{id}/export', [StockOpnameController::class, 'export'])->name('stock-opname.export');

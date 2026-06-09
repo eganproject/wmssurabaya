@@ -10,6 +10,7 @@ class DamagedAllocation extends Model
     use HasFactory;
 
     protected $fillable = [
+        'warehouse_id',
         'code',
         'allocation_type',
         'ref_no',
@@ -45,5 +46,10 @@ class DamagedAllocation extends Model
     public function outboundTransaction()
     {
         return $this->belongsTo(OutboundTransaction::class, 'outbound_transaction_id');
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 }

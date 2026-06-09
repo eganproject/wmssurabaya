@@ -12,6 +12,7 @@ use App\Models\InboundItem;
 use App\Models\InboundTransaction;
 use App\Models\Item;
 use App\Models\StockMutation;
+use App\Models\Warehouse;
 use App\Support\DamagedStockService;
 use App\Support\StockService;
 use Illuminate\Http\Request;
@@ -27,9 +28,11 @@ class DamagedGoodsController extends Controller
     public function index()
     {
         $items = Item::orderBy('name')->get(['id', 'sku', 'name']);
+        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']);
 
         return view('admin.inventory.damaged-goods.index', [
             'items' => $items,
+            'warehouses' => $warehouses,
             'dataUrl' => route('admin.inventory.damaged-goods.data'),
             'storeUrl' => route('admin.inventory.damaged-goods.store'),
             'stockSummaryUrl' => route('admin.inventory.damaged-goods.stock-summary'),
@@ -50,7 +53,9 @@ class DamagedGoodsController extends Controller
     {
         $request->validate([
             'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
         ]);
+        $warehouseId = $request->integer('warehouse_id') ?: Warehouse::defaultId();
 
         $import = new DamagedGoodsImport();
         DB::beginTransaction();
@@ -78,6 +83,7 @@ class DamagedGoodsController extends Controller
                 }
 
                 $damage = DamagedGood::create([
+                    'warehouse_id' => $warehouseId,
                     'code' => $this->generateCode('DMG'),
                     'source_type' => $group['source_type'],
                     'source_ref' => $group['source_ref'] ?? null,
@@ -120,8 +126,10 @@ class DamagedGoodsController extends Controller
 
     public function stockSummary(Request $request)
     {
+        $warehouseId = $request->integer('warehouse_id') ?: Warehouse::defaultId();
         $query = Item::query()
             ->join('damaged_item_stocks', 'damaged_item_stocks.item_id', '=', 'items.id')
+            ->where('damaged_item_stocks.warehouse_id', $warehouseId)
             ->where('damaged_item_stocks.stock', '>', 0)
             ->orderBy('items.name');
 
@@ -134,6 +142,7 @@ class DamagedGoodsController extends Controller
         }
 
         $recordsTotal = Item::join('damaged_item_stocks', 'damaged_item_stocks.item_id', '=', 'items.id')
+            ->where('damaged_item_stocks.warehouse_id', $warehouseId)
             ->where('damaged_item_stocks.stock', '>', 0)->count();
         $recordsFiltered = (clone $query)->count();
 
@@ -169,7 +178,7 @@ class DamagedGoodsController extends Controller
     public function data(Request $request)
     {
         $query = DamagedGood::query()
-            ->with(['items.item', 'creator'])
+            ->with(['items.item', 'creator', 'warehouse'])
             ->orderBy('transacted_at', 'desc');
 
         $search = trim((string) $request->input('q', ''));
@@ -211,6 +220,7 @@ class DamagedGoodsController extends Controller
             return [
                 'id' => $row->id,
                 'code' => $row->code,
+                'warehouse' => $row->warehouse?->name ?? '-',
                 'source' => $sourceLabels[$row->source_type] ?? $row->source_type,
                 'source_ref' => $row->source_ref ?? '',
                 'transacted_at' => $ts,
@@ -240,6 +250,7 @@ class DamagedGoodsController extends Controller
         DB::beginTransaction();
         try {
             $damage = DamagedGood::create([
+                'warehouse_id' => $validated['warehouse_id'],
                 'code' => $code,
                 'source_type' => $validated['source_type'],
                 'source_ref' => $validated['source_ref'] ?? null,
@@ -284,6 +295,7 @@ class DamagedGoodsController extends Controller
         return response()->json([
             'id' => $damage->id,
             'code' => $damage->code,
+            'warehouse_id' => $damage->warehouse_id ?: Warehouse::defaultId(),
             'source_type' => $damage->source_type,
             'source_ref' => $damage->source_ref,
             'note' => $damage->note,
@@ -322,6 +334,7 @@ class DamagedGoodsController extends Controller
             DamagedGoodItem::where('damaged_good_id', $damage->id)->delete();
 
             $damage->update([
+                'warehouse_id' => $validated['warehouse_id'],
                 'source_type' => $validated['source_type'],
                 'source_ref' => $validated['source_ref'] ?? null,
                 'note' => $validated['note'] ?? null,
@@ -474,6 +487,7 @@ class DamagedGoodsController extends Controller
         }
 
         $tx = InboundTransaction::create([
+            'warehouse_id' => $damage->warehouse_id ?: Warehouse::defaultId(),
             'code' => $this->generateCode('INB-RET'),
             'type' => 'return',
             'ref_no' => $damage->code,
@@ -514,6 +528,7 @@ class DamagedGoodsController extends Controller
 
         foreach ($damage->items as $row) {
             DamagedStockService::mutate([
+                'warehouse_id' => $damage->warehouse_id ?: Warehouse::defaultId(),
                 'item_id' => $row->item_id,
                 'direction' => 'in',
                 'qty' => $row->qty,
@@ -544,6 +559,7 @@ class DamagedGoodsController extends Controller
         foreach ($damage->items as $row) {
             if ($damage->source_type === 'display') {
                 StockService::mutate([
+                    'warehouse_id' => $damage->warehouse_id ?: Warehouse::defaultId(),
                     'item_id' => $row->item_id,
                     'direction' => 'out',
                     'qty' => $row->qty,
@@ -559,6 +575,7 @@ class DamagedGoodsController extends Controller
             }
 
             DamagedStockService::mutate([
+                'warehouse_id' => $damage->warehouse_id ?: Warehouse::defaultId(),
                 'item_id' => $row->item_id,
                 'direction' => 'in',
                 'qty' => $row->qty,
@@ -578,6 +595,7 @@ class DamagedGoodsController extends Controller
     {
         $validated = $request->validate([
             'source_type' => ['required', 'string', Rule::in(['display', 'inbound_return'])],
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'source_ref' => ['nullable', 'string', 'max:100'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_id' => ['required', 'integer', 'exists:items,id'],
@@ -611,6 +629,7 @@ class DamagedGoodsController extends Controller
         }
 
         $validated['items'] = $items->all();
+        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
         if (!empty($validated['transacted_at'])) {
             $validated['transacted_at'] = Carbon::parse($validated['transacted_at']);
         } else {

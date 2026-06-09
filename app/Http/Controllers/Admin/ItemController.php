@@ -9,6 +9,10 @@ use App\Models\InboundTransaction;
 use App\Models\Item;
 use App\Models\ItemBundle;
 use App\Models\ItemStock;
+use App\Models\ItemUnit;
+use App\Models\ItemWarehouseSetting;
+use App\Models\Warehouse;
+use App\Exports\ItemsTemplateExport;
 use App\Imports\ItemsImport;
 use App\Support\StockService;
 use Maatwebsite\Excel\Facades\Excel;
@@ -26,12 +30,15 @@ class ItemController extends Controller
     public function index()
     {
         $categories = Category::orderBy('name')->get(['id', 'name']);
-        return view('admin.masterdata.items.index', compact('categories'));
+        $warehouses = Warehouse::where('is_active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']);
+        return view('admin.masterdata.items.index', compact('categories', 'warehouses'));
     }
 
     public function show(Item $item)
     {
-        $item->load('bundleComponents.componentItem');
+        $item->load(['bundleComponents.componentItem', 'units', 'warehouseSettings']);
+        $baseUnit = $item->units->firstWhere('is_base', true);
+        $packageUnit = $item->units->firstWhere('is_base', false);
         return response()->json([
             'id' => $item->id,
             'sku' => $item->sku,
@@ -40,7 +47,15 @@ class ItemController extends Controller
             'address' => $item->address ?? '',
             'description' => $item->description ?? '',
             'safety_stock' => (int) ($item->safety_stock ?? 0),
+            'warehouse_settings' => $item->warehouseSettings->map(fn ($setting) => [
+                'warehouse_id' => $setting->warehouse_id,
+                'safety_stock' => (int) $setting->safety_stock,
+                'location' => $setting->location ?? '',
+            ])->values(),
             'is_bundle' => (bool) $item->is_bundle,
+            'base_unit_name' => $baseUnit?->name ?? 'PCS',
+            'package_unit_name' => $packageUnit?->name ?? '',
+            'package_conversion_qty' => (int) ($packageUnit?->conversion_qty ?? 1),
             'components' => $item->bundleComponents->map(fn ($bc) => [
                 'component_item_id' => $bc->component_item_id,
                 'sku' => $bc->componentItem?->sku ?? '',
@@ -122,6 +137,13 @@ class ItemController extends Controller
             'components' => ['nullable', 'array'],
             'components.*.component_item_id' => ['required_with:components', 'integer', 'exists:items,id'],
             'components.*.qty' => ['required_with:components', 'integer', 'min:1'],
+            'base_unit_name' => ['nullable', 'string', 'max:30'],
+            'package_unit_name' => ['nullable', 'string', 'max:30', 'different:base_unit_name'],
+            'package_conversion_qty' => ['nullable', 'integer', 'min:2'],
+            'warehouse_settings' => ['nullable', 'array'],
+            'warehouse_settings.*.warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
+            'warehouse_settings.*.safety_stock' => ['nullable', 'integer', 'min:0'],
+            'warehouse_settings.*.location' => ['nullable', 'string', 'max:255'],
         ]);
 
         $isBundle = filter_var($request->input('is_bundle', false), FILTER_VALIDATE_BOOLEAN);
@@ -139,16 +161,24 @@ class ItemController extends Controller
             $validated['safety_stock'] = max(0, (int) $validated['safety_stock']);
         }
         $validated['is_bundle'] = $isBundle;
-        unset($validated['components']);
+        $warehouseSettings = $validated['warehouse_settings'] ?? [];
+        $unitPayload = $this->unitPayload($validated);
+        unset($validated['components'], $validated['base_unit_name'], $validated['package_unit_name'], $validated['package_conversion_qty'], $validated['warehouse_settings']);
+        $this->applyLegacyWarehouseDefaults($validated, $warehouseSettings);
 
         DB::beginTransaction();
         try {
             $item = Item::create($validated);
+            $this->syncWarehouseSettings($item, $warehouseSettings);
 
             if ($isBundle) {
                 $this->syncBundleComponents($item, $components);
             } else {
-                ItemStock::firstOrCreate(['item_id' => $item->id], ['stock' => 0]);
+                ItemStock::firstOrCreate([
+                    'warehouse_id' => Warehouse::defaultId(),
+                    'item_id' => $item->id,
+                ], ['stock' => 0]);
+                $this->syncItemUnits($item, $unitPayload);
             }
 
             DB::commit();
@@ -193,6 +223,13 @@ class ItemController extends Controller
             'components' => ['nullable', 'array'],
             'components.*.component_item_id' => ['required_with:components', 'integer', 'exists:items,id'],
             'components.*.qty' => ['required_with:components', 'integer', 'min:1'],
+            'base_unit_name' => ['nullable', 'string', 'max:30'],
+            'package_unit_name' => ['nullable', 'string', 'max:30', 'different:base_unit_name'],
+            'package_conversion_qty' => ['nullable', 'integer', 'min:2'],
+            'warehouse_settings' => ['nullable', 'array'],
+            'warehouse_settings.*.warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
+            'warehouse_settings.*.safety_stock' => ['nullable', 'integer', 'min:0'],
+            'warehouse_settings.*.location' => ['nullable', 'string', 'max:255'],
         ]);
 
         $isBundle = filter_var($request->input('is_bundle', false), FILTER_VALIDATE_BOOLEAN);
@@ -215,11 +252,15 @@ class ItemController extends Controller
             $validated['safety_stock'] = max(0, (int) $validated['safety_stock']);
         }
         $validated['is_bundle'] = $isBundle;
-        unset($validated['components']);
+        $warehouseSettings = $validated['warehouse_settings'] ?? [];
+        $unitPayload = $this->unitPayload($validated);
+        unset($validated['components'], $validated['base_unit_name'], $validated['package_unit_name'], $validated['package_conversion_qty'], $validated['warehouse_settings']);
+        $this->applyLegacyWarehouseDefaults($validated, $warehouseSettings);
 
         DB::beginTransaction();
         try {
             $item->update($validated);
+            $this->syncWarehouseSettings($item, $warehouseSettings);
 
             if ($isBundle) {
                 $this->syncBundleComponents($item, $components);
@@ -228,7 +269,11 @@ class ItemController extends Controller
             } else {
                 // Switching from bundle to regular: ensure item_stocks row exists, clear components
                 ItemBundle::where('bundle_item_id', $item->id)->delete();
-                ItemStock::firstOrCreate(['item_id' => $item->id], ['stock' => 0]);
+                ItemStock::firstOrCreate([
+                    'warehouse_id' => Warehouse::defaultId(),
+                    'item_id' => $item->id,
+                ], ['stock' => 0]);
+                $this->syncItemUnits($item, $unitPayload);
             }
 
             DB::commit();
@@ -293,16 +338,20 @@ class ItemController extends Controller
             $created = $import->created;
             $updated = $import->updated;
 
-            $initialStocks = $import->initialStocks ?? [];
-            if (!empty($initialStocks)) {
-                $code = 'INB-OPN-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4));
-                $transactedAt = now();
+            $initialStocksByWarehouse = $import->initialStocks ?? [];
+            foreach ($initialStocksByWarehouse as $warehouseId => $initialStocks) {
+                if (empty($initialStocks)) {
+                    continue;
+                }
 
+                $warehouse = Warehouse::findOrFail($warehouseId);
+                $transactedAt = now();
                 $tx = InboundTransaction::create([
-                    'code' => $code,
+                    'warehouse_id' => $warehouse->id,
+                    'code' => 'INB-OPN-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4)),
                     'type' => 'opening',
                     'ref_no' => null,
-                    'note' => 'Saldo awal dari import items',
+                    'note' => 'Saldo awal import items - '.$warehouse->name,
                     'transacted_at' => $transactedAt,
                     'created_by' => auth()->id(),
                     'status' => 'approved',
@@ -310,30 +359,41 @@ class ItemController extends Controller
                     'approved_by' => auth()->id(),
                 ]);
 
-                foreach ($initialStocks as $itemId => $qty) {
-                    $qty = (int) $qty;
-                    if ($qty <= 0) {
+                foreach ($initialStocks as $itemId => $stockPayload) {
+                    $qtyBase = (int) ($stockPayload['qty_base'] ?? 0);
+                    if ($qtyBase <= 0) {
                         continue;
                     }
                     InboundItem::create([
                         'inbound_transaction_id' => $tx->id,
                         'item_id' => $itemId,
-                        'qty' => $qty,
-                        'note' => 'Saldo awal import',
+                        'qty' => $qtyBase,
+                        'note' => 'Saldo awal import '.$warehouse->name,
                     ]);
 
                     StockService::mutate([
+                        'warehouse_id' => $warehouse->id,
                         'item_id' => $itemId,
+                        'unit_id' => $stockPayload['unit_id'] ?? null,
                         'direction' => 'in',
-                        'qty' => $qty,
+                        'qty' => $qtyBase,
+                        'qty_input' => (int) ($stockPayload['qty_input'] ?? $qtyBase),
+                        'conversion_qty' => (int) ($stockPayload['conversion_qty'] ?? 1),
                         'source_type' => 'inbound',
                         'source_subtype' => 'opening',
                         'source_id' => $tx->id,
                         'source_code' => $tx->code,
-                        'note' => 'Saldo awal import',
+                        'note' => 'Saldo awal import '.$warehouse->name,
                         'occurred_at' => $transactedAt,
                         'created_by' => auth()->id(),
-                        'idempotency_key' => StockService::idempotencyKey(['stock', 'inbound', 'opening', $tx->id, $itemId]),
+                        'idempotency_key' => StockService::idempotencyKey([
+                            'stock',
+                            'inbound',
+                            'opening',
+                            $warehouse->id,
+                            $tx->id,
+                            $itemId,
+                        ]),
                     ]);
                 }
             }
@@ -351,6 +411,11 @@ class ItemController extends Controller
             'created' => $created,
             'updated' => $updated,
         ]);
+    }
+
+    public function template()
+    {
+        return Excel::download(new ItemsTemplateExport(), 'template-import-items-multi-gudang.xlsx');
     }
 
     /**
@@ -396,6 +461,82 @@ class ItemController extends Controller
         }
     }
 
+    private function unitPayload(array $validated): array
+    {
+        return [
+            'base_name' => strtoupper(trim((string) ($validated['base_unit_name'] ?? 'PCS'))) ?: 'PCS',
+            'package_name' => strtoupper(trim((string) ($validated['package_unit_name'] ?? ''))),
+            'package_conversion_qty' => max(2, (int) ($validated['package_conversion_qty'] ?? 2)),
+        ];
+    }
+
+    private function applyLegacyWarehouseDefaults(array &$validated, array $settings): void
+    {
+        $defaultWarehouseId = Warehouse::defaultId();
+        $default = collect($settings)->firstWhere('warehouse_id', $defaultWarehouseId);
+        if ($default) {
+            $validated['address'] = $default['location'] ?? null;
+            $validated['safety_stock'] = max(0, (int) ($default['safety_stock'] ?? 0));
+        }
+    }
+
+    private function syncWarehouseSettings(Item $item, array $settings): void
+    {
+        foreach ($settings as $setting) {
+            ItemWarehouseSetting::updateOrCreate(
+                [
+                    'warehouse_id' => (int) $setting['warehouse_id'],
+                    'item_id' => $item->id,
+                ],
+                [
+                    'safety_stock' => max(0, (int) ($setting['safety_stock'] ?? 0)),
+                    'location' => trim((string) ($setting['location'] ?? '')) ?: null,
+                ]
+            );
+        }
+    }
+
+    private function syncItemUnits(Item $item, array $payload): void
+    {
+        $packageName = $payload['package_name'];
+        if ($packageName !== '' && strcasecmp($payload['base_name'], $packageName) === 0) {
+            throw ValidationException::withMessages([
+                'package_unit_name' => 'Satuan dasar dan satuan kemasan harus berbeda.',
+            ]);
+        }
+
+        $base = ItemUnit::where('item_id', $item->id)->where('is_base', true)->first();
+        ItemUnit::where('item_id', $item->id)
+            ->where('is_base', false)
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($payload['base_name'])])
+            ->delete();
+
+        if ($base) {
+            $base->update(['name' => $payload['base_name'], 'conversion_qty' => 1]);
+        } else {
+            $base = ItemUnit::create([
+                'item_id' => $item->id,
+                'name' => $payload['base_name'],
+                'conversion_qty' => 1,
+                'is_base' => true,
+            ]);
+        }
+
+        if ($packageName === '') {
+            ItemUnit::where('item_id', $item->id)->where('is_base', false)->delete();
+            return;
+        }
+
+        ItemUnit::where('item_id', $item->id)
+            ->where('is_base', false)
+            ->where('name', '!=', $packageName)
+            ->delete();
+        ItemUnit::updateOrCreate(
+            ['item_id' => $item->id, 'name' => $packageName],
+            ['conversion_qty' => $payload['package_conversion_qty'], 'is_base' => false]
+        );
+    }
+
     /**
      * Prevent toggling is_bundle if the item already has stock-related history.
      */
@@ -404,7 +545,7 @@ class ItemController extends Controller
         if ($toBundle) {
             // Regular → Bundle: block if item has stock mutations or non-zero stock
             $hasMutations = DB::table('stock_mutations')->where('item_id', $item->id)->exists();
-            $hasStock = (int) DB::table('item_stocks')->where('item_id', $item->id)->value('stock') > 0;
+            $hasStock = (int) DB::table('item_stocks')->where('item_id', $item->id)->sum('stock') > 0;
             if ($hasMutations || $hasStock) {
                 throw ValidationException::withMessages([
                     'is_bundle' => 'Item tidak bisa diubah menjadi bundle karena sudah memiliki riwayat mutasi stok.',
@@ -481,7 +622,7 @@ class ItemController extends Controller
         if (Schema::hasTable('item_stocks')) {
             $stockQty = (int) DB::table('item_stocks')
                 ->where('item_id', $item->id)
-                ->value('stock');
+                ->sum('stock');
             if ($stockQty > 0) {
                 $references[] = 'stok berjalan '.$stockQty.' pcs';
             }

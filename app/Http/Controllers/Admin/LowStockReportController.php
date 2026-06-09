@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -16,16 +17,25 @@ class LowStockReportController extends Controller
         return view('admin.reports.low-stock.index', [
             'dataUrl' => route('admin.reports.low-stock.data'),
             'categories' => $categories,
+            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']),
         ]);
     }
 
     public function data(Request $request)
     {
+        $warehouseId = $request->integer('warehouse_id') ?: Warehouse::defaultId();
         $baseQuery = DB::table('items as i')
-            ->leftJoin('item_stocks as s', 's.item_id', '=', 'i.id')
+            ->leftJoin('item_stocks as s', function ($join) use ($warehouseId) {
+                $join->on('s.item_id', '=', 'i.id')
+                    ->where('s.warehouse_id', '=', $warehouseId);
+            })
+            ->leftJoin('item_warehouse_settings as ws', function ($join) use ($warehouseId) {
+                $join->on('ws.item_id', '=', 'i.id')
+                    ->where('ws.warehouse_id', '=', $warehouseId);
+            })
             ->leftJoin('categories as c', 'c.id', '=', 'i.category_id')
-            ->where('i.safety_stock', '>', 0)
-            ->whereRaw('COALESCE(s.stock, 0) < i.safety_stock');
+            ->whereRaw('COALESCE(ws.safety_stock, i.safety_stock, 0) > 0')
+            ->whereRaw('COALESCE(s.stock, 0) < COALESCE(ws.safety_stock, i.safety_stock, 0)');
 
         $catFilter = $request->input('category_id');
         if ($catFilter !== null && $catFilter !== '') {
@@ -50,6 +60,7 @@ class LowStockReportController extends Controller
             $baseQuery->where(function ($q) use ($search) {
                 $q->where('i.sku', 'like', "%{$search}%")
                     ->orWhere('i.name', 'like', "%{$search}%")
+                    ->orWhere('ws.location', 'like', "%{$search}%")
                     ->orWhere('i.address', 'like', "%{$search}%")
                     ->orWhere('i.description', 'like', "%{$search}%");
             });
@@ -64,7 +75,7 @@ class LowStockReportController extends Controller
             ->whereRaw('COALESCE(s.stock, 0) <= 0')
             ->count();
         $summaryGap = (int) ((clone $summaryQuery)
-            ->selectRaw('COALESCE(SUM(i.safety_stock - COALESCE(s.stock, 0)), 0) as gap')
+            ->selectRaw('COALESCE(SUM(COALESCE(ws.safety_stock, i.safety_stock, 0) - COALESCE(s.stock, 0)), 0) as gap')
             ->value('gap') ?? 0);
 
         $start = (int) $request->input('start', 0);
@@ -75,12 +86,12 @@ class LowStockReportController extends Controller
             'i.id',
             'i.sku',
             'i.name',
-            'i.address',
-            'i.safety_stock',
+            DB::raw('COALESCE(ws.location, i.address) as address'),
+            DB::raw('COALESCE(ws.safety_stock, i.safety_stock, 0) as safety_stock'),
             DB::raw('COALESCE(s.stock, 0) as stock'),
             DB::raw("CASE WHEN i.category_id = 0 THEN 'Tanpa Kategori' ELSE COALESCE(c.name, '-') END as category"),
         ])
-        ->orderByRaw('(i.safety_stock - COALESCE(s.stock, 0)) desc')
+        ->orderByRaw('(COALESCE(ws.safety_stock, i.safety_stock, 0) - COALESCE(s.stock, 0)) desc')
         ->orderBy('i.sku');
 
         if ($length > 0) {

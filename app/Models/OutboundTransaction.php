@@ -10,6 +10,7 @@ class OutboundTransaction extends Model
     use HasFactory;
 
     protected $fillable = [
+        'warehouse_id',
         'code',
         'type',
         'ref_no',
@@ -25,6 +26,13 @@ class OutboundTransaction extends Model
         'transacted_at' => 'datetime',
         'approved_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (OutboundTransaction $transaction) {
+            $transaction->warehouse_id ??= Warehouse::defaultId();
+        });
+    }
 
     public function items()
     {
@@ -44,5 +52,10 @@ class OutboundTransaction extends Model
     public function suratJalan()
     {
         return $this->hasOne(SuratJalan::class, 'outbound_transaction_id');
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 }

@@ -10,6 +10,7 @@ class StockAdjustment extends Model
     use HasFactory;
 
     protected $fillable = [
+        'warehouse_id',
         'code',
         'transacted_at',
         'note',
@@ -24,6 +25,13 @@ class StockAdjustment extends Model
         'approved_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        static::creating(function (StockAdjustment $adjustment) {
+            $adjustment->warehouse_id ??= Warehouse::defaultId();
+        });
+    }
+
     public function items()
     {
         return $this->hasMany(StockAdjustmentItem::class, 'stock_adjustment_id');
@@ -37,5 +45,10 @@ class StockAdjustment extends Model
     public function approver()
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 }

@@ -10,6 +10,7 @@ class StockOpname extends Model
     use HasFactory;
 
     protected $fillable = [
+        'warehouse_id',
         'code',
         'transacted_at',
         'note',
@@ -24,6 +25,13 @@ class StockOpname extends Model
         'completed_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        static::creating(function (StockOpname $opname) {
+            $opname->warehouse_id ??= Warehouse::defaultId();
+        });
+    }
+
     public function items()
     {
         return $this->hasMany(StockOpnameItem::class, 'stock_opname_id');
@@ -37,5 +45,10 @@ class StockOpname extends Model
     public function completer()
     {
         return $this->belongsTo(User::class, 'completed_by');
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 }

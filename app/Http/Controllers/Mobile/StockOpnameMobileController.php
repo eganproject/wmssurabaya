@@ -8,6 +8,7 @@ use App\Models\ItemStock;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
 use App\Models\StockMutation;
+use App\Models\Warehouse;
 use App\Support\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -122,10 +123,13 @@ class StockOpnameMobileController extends Controller
                 ]);
             }
 
-            $stock = ItemStock::where('item_id', $validated['item_id'])->lockForUpdate()->first();
+            $warehouseId = Warehouse::defaultId();
+            $stock = ItemStock::where('warehouse_id', $warehouseId)
+                ->where('item_id', $validated['item_id'])->lockForUpdate()->first();
             if (!$stock) {
-                ItemStock::create(['item_id' => $validated['item_id'], 'stock' => 0]);
-                $stock = ItemStock::where('item_id', $validated['item_id'])->lockForUpdate()->first();
+                ItemStock::create(['warehouse_id' => $warehouseId, 'item_id' => $validated['item_id'], 'stock' => 0]);
+                $stock = ItemStock::where('warehouse_id', $warehouseId)
+                    ->where('item_id', $validated['item_id'])->lockForUpdate()->first();
             }
 
             $systemQty = (int) ($stock?->stock ?? 0);

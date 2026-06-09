@@ -75,6 +75,14 @@
             <div class="modal-body scroll-y mx-5 mx-xl-15 my-7">
                 <form class="form" id="stock_opname_form">
                     @csrf
+                    <div class="fv-row mb-7">
+                        <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
+                        <select class="form-select form-select-solid" name="warehouse_id" id="opname_warehouse_id" required>
+                            @foreach($warehouses as $warehouse)
+                                <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                     <div id="opname_items_container"></div>
                     <div class="mb-7">
                         <button type="button" class="btn btn-light" id="btn_add_opname_item">Tambah Item</button>
@@ -108,13 +116,14 @@
 <script>
     const dataUrl = '{{ $dataUrl }}';
     const storeUrl = '{{ $storeUrl }}';
+    const itemsUrl = '{{ route('admin.inventory.stock-opname.items') }}';
     const detailUrlTpl = '{{ route('admin.inventory.stock-opname.show', ':id') }}';
     const approveUrlTpl = '{{ route('admin.inventory.stock-opname.approve', ':id') }}';
     const deleteUrlTpl = '{{ route('admin.inventory.stock-opname.destroy', ':id') }}';
     const csrfToken = '{{ csrf_token() }}';
     const canUpdate = {{ $canUpdate ? 'true' : 'false' }};
     const canDelete = {{ $canDelete ? 'true' : 'false' }};
-    const itemOptionsHtml = `@foreach($items as $item)<option value="{{ $item->id }}" data-stock="{{ $item->stock }}">{{ $item->sku }} - {{ $item->name }}</option>@endforeach`;
+    let itemOptionsHtml = `@foreach($items as $item)<option value="{{ $item->id }}" data-stock="{{ $item->stock }}">{{ $item->sku }} - {{ $item->name }}</option>@endforeach`;
 
     document.addEventListener('DOMContentLoaded', () => {
         const tableEl = $('#stock_opname_table');
@@ -126,6 +135,7 @@
         const addItemBtn = document.getElementById('btn_add_opname_item');
         const openBtn = document.getElementById('btn_open_opname');
         const transactedAtEl = document.getElementById('opname_transacted_at');
+        const warehouseEl = document.getElementById('opname_warehouse_id');
         const dateFromEl = document.getElementById('filter_date_from');
         const dateToEl = document.getElementById('filter_date_to');
         const filterApplyBtn = document.getElementById('filter_apply');
@@ -314,6 +324,17 @@
 
         addItemBtn?.addEventListener('click', () => createItemRow());
         openBtn?.addEventListener('click', resetForm);
+        warehouseEl?.addEventListener('change', async () => {
+            const res = await fetch(`${itemsUrl}?warehouse_id=${encodeURIComponent(warehouseEl.value)}`, {
+                headers: {Accept: 'application/json'}
+            });
+            const json = await res.json();
+            itemOptionsHtml = (json.data || []).map(item =>
+                `<option value="${item.id}" data-stock="${item.stock}">${item.sku} - ${item.name}</option>`
+            ).join('');
+            itemsContainer.innerHTML = '';
+            createItemRow();
+        });
 
         if (!tableEl.length || !$.fn.DataTable) {
             console.error('DataTables unavailable');

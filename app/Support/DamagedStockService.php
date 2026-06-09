@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\DamagedItemStock;
 use App\Models\DamagedStockMutation;
+use App\Models\Warehouse;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -17,6 +18,7 @@ class DamagedStockService
         try {
             return DB::transaction(function () use ($payload, $idempotencyKey) {
                 $itemId = (int) ($payload['item_id'] ?? 0);
+                $warehouseId = (int) ($payload['warehouse_id'] ?? Warehouse::defaultId());
                 $direction = $payload['direction'] ?? 'in';
                 $qty = (int) ($payload['qty'] ?? 0);
 
@@ -29,16 +31,13 @@ class DamagedStockService
                     }
                 }
 
-                if ($itemId <= 0 || $qty <= 0) {
+                if ($itemId <= 0 || $warehouseId <= 0 || $qty <= 0) {
                     throw ValidationException::withMessages([
                         'qty' => 'Qty stok rusak tidak valid',
                     ]);
                 }
 
-                $stock = DamagedItemStock::where('item_id', $itemId)->lockForUpdate()->first();
-                if (!$stock) {
-                    $stock = DamagedItemStock::create(['item_id' => $itemId, 'stock' => 0]);
-                }
+                $stock = self::lockStock($warehouseId, $itemId);
 
                 if ($direction === 'out' && $stock->stock < $qty) {
                     throw ValidationException::withMessages([
@@ -66,6 +65,7 @@ class DamagedStockService
                 }
 
                 return DamagedStockMutation::create([
+                    'warehouse_id' => $warehouseId,
                     'item_id' => $itemId,
                     'direction' => $direction,
                     'qty' => $qty,
@@ -92,17 +92,15 @@ class DamagedStockService
      * Reservasi stok rusak saat alokasi dibuat (pending).
      * FIFO: siapa duluan buat alokasi, dia yang dapat jatah stok tersedia.
      */
-    public static function reserve(int $itemId, int $qty): void
+    public static function reserve(int $itemId, int $qty, ?int $warehouseId = null): void
     {
-        DB::transaction(function () use ($itemId, $qty) {
+        DB::transaction(function () use ($itemId, $qty, $warehouseId) {
+            $warehouseId ??= Warehouse::defaultId();
             if ($itemId <= 0 || $qty <= 0) {
                 throw ValidationException::withMessages(['qty' => 'Qty reservasi tidak valid']);
             }
 
-            $stock = DamagedItemStock::where('item_id', $itemId)->lockForUpdate()->first();
-            if (!$stock) {
-                $stock = DamagedItemStock::create(['item_id' => $itemId, 'stock' => 0, 'reserved_stock' => 0]);
-            }
+            $stock = self::lockStock($warehouseId, $itemId);
 
             $available = $stock->stock - ($stock->reserved_stock ?? 0);
             if ($available < $qty) {
@@ -119,14 +117,18 @@ class DamagedStockService
     /**
      * Lepas reservasi stok rusak saat alokasi pending dihapus atau diperbarui.
      */
-    public static function releaseReservation(int $itemId, int $qty): void
+    public static function releaseReservation(int $itemId, int $qty, ?int $warehouseId = null): void
     {
-        DB::transaction(function () use ($itemId, $qty) {
+        DB::transaction(function () use ($itemId, $qty, $warehouseId) {
+            $warehouseId ??= Warehouse::defaultId();
             if ($itemId <= 0 || $qty <= 0) {
                 return;
             }
 
-            $stock = DamagedItemStock::where('item_id', $itemId)->lockForUpdate()->first();
+            $stock = DamagedItemStock::where('warehouse_id', $warehouseId)
+                ->where('item_id', $itemId)
+                ->lockForUpdate()
+                ->first();
             if (!$stock) {
                 return;
             }
@@ -144,10 +146,8 @@ class DamagedStockService
             ->get();
 
         foreach ($mutations as $mutation) {
-            $stock = DamagedItemStock::where('item_id', $mutation->item_id)->lockForUpdate()->first();
-            if (!$stock) {
-                $stock = DamagedItemStock::create(['item_id' => $mutation->item_id, 'stock' => 0]);
-            }
+            $warehouseId = (int) ($mutation->warehouse_id ?: Warehouse::defaultId());
+            $stock = self::lockStock($warehouseId, (int) $mutation->item_id);
 
             $newStock = $mutation->direction === 'in'
                 ? $stock->stock - $mutation->qty
@@ -181,6 +181,24 @@ class DamagedStockService
         }
 
         return strlen($key) > 120 ? hash('sha256', $key) : $key;
+    }
+
+    private static function lockStock(int $warehouseId, int $itemId): DamagedItemStock
+    {
+        $now = now();
+        DB::table('damaged_item_stocks')->insertOrIgnore([
+            'warehouse_id' => $warehouseId,
+            'item_id' => $itemId,
+            'stock' => 0,
+            'reserved_stock' => 0,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return DamagedItemStock::where('warehouse_id', $warehouseId)
+            ->where('item_id', $itemId)
+            ->lockForUpdate()
+            ->firstOrFail();
     }
 
     private static function isUniqueConstraintViolation(QueryException $e): bool

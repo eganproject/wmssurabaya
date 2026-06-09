@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\DamagedAllocation;
 use App\Models\DamagedAllocationItem;
+use App\Models\DamagedItemStock;
 use App\Models\Item;
 use App\Models\OutboundItem;
 use App\Models\OutboundTransaction;
+use App\Models\Warehouse;
 use App\Support\DamagedStockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -20,19 +22,18 @@ class DamagedAllocationController extends Controller
 {
     public function index()
     {
-        $items = Item::query()
-            ->leftJoin('damaged_item_stocks', 'damaged_item_stocks.item_id', '=', 'items.id')
-            ->whereRaw('COALESCE(damaged_item_stocks.stock, 0) - COALESCE(damaged_item_stocks.reserved_stock, 0) > 0')
-            ->orderBy('items.name')
-            ->get([
-                'items.id',
-                'items.sku',
-                'items.name',
-                DB::raw('GREATEST(0, COALESCE(damaged_item_stocks.stock, 0) - COALESCE(damaged_item_stocks.reserved_stock, 0)) as damaged_stock'),
-            ]);
+        $items = Item::orderBy('name')->get(['id', 'sku', 'name']);
+        $damagedStocks = DamagedItemStock::query()
+            ->get(['warehouse_id', 'item_id', 'stock', 'reserved_stock'])
+            ->groupBy('warehouse_id')
+            ->map(fn ($rows) => $rows->mapWithKeys(fn ($row) => [
+                (string) $row->item_id => max(0, (int) $row->stock - (int) $row->reserved_stock),
+            ]));
 
         return view('admin.inventory.damaged-allocations.index', [
             'items' => $items,
+            'damagedStocks' => $damagedStocks,
+            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']),
             'dataUrl' => route('admin.inventory.damaged-allocations.data'),
             'storeUrl' => route('admin.inventory.damaged-allocations.store'),
         ]);
@@ -41,7 +42,7 @@ class DamagedAllocationController extends Controller
     public function data(Request $request)
     {
         $query = DamagedAllocation::query()
-            ->with(['items.item', 'creator'])
+            ->with(['items.item', 'creator', 'warehouse'])
             ->orderByDesc('transacted_at');
 
         $search = trim((string) $request->input('q', ''));
@@ -76,6 +77,7 @@ class DamagedAllocationController extends Controller
             return [
                 'id' => $row->id,
                 'code' => $row->code,
+                'warehouse' => $row->warehouse?->name ?? '-',
                 'allocation_type' => $typeLabels[$row->allocation_type] ?? $row->allocation_type,
                 'ref_no' => $row->ref_no ?? '',
                 'transacted_at' => $row->transacted_at ? Carbon::parse($row->transacted_at)->format('Y-m-d H:i') : '',
@@ -103,6 +105,7 @@ class DamagedAllocationController extends Controller
         DB::beginTransaction();
         try {
             $allocation = DamagedAllocation::create([
+                'warehouse_id' => $validated['warehouse_id'],
                 'code' => $this->generateCode('DMG-ALC'),
                 'allocation_type' => $validated['allocation_type'],
                 'ref_no' => $validated['ref_no'] ?? null,
@@ -123,7 +126,7 @@ class DamagedAllocationController extends Controller
 
             // Reservasi stok secara FIFO — siapa duluan simpan, dia yang dapat jatah
             foreach ($validated['items'] as $row) {
-                DamagedStockService::reserve($row['item_id'], $row['qty']);
+                DamagedStockService::reserve($row['item_id'], $row['qty'], $validated['warehouse_id']);
             }
 
             DB::commit();
@@ -148,6 +151,7 @@ class DamagedAllocationController extends Controller
         return response()->json([
             'id' => $allocation->id,
             'code' => $allocation->code,
+            'warehouse_id' => $allocation->warehouse_id ?: Warehouse::defaultId(),
             'allocation_type' => $allocation->allocation_type,
             'ref_no' => $allocation->ref_no,
             'note' => $allocation->note,
@@ -175,11 +179,12 @@ class DamagedAllocationController extends Controller
 
             // Lepas reservasi lama sebelum item diganti
             foreach ($allocation->items as $row) {
-                DamagedStockService::releaseReservation($row->item_id, $row->qty);
+                DamagedStockService::releaseReservation($row->item_id, $row->qty, $allocation->warehouse_id);
             }
 
             DamagedAllocationItem::where('damaged_allocation_id', $allocation->id)->delete();
             $allocation->update([
+                'warehouse_id' => $validated['warehouse_id'],
                 'allocation_type' => $validated['allocation_type'],
                 'ref_no' => $validated['ref_no'] ?? null,
                 'transacted_at' => $validated['transacted_at'] ?? now(),
@@ -197,7 +202,7 @@ class DamagedAllocationController extends Controller
 
             // Reservasi ulang dengan item baru
             foreach ($validated['items'] as $row) {
-                DamagedStockService::reserve($row['item_id'], $row['qty']);
+                DamagedStockService::reserve($row['item_id'], $row['qty'], $validated['warehouse_id']);
             }
 
             DB::commit();
@@ -227,7 +232,7 @@ class DamagedAllocationController extends Controller
 
             // Lepas reservasi stok untuk alokasi pending yang dihapus
             foreach ($allocation->items as $row) {
-                DamagedStockService::releaseReservation($row->item_id, $row->qty);
+                DamagedStockService::releaseReservation($row->item_id, $row->qty, $allocation->warehouse_id);
             }
 
             $allocation->delete();
@@ -260,6 +265,7 @@ class DamagedAllocationController extends Controller
             } else {
                 foreach ($allocation->items as $row) {
                     DamagedStockService::mutate([
+                        'warehouse_id' => $allocation->warehouse_id ?: Warehouse::defaultId(),
                         'item_id' => $row->item_id,
                         'direction' => 'out',
                         'qty' => $row->qty,
@@ -316,6 +322,7 @@ class DamagedAllocationController extends Controller
         }
 
         $tx = OutboundTransaction::create([
+            'warehouse_id' => $allocation->warehouse_id ?: Warehouse::defaultId(),
             'code' => $this->generateCode('OUT-RET'),
             'type' => 'return',
             'ref_no' => $allocation->code,
@@ -349,6 +356,7 @@ class DamagedAllocationController extends Controller
 
         foreach ($tx->items as $row) {
             DamagedStockService::mutate([
+                'warehouse_id' => $tx->warehouse_id ?: Warehouse::defaultId(),
                 'item_id' => $row->item_id,
                 'direction' => 'out',
                 'qty' => $row->qty,
@@ -375,6 +383,7 @@ class DamagedAllocationController extends Controller
     {
         $validated = $request->validate([
             'allocation_type' => ['required', 'string', Rule::in(array_keys($this->allocationTypeLabels()))],
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'ref_no' => ['nullable', 'string', 'max:100'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_id' => ['required', 'integer', 'exists:items,id'],
@@ -401,6 +410,7 @@ class DamagedAllocationController extends Controller
         }
 
         $validated['items'] = $items->all();
+        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
         $validated['transacted_at'] = Carbon::parse($validated['transacted_at']);
 
         return $validated;

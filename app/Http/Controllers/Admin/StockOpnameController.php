@@ -9,6 +9,7 @@ use App\Models\ItemStock;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
 use App\Models\StockMutation;
+use App\Models\Warehouse;
 use App\Support\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -19,9 +20,32 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class StockOpnameController extends Controller
 {
+    public function items(Request $request)
+    {
+        $warehouseId = $request->integer('warehouse_id') ?: Warehouse::defaultId();
+        $items = Item::query()
+            ->leftJoin('item_stocks', function ($join) use ($warehouseId) {
+                $join->on('item_stocks.item_id', '=', 'items.id')
+                    ->where('item_stocks.warehouse_id', '=', $warehouseId);
+            })
+            ->orderBy('items.name')
+            ->get([
+                'items.id',
+                'items.sku',
+                'items.name',
+                DB::raw('COALESCE(item_stocks.stock, 0) as stock'),
+            ]);
+
+        return response()->json(['data' => $items]);
+    }
+
     public function index()
     {
-        $items = Item::leftJoin('item_stocks', 'item_stocks.item_id', '=', 'items.id')
+        $defaultWarehouseId = Warehouse::defaultId();
+        $items = Item::leftJoin('item_stocks', function ($join) use ($defaultWarehouseId) {
+                $join->on('item_stocks.item_id', '=', 'items.id')
+                    ->where('item_stocks.warehouse_id', '=', $defaultWarehouseId);
+            })
             ->orderBy('items.name')
             ->get([
                 'items.id',
@@ -34,6 +58,7 @@ class StockOpnameController extends Controller
             'items' => $items,
             'dataUrl' => route('admin.inventory.stock-opname.data'),
             'storeUrl' => route('admin.inventory.stock-opname.store'),
+            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']),
         ]);
     }
 
@@ -215,6 +240,7 @@ class StockOpnameController extends Controller
         DB::beginTransaction();
         try {
             $opname = StockOpname::create([
+                'warehouse_id' => $validated['warehouse_id'],
                 'code' => $code,
                 'note' => $validated['note'] ?? null,
                 'transacted_at' => $transactedAt,
@@ -223,10 +249,12 @@ class StockOpnameController extends Controller
             ]);
 
             foreach ($validated['items'] as $row) {
-                $stock = ItemStock::where('item_id', $row['item_id'])->lockForUpdate()->first();
+                $stock = ItemStock::where('warehouse_id', $validated['warehouse_id'])
+                    ->where('item_id', $row['item_id'])->lockForUpdate()->first();
                 if (!$stock) {
-                    ItemStock::create(['item_id' => $row['item_id'], 'stock' => 0]);
-                    $stock = ItemStock::where('item_id', $row['item_id'])->lockForUpdate()->first();
+                    ItemStock::create(['warehouse_id' => $validated['warehouse_id'], 'item_id' => $row['item_id'], 'stock' => 0]);
+                    $stock = ItemStock::where('warehouse_id', $validated['warehouse_id'])
+                        ->where('item_id', $row['item_id'])->lockForUpdate()->first();
                 }
                 $systemQty = (int) ($stock?->stock ?? 0);
                 $countedQty = (int) $row['counted_qty'];
@@ -270,7 +298,9 @@ class StockOpnameController extends Controller
             'items.*.note' => ['nullable', 'string'],
             'note' => ['nullable', 'string'],
             'transacted_at' => ['required', 'date'],
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
         ]);
+        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
 
         $items = collect($validated['items'] ?? [])
             ->filter(fn ($row) => (int) ($row['item_id'] ?? 0) > 0)
@@ -309,6 +339,7 @@ class StockOpnameController extends Controller
             }
 
             StockService::mutate([
+                'warehouse_id' => $opname->warehouse_id ?: Warehouse::defaultId(),
                 'item_id' => $row->item_id,
                 'direction' => $adjustment > 0 ? 'in' : 'out',
                 'qty' => abs($adjustment),

@@ -32,6 +32,7 @@
                     <tr class="text-start text-gray-400 fw-bolder fs-7 text-uppercase gs-0">
                         <th>ID</th>
                         <th>Kode</th>
+                        <th>Gudang</th>
                         <th>Alokasi</th>
                         <th>Status</th>
                         <th>Tanggal</th>
@@ -62,6 +63,14 @@
                     @csrf
                     <div class="row g-3 mb-6">
                         <div class="col-md-6">
+                            <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
+                            <select class="form-select form-select-solid" name="warehouse_id" id="allocation_warehouse_id" required>
+                                @foreach($warehouses as $warehouse)
+                                    <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-6">
                             <label class="required fs-6 fw-bold form-label mb-2">Jenis Alokasi</label>
                             <select class="form-select form-select-solid" name="allocation_type" id="allocation_type" required>
                                 <option value="">Pilih alokasi</option>
@@ -72,7 +81,7 @@
                             </select>
                             <div class="invalid-feedback" id="error_allocation_type"></div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-12">
                             <label class="fs-6 fw-bold form-label mb-2">Ref</label>
                             <input type="text" class="form-control form-control-solid" name="ref_no" id="allocation_ref_no" />
                             <div class="invalid-feedback" id="error_ref_no"></div>
@@ -116,7 +125,8 @@
     const csrfToken = '{{ csrf_token() }}';
     const canUpdate = {{ $canUpdate ? 'true' : 'false' }};
     const canDelete = {{ $canDelete ? 'true' : 'false' }};
-    const itemOptionsHtml = `@foreach($items as $item)<option value="{{ $item->id }}" data-stock="{{ (int) $item->damaged_stock }}">{{ $item->sku }} - {{ $item->name }} (tersedia: {{ (int) $item->damaged_stock }})</option>@endforeach`;
+    const damagedItems = @json($items);
+    const damagedStocks = @json($damagedStocks);
 
     document.addEventListener('DOMContentLoaded', () => {
         const tableEl = $('#damaged_allocations_table');
@@ -127,6 +137,7 @@
         const searchInput = document.querySelector('[data-kt-filter="search"]');
         const titleEl = document.getElementById('allocation_modal_title');
         const dateEl = document.getElementById('allocation_transacted_at');
+        const warehouseEl = document.getElementById('allocation_warehouse_id');
         let fpDate = null;
 
         const pad = n => String(n).padStart(2, '0');
@@ -149,6 +160,20 @@
                 $(el).select2({ placeholder: 'Pilih item', allowClear: true, width: '100%' });
             }
         };
+        const itemOptionsHtml = (warehouseId) => damagedItems.map(item => {
+            const stock = Number(damagedStocks?.[String(warehouseId)]?.[String(item.id)] || 0);
+            return stock > 0
+                ? `<option value="${item.id}" data-stock="${stock}">${item.sku} - ${item.name} (tersedia: ${stock})</option>`
+                : '';
+        }).join('');
+        const refreshItemOptions = () => {
+            itemsContainer.querySelectorAll('.allocation-item-select').forEach(select => {
+                const selected = select.value;
+                select.innerHTML = `<option value=""></option>${itemOptionsHtml(warehouseEl?.value || '')}`;
+                if ([...select.options].some(option => option.value === selected)) select.value = selected;
+                $(select).trigger('change.select2');
+            });
+        };
         const renumberRows = () => {
             itemsContainer.querySelectorAll('.allocation-item-row').forEach((row, idx) => {
                 row.querySelectorAll('[data-name]').forEach(el => {
@@ -163,7 +188,7 @@
                 <div class="col-md-6">
                     <label class="required fs-6 fw-bold form-label mb-2">Item</label>
                     <select class="form-select form-select-solid allocation-item-select" data-name="item_id" required>
-                        <option value=""></option>${itemOptionsHtml}
+                        <option value=""></option>${itemOptionsHtml(warehouseEl?.value || '')}
                     </select>
                     <div class="invalid-feedback" data-error-for="item_id"></div>
                 </div>
@@ -202,6 +227,7 @@
 
         document.getElementById('btn_open_allocation')?.addEventListener('click', resetForm);
         document.getElementById('btn_add_allocation_item')?.addEventListener('click', () => createRow());
+        warehouseEl?.addEventListener('change', refreshItemOptions);
         itemsContainer.addEventListener('click', e => {
             const btn = e.target.closest('.btn-remove-item');
             if (!btn) return;
@@ -222,6 +248,7 @@
             columns: [
                 { data: 'id' },
                 { data: 'code' },
+                { data: 'warehouse' },
                 { data: 'allocation_type' },
                 { data: 'status', render: data => statusLabel(data) },
                 { data: 'transacted_at' },
@@ -252,6 +279,7 @@
             form.dataset.editId = id;
             if (titleEl) titleEl.textContent = `Edit ${json.code || ''}`.trim();
             document.getElementById('allocation_type').value = json.allocation_type || '';
+            if (warehouseEl) warehouseEl.value = json.warehouse_id || warehouseEl.value;
             document.getElementById('allocation_ref_no').value = json.ref_no || '';
             document.getElementById('allocation_note').value = json.note || '';
             if (fpDate) fpDate.setDate(json.transacted_at || null, true, 'Y-m-d H:i');

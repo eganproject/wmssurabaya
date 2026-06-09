@@ -87,6 +87,7 @@
                         <th>Status</th>
                         <th>Tanggal</th>
                         <th>Submit By</th>
+                        <th>Gudang</th>
                         <th>Item</th>
                         <th>Qty</th>
                         <th>Catatan</th>
@@ -116,6 +117,14 @@
             <div class="modal-body scroll-y mx-5 mx-xl-15 my-7">
                 <form class="form" id="stock_flow_form">
                     @csrf
+                    <div class="fv-row mb-7">
+                        <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
+                        <select class="form-select form-select-solid" name="warehouse_id" id="flow_warehouse_id" required>
+                            @foreach($warehouses as $warehouse)
+                                <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                     <div id="flow_items_container"></div>
                     <div class="mb-7">
                         <button type="button" class="btn btn-light" id="btn_add_flow_item">Tambah Item</button>
@@ -208,6 +217,14 @@
     const typeLabelMap = @json($typeOptions ?? []);
     const csrfToken = '{{ csrf_token() }}';
     const itemOptionsHtml = `@foreach($items as $item)<option value="{{ $item->id }}">{{ $item->sku }} - {{ $item->name }}</option>@endforeach`;
+    const itemUnits = @json($items->mapWithKeys(fn ($item) => [
+        (string) $item->id => $item->units->map(fn ($unit) => [
+            'id' => $unit->id,
+            'name' => $unit->name,
+            'conversion_qty' => (int) $unit->conversion_qty,
+            'is_base' => (bool) $unit->is_base,
+        ])->values(),
+    ]));
     const defaultTypeFilter = '{{ $typeDefault ?? '' }}';
     const permMap = @json($permMap ?? []);
     const canCreateDefault = {{ $canCreateDefault ? 'true' : 'false' }};
@@ -227,6 +244,7 @@
         const dateFromEl = document.getElementById('filter_date_from');
         const dateToEl = document.getElementById('filter_date_to');
         const transactedAtEl = document.getElementById('flow_transacted_at');
+        const warehouseEl = document.getElementById('flow_warehouse_id');
         const filterApplyBtn = document.getElementById('filter_apply');
         const filterResetBtn = document.getElementById('filter_reset');
         const importBtn = document.getElementById('btn_import_flow');
@@ -346,6 +364,20 @@
             }
         };
 
+        const syncUnitOptions = (row, selectedUnitId = null) => {
+            const itemId = row?.querySelector('.flow-item-select')?.value || '';
+            const unitEl = row?.querySelector('.flow-unit-select');
+            if (!unitEl) return;
+            const units = itemUnits[String(itemId)] || [];
+            unitEl.innerHTML = units.length ? units.map(unit => {
+                const suffix = unit.conversion_qty > 1 ? ` (1 = ${unit.conversion_qty})` : '';
+                return `<option value="${unit.id}">${unit.name}${suffix}</option>`;
+            }).join('') : '<option value="">Satuan dasar (1)</option>';
+            if (selectedUnitId && units.some(unit => String(unit.id) === String(selectedUnitId))) {
+                unitEl.value = String(selectedUnitId);
+            }
+        };
+
         if (typeof flatpickr !== 'undefined') {
             if (dateFromEl) {
                 fpFrom = flatpickr(dateFromEl, { dateFormat: 'Y-m-d', allowInput: true });
@@ -372,7 +404,7 @@
             const row = document.createElement('div');
             row.className = 'row g-3 align-items-end mb-4 flow-item-row';
             row.innerHTML = isInboundReturnFlow ? `
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="required fs-6 fw-bold form-label mb-2">Item</label>
                     <select class="form-select form-select-solid flow-item-select" data-name="item_id" required>
                         <option value=""></option>
@@ -420,6 +452,11 @@
                     <div class="invalid-feedback" data-error-for="stock_source"></div>
                 </div>
                 <div class="col-md-2">
+                    <label class="required fs-6 fw-bold form-label mb-2">Satuan</label>
+                    <select class="form-select form-select-solid flow-unit-select" data-name="unit_id"></select>
+                    <div class="invalid-feedback" data-error-for="unit_id"></div>
+                </div>
+                <div class="col-md-1">
                     <label class="required fs-6 fw-bold form-label mb-2">Qty</label>
                     <input type="number" min="1" class="form-control form-control-solid" data-name="qty" required />
                     <div class="invalid-feedback" data-error-for="qty"></div>
@@ -432,13 +469,18 @@
                     <button type="button" class="btn btn-light btn-sm btn-remove-item">Hapus</button>
                 </div>
             ` : `
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label class="required fs-6 fw-bold form-label mb-2">Item</label>
                     <select class="form-select form-select-solid flow-item-select" data-name="item_id" required>
                         <option value=""></option>
                         ${itemOptionsHtml}
                     </select>
                     <div class="invalid-feedback" data-error-for="item_id"></div>
+                </div>
+                <div class="col-md-2">
+                    <label class="required fs-6 fw-bold form-label mb-2">Satuan</label>
+                    <select class="form-select form-select-solid flow-unit-select" data-name="unit_id"></select>
+                    <div class="invalid-feedback" data-error-for="unit_id"></div>
                 </div>
                 <div class="col-md-2">
                     <label class="required fs-6 fw-bold form-label mb-2">Qty</label>
@@ -459,6 +501,7 @@
             if (data.item_id) {
                 selectEl.value = String(data.item_id);
             }
+            syncUnitOptions(row, data.unit_id);
             const qtyEl = row.querySelector('input[data-name="qty"]');
             if (qtyEl) qtyEl.value = data.qty ?? '';
             const qtyReceivedEl = row.querySelector('input[data-name="qty_received"]');
@@ -502,6 +545,9 @@
         }
 
         itemsContainer?.addEventListener('change', (e) => {
+            if (e.target.matches('.flow-item-select')) {
+                syncUnitOptions(e.target.closest('.flow-item-row'));
+            }
             if (e.target.matches('.flow-item-select') || e.target.matches('select[data-name="stock_source"]')) {
                 validateUniqueItems();
             }
@@ -555,6 +601,7 @@
                 { data: 'status', orderable:false, searchable:false, render: (data, type, row) => statusLabel(data, row) },
                 { data: 'transacted_at' },
                 { data: 'submit_by' },
+                { data: 'warehouse' },
                 { data: 'item' },
                 { data: 'qty', render: (data, type, row) => {
                     const qty = Number(data || 0).toLocaleString('id-ID');
@@ -685,6 +732,7 @@
             form.dataset.editId = id;
             form.dataset.flowType = rowType;
             if (modalTitle) modalTitle.textContent = `Edit ${json.code || ''}`.trim();
+                if (warehouseEl) warehouseEl.value = json.warehouse_id || warehouseEl.value;
                 document.getElementById('flow_ref_no').value = json.ref_no || '';
                 document.getElementById('flow_note').value = json.note || '';
                 if (fpTransacted) {

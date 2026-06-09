@@ -18,6 +18,11 @@
             <h3 class="fw-bolder text-dark">Saldo Stok Barang Rusak</h3>
         </div>
         <div class="card-toolbar">
+            <select class="form-select form-select-solid w-200px me-3" id="damaged_stock_warehouse_filter">
+                @foreach($warehouses as $warehouse)
+                    <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                @endforeach
+            </select>
             <div class="d-flex align-items-center position-relative my-1">
                 <i class="fa-solid fa-magnifying-glass position-absolute ms-5 text-gray-500"></i>
                 <input type="text" class="form-control form-control-solid w-250px ps-14" placeholder="Cari SKU / Nama" id="stock_summary_search" />
@@ -70,6 +75,7 @@
                     <tr class="text-start text-gray-400 fw-bolder fs-7 text-uppercase gs-0">
                         <th>ID</th>
                         <th>Kode</th>
+                        <th>Gudang</th>
                         <th>Sumber</th>
                         <th>Status</th>
                         <th>Tanggal</th>
@@ -106,6 +112,14 @@
                     @csrf
                     <div class="row g-3 mb-6">
                         <div class="col-md-6">
+                            <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
+                            <select class="form-select form-select-solid" name="warehouse_id" id="damage_warehouse_id" required>
+                                @foreach($warehouses as $warehouse)
+                                    <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-6">
                             <label class="required fs-6 fw-bold form-label mb-2">Sumber</label>
                             <select class="form-select form-select-solid" name="source_type" id="damage_source_type" required>
                                 <option value="">Pilih sumber</option>
@@ -114,7 +128,7 @@
                             </select>
                             <div class="invalid-feedback" id="error_source_type"></div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-12">
                             <label class="fs-6 fw-bold form-label mb-2">Ref Sumber</label>
                             <input type="text" class="form-control form-control-solid" name="source_ref" id="damage_source_ref" placeholder="Contoh: Kode retur inbound" />
                             <div class="invalid-feedback" id="error_source_ref"></div>
@@ -174,6 +188,14 @@
                     <a href="{{ $templateUrl }}" class="btn btn-sm btn-light-success mt-3">Download Template Excel</a>
                 </div>
                 <div class="fv-row mb-6">
+                    <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
+                    <select class="form-select form-select-solid" id="import_damage_warehouse_id">
+                        @foreach($warehouses as $warehouse)
+                            <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="fv-row mb-6">
                     <label class="required fs-6 fw-bold form-label mb-2">File Excel</label>
                     <input type="file" class="form-control form-control-solid" id="import_damage_file" accept=".xlsx,.xls" />
                     <div class="invalid-feedback d-block" id="error_import_damage_file"></div>
@@ -207,6 +229,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         // --- Stock Summary Table ---
         const summarySearchInput = document.getElementById('stock_summary_search');
+        const summaryWarehouseEl = document.getElementById('damaged_stock_warehouse_filter');
         const summaryTable = $('#stock_summary_table').DataTable({
             processing: true,
             serverSide: true,
@@ -215,7 +238,10 @@
             ajax: {
                 url: stockSummaryUrl,
                 dataSrc: 'data',
-                data: params => { params.q = summarySearchInput?.value || ''; },
+                data: params => {
+                    params.q = summarySearchInput?.value || '';
+                    params.warehouse_id = summaryWarehouseEl?.value || '';
+                },
             },
             columns: [
                 { data: 'sku' },
@@ -243,6 +269,7 @@
             language: { emptyTable: 'Tidak ada stok barang rusak' },
         });
         summarySearchInput?.addEventListener('keyup', () => summaryTable.ajax.reload());
+        summaryWarehouseEl?.addEventListener('change', () => summaryTable.ajax.reload());
 
         // --- Transaction Table ---
         const tableEl = $('#damaged_goods_table');
@@ -436,6 +463,7 @@
             columns: [
                 { data: 'id' },
                 { data: 'code' },
+                { data: 'warehouse' },
                 { data: 'source' },
                 { data: 'status', orderable: false, searchable: false, render: (data) => statusLabel(data) },
                 { data: 'transacted_at' },
@@ -501,6 +529,7 @@
             }
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('warehouse_id', document.getElementById('import_damage_warehouse_id')?.value || '');
             try {
                 const res = await fetch(importUrl, {
                     method: 'POST',
@@ -549,6 +578,7 @@
                 }
                 form.dataset.editId = id;
                 if (modalTitle) modalTitle.textContent = `Edit ${json.code || ''}`.trim();
+                document.getElementById('damage_warehouse_id').value = json.warehouse_id || '';
                 document.getElementById('damage_source_type').value = json.source_type || '';
                 document.getElementById('damage_source_ref').value = json.source_ref || '';
                 document.getElementById('damage_note').value = json.note || '';

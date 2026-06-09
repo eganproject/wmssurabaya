@@ -204,7 +204,9 @@ class PickerSessionController extends Controller
             ], 500);
         }
 
-        $session->load('items.item');
+        $session->load([
+            'items.item.warehouseSettings' => fn ($query) => $query->where('warehouse_id', \App\Models\Warehouse::defaultId()),
+        ]);
 
         return response()->json([
             'session' => $this->serializeSession($session),
@@ -550,7 +552,9 @@ class PickerSessionController extends Controller
                     'item_id' => $row->item_id,
                     'sku' => $row->item?->sku ?? '',
                     'name' => $row->item?->name ?? '',
-                    'address' => $row->item?->address ?? '',
+                    'address' => $row->item?->warehouseSettings?->first()?->location
+                        ?? $row->item?->address
+                        ?? '',
                     'qty' => (int) $row->qty,
                     'note' => $row->note,
                 ];

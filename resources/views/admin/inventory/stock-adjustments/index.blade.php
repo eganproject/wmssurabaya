@@ -82,6 +82,14 @@
             <div class="modal-body scroll-y mx-5 mx-xl-15 my-7">
                 <form class="form" id="stock_adjustment_form">
                     @csrf
+                    <div class="fv-row mb-7">
+                        <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
+                        <select class="form-select form-select-solid" name="warehouse_id" id="adjustment_warehouse_id" required>
+                            @foreach($warehouses as $warehouse)
+                                <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                     <div id="adjustment_items_container"></div>
                     <div class="mb-7">
                         <button type="button" class="btn btn-light" id="btn_add_adjustment_item">Tambah Item</button>
@@ -175,6 +183,7 @@
         const openBtn = document.getElementById('btn_open_adjustment');
         const modalTitle = document.getElementById('adjustment_modal_title');
         const transactedAtEl = document.getElementById('adjustment_transacted_at');
+        const warehouseEl = document.getElementById('adjustment_warehouse_id');
         const dateFromEl = document.getElementById('filter_date_from');
         const dateToEl = document.getElementById('filter_date_to');
         const filterApplyBtn = document.getElementById('filter_apply');
@@ -506,6 +515,7 @@
                 } else {
                     document.getElementById('adjustment_transacted_at').value = json.transacted_at || '';
                 }
+                if (warehouseEl) warehouseEl.value = json.warehouse_id || warehouseEl.value;
 
                 itemsContainer.innerHTML = '';
                 (json.items || []).forEach(item => createItemRow(item));

@@ -12,7 +12,7 @@
                     <span class="card-label fw-bolder fs-3 mb-1">Info Item</span>
                 </h3>
                 <div class="card-toolbar">
-                    <a href="{{ route('admin.inventory.item-stocks.index') }}" class="btn btn-sm btn-light">Kembali</a>
+                    <a href="{{ route('admin.inventory.item-stocks.index', ['warehouse_id' => $warehouse->id]) }}" class="btn btn-sm btn-light">Kembali</a>
                 </div>
             </div>
             <div class="card-body pt-4">
@@ -23,6 +23,7 @@
                     <div>
                         <div class="fw-bolder fs-5 text-gray-800">{{ $item->name }}</div>
                         <div class="text-muted fs-7">{{ $item->sku }}</div>
+                        <div class="badge badge-light-primary mt-2">{{ $warehouse->name }}</div>
                     </div>
                 </div>
 
@@ -43,10 +44,10 @@
                             @endif
                         </div>
                     </div>
-                    @if($item->address)
+                    @if($warehouseLocation)
                     <div class="col-12">
                         <div class="fs-7 fw-bold text-gray-500 mb-1">Alamat/Lokasi</div>
-                        <div class="fs-6">{{ $item->address }}</div>
+                        <div class="fs-6">{{ $warehouseLocation }}</div>
                     </div>
                     @endif
                     @if($item->description)
@@ -55,10 +56,10 @@
                         <div class="fs-6 text-muted">{{ $item->description }}</div>
                     </div>
                     @endif
-                    @if($item->safety_stock)
+                    @if($warehouseSafetyStock)
                     <div class="col-6">
                         <div class="fs-7 fw-bold text-gray-500 mb-1">Safety Stock</div>
-                        <div class="fs-6">{{ $item->safety_stock }}</div>
+                        <div class="fs-6">{{ $warehouseSafetyStock }}</div>
                     </div>
                     @endif
                 </div>
@@ -67,14 +68,14 @@
 
                 <div class="text-center">
                     <div class="fs-7 fw-bold text-gray-500 mb-2">Stok Saat Ini</div>
-                    <div class="fs-2x fw-bolder {{ $currentStock <= ($item->safety_stock ?? 0) && $item->safety_stock ? 'text-danger' : 'text-success' }}">
+                    <div class="fs-2x fw-bolder {{ $currentStock <= $warehouseSafetyStock && $warehouseSafetyStock ? 'text-danger' : 'text-success' }}">
                         {{ number_format($currentStock) }}
                     </div>
                     @if($isBundle)
                         <div class="text-muted fs-8 mt-1">virtual (bundle)</div>
                     @endif
-                    @if($item->safety_stock && $currentStock <= $item->safety_stock)
-                        <div class="badge badge-light-danger mt-2">Di bawah safety stock ({{ $item->safety_stock }})</div>
+                    @if($warehouseSafetyStock && $currentStock <= $warehouseSafetyStock)
+                        <div class="badge badge-light-danger mt-2">Di bawah safety stock ({{ $warehouseSafetyStock }})</div>
                     @endif
                 </div>
             </div>

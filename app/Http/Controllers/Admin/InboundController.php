@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\InboundItem;
 use App\Models\InboundTransaction;
 use App\Models\Item;
+use App\Models\ItemUnit;
 use App\Models\DamagedGood;
 use App\Models\DamagedGoodItem;
 use App\Models\StockMutation;
+use App\Models\Warehouse;
 use App\Exports\InboundReturnsTemplateExport;
 use App\Imports\InboundReceiptsImport;
 use App\Imports\InboundReturnsImport;
@@ -270,7 +272,10 @@ class InboundController extends Controller
 
     private function index(string $type, string $pageTitle, string $routeBase)
     {
-        $items = Item::orderBy('name')->get(['id', 'sku', 'name']);
+        $items = Item::with(['units' => fn ($q) => $q->orderByDesc('is_base')->orderBy('conversion_qty')])
+            ->orderBy('name')
+            ->get(['id', 'sku', 'name']);
+        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']);
         $baseOptions = $this->typeOptions();
         $typeOptions = ['all' => 'Semua'] + $baseOptions;
         $routeMap = [
@@ -302,6 +307,7 @@ class InboundController extends Controller
             'deleteUrlTpl' => route("admin.inbound.{$routeBase}.destroy", ':id'),
             'detailUrlTpl' => route("admin.inbound.{$routeBase}.detail", ':id'),
             'items' => $items,
+            'warehouses' => $warehouses,
             'typeOptions' => $typeOptions,
             'typeDefault' => $type,
             'routeMap' => $routeMap,
@@ -336,7 +342,7 @@ class InboundController extends Controller
         }
 
         $query = InboundTransaction::query()
-            ->with(['items.item', 'creator'])
+            ->with(['items.item', 'creator', 'warehouse'])
             ->select([
                 'inbound_transactions.id',
                 'inbound_transactions.code',
@@ -346,6 +352,7 @@ class InboundController extends Controller
                 'inbound_transactions.note',
                 'inbound_transactions.status',
                 'inbound_transactions.created_by',
+                'inbound_transactions.warehouse_id',
             ])
             ->orderBy('inbound_transactions.transacted_at', 'desc');
         if ($baseType) {
@@ -406,6 +413,7 @@ class InboundController extends Controller
                 'code' => $row->code,
                 'transacted_at' => $ts,
                 'submit_by' => $row->creator?->name ?? '-',
+                'warehouse' => $row->warehouse?->name ?? '-',
                 'item' => $itemLabel ?: '-',
                 'qty' => $totalQty,
                 'note' => $row->note ?? '',
@@ -437,12 +445,14 @@ class InboundController extends Controller
             'ref_no' => $tx->ref_no,
             'note' => $tx->note,
             'status' => $tx->status ?? 'pending',
+            'warehouse_id' => $tx->warehouse_id ?: Warehouse::defaultId(),
             'finalized_at' => $tx->finalized_at?->format('Y-m-d H:i'),
             'transacted_at' => $tx->transacted_at?->format('Y-m-d\TH:i'),
             'items' => $tx->items->map(function ($item) {
                 return [
                     'item_id' => $item->item_id,
-                    'qty' => $item->qty,
+                    'unit_id' => $item->unit_id,
+                    'qty' => $item->qty_input ?: $item->qty,
                     'qty_received' => $item->qty_received ?: $item->qty,
                     'qty_good' => $item->qty_good ?? 0,
                     'qty_damaged' => $item->qty_damaged ?? 0,
@@ -487,6 +497,7 @@ class InboundController extends Controller
         DB::beginTransaction();
         try {
             $tx = InboundTransaction::create([
+                'warehouse_id' => $validated['warehouse_id'],
                 'code' => $code,
                 'type' => $type,
                 'ref_no' => $validated['ref_no'] ?? null,
@@ -502,6 +513,9 @@ class InboundController extends Controller
                 InboundItem::create([
                     'inbound_transaction_id' => $tx->id,
                     'item_id' => $row['item_id'],
+                    'unit_id' => $row['unit_id'] ?? null,
+                    'qty_input' => $row['qty_input'] ?? $row['qty'],
+                    'conversion_qty' => $row['conversion_qty'] ?? 1,
                     'qty' => $row['qty'],
                     'qty_received' => $row['qty_received'] ?? $row['qty'],
                     'qty_good' => $row['qty_good'] ?? $row['qty'],
@@ -549,6 +563,7 @@ class InboundController extends Controller
             InboundItem::where('inbound_transaction_id', $tx->id)->delete();
 
             $tx->update([
+                'warehouse_id' => $validated['warehouse_id'],
                 'ref_no' => $validated['ref_no'] ?? null,
                 'note' => $validated['note'] ?? null,
                 'transacted_at' => $validated['transacted_at'] ?? $tx->transacted_at,
@@ -558,6 +573,9 @@ class InboundController extends Controller
                 InboundItem::create([
                     'inbound_transaction_id' => $tx->id,
                     'item_id' => $row['item_id'],
+                    'unit_id' => $row['unit_id'] ?? null,
+                    'qty_input' => $row['qty_input'] ?? $row['qty'],
+                    'conversion_qty' => $row['conversion_qty'] ?? 1,
                     'qty' => $row['qty'],
                     'qty_received' => $row['qty_received'] ?? $row['qty'],
                     'qty_good' => $row['qty_good'] ?? $row['qty'],
@@ -718,9 +736,13 @@ class InboundController extends Controller
         $tx->loadMissing('items');
         foreach ($tx->items as $row) {
             StockService::mutate([
+                'warehouse_id' => $tx->warehouse_id ?: Warehouse::defaultId(),
                 'item_id' => $row->item_id,
+                'unit_id' => $row->unit_id,
                 'direction' => 'in',
                 'qty' => (int) ($row->qty_good ?: $row->qty),
+                'qty_input' => (int) ($row->qty_input ?: ($row->qty_good ?: $row->qty)),
+                'conversion_qty' => (int) ($row->conversion_qty ?: 1),
                 'source_type' => 'inbound',
                 'source_subtype' => $type,
                 'source_id' => $tx->id,
@@ -764,6 +786,7 @@ class InboundController extends Controller
 
             if (!$damage) {
                 $damage = DamagedGood::create([
+                    'warehouse_id' => $tx->warehouse_id ?: Warehouse::defaultId(),
                     'code' => $this->generateCode('DMG-RET'),
                     'source_type' => 'inbound_return',
                     'source_ref' => $tx->code,
@@ -800,6 +823,7 @@ class InboundController extends Controller
             $goodQty = (int) ($row->qty_good ?? 0);
             if ($goodQty > 0) {
                 StockService::mutate([
+                    'warehouse_id' => $tx->warehouse_id ?: Warehouse::defaultId(),
                     'item_id' => $row->item_id,
                     'direction' => 'in',
                     'qty' => $goodQty,
@@ -817,6 +841,7 @@ class InboundController extends Controller
             $damagedQty = (int) ($row->qty_damaged ?? 0);
             if ($damagedQty > 0) {
                 DamagedStockService::mutate([
+                    'warehouse_id' => $tx->warehouse_id ?: Warehouse::defaultId(),
                     'item_id' => $row->item_id,
                     'direction' => 'in',
                     'qty' => $damagedQty,
@@ -839,10 +864,12 @@ class InboundController extends Controller
         $rules = [
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_id' => ['required', 'integer', 'exists:items,id'],
+            'items.*.unit_id' => ['nullable', 'integer', 'exists:item_units,id'],
             'items.*.note' => ['nullable', 'string'],
             'ref_no' => ['nullable', 'string', 'max:100'],
             'note' => ['nullable', 'string'],
             'transacted_at' => ['required', 'date'],
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
         ];
         if ($isReturn) {
             $rules['items.*.qty_received'] = ['required', 'integer', 'min:1'];
@@ -853,6 +880,7 @@ class InboundController extends Controller
         }
 
         $validated = $request->validate($rules);
+        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
 
         $items = collect($validated['items'] ?? [])
             ->filter(fn ($row) => (int) ($row['item_id'] ?? 0) > 0)
@@ -863,6 +891,9 @@ class InboundController extends Controller
                     $damaged = (int) ($row['qty_damaged'] ?? 0);
                     return [
                         'item_id' => (int) $row['item_id'],
+                        'unit_id' => null,
+                        'qty_input' => $received,
+                        'conversion_qty' => 1,
                         'qty' => $received,
                         'qty_received' => $received,
                         'qty_good' => $good,
@@ -871,9 +902,26 @@ class InboundController extends Controller
                     ];
                 }
 
-                $qty = (int) ($row['qty'] ?? 0);
+                $qtyInput = (int) ($row['qty'] ?? 0);
+                $unitId = (int) ($row['unit_id'] ?? 0);
+                $conversionQty = 1;
+                if ($unitId > 0) {
+                    $unit = ItemUnit::whereKey($unitId)
+                        ->where('item_id', (int) $row['item_id'])
+                        ->first();
+                    if (!$unit) {
+                        throw ValidationException::withMessages([
+                            'items' => 'Satuan item inbound tidak valid.',
+                        ]);
+                    }
+                    $conversionQty = (int) $unit->conversion_qty;
+                }
+                $qty = $qtyInput * $conversionQty;
                 return [
                     'item_id' => (int) $row['item_id'],
+                    'unit_id' => $unitId ?: null,
+                    'qty_input' => $qtyInput,
+                    'conversion_qty' => $conversionQty,
                     'qty' => $qty,
                     'qty_received' => $qty,
                     'qty_good' => $qty,
@@ -907,6 +955,7 @@ class InboundController extends Controller
         }
 
         $normalized = $items->groupBy('item_id')->map(function ($rows, $itemId) {
+            $first = $rows->first();
             $qty = $rows->sum('qty');
             $qtyReceived = $rows->sum('qty_received');
             $qtyGood = $rows->sum('qty_good');
@@ -914,6 +963,9 @@ class InboundController extends Controller
             $note = $rows->pluck('note')->first(fn ($n) => $n !== null && $n !== '') ?? null;
             return [
                 'item_id' => (int) $itemId,
+                'unit_id' => $first['unit_id'] ?? null,
+                'qty_input' => $rows->sum('qty_input'),
+                'conversion_qty' => $first['conversion_qty'] ?? 1,
                 'qty' => $qty,
                 'qty_received' => $qtyReceived,
                 'qty_good' => $qtyGood,

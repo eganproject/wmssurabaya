@@ -10,6 +10,7 @@ class DamagedStockMutation extends Model
     use HasFactory;
 
     protected $fillable = [
+        'warehouse_id',
         'item_id',
         'direction',
         'qty',
@@ -35,5 +36,10 @@ class DamagedStockMutation extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 }

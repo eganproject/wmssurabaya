@@ -10,9 +10,15 @@ class StockMutation extends Model
     use HasFactory;
 
     protected $fillable = [
+        'warehouse_id',
         'item_id',
+        'unit_id',
         'direction',
         'qty',
+        'qty_input',
+        'conversion_qty',
+        'stock_before',
+        'stock_after',
         'source_type',
         'source_subtype',
         'source_id',
@@ -35,5 +41,15 @@ class StockMutation extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
+    }
+
+    public function unit()
+    {
+        return $this->belongsTo(ItemUnit::class, 'unit_id');
     }
 }

@@ -8,9 +8,11 @@ use App\Models\DamagedItemStock;
 use App\Models\OutboundItem;
 use App\Models\OutboundTransaction;
 use App\Models\Item;
+use App\Models\ItemUnit;
 use App\Models\ItemStock;
 use App\Models\StockMutation;
 use App\Models\SuratJalan;
+use App\Models\Warehouse;
 use App\Exports\OutboundReturnsTemplateExport;
 use App\Imports\OutboundReturnsImport;
 use App\Models\DamagedStockMutation;
@@ -355,7 +357,10 @@ class OutboundController extends Controller
 
     private function index(string $type, string $pageTitle, string $routeBase)
     {
-        $items = Item::orderBy('name')->get(['id', 'sku', 'name']);
+        $items = Item::with(['units' => fn ($q) => $q->orderByDesc('is_base')->orderBy('conversion_qty')])
+            ->orderBy('name')
+            ->get(['id', 'sku', 'name']);
+        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']);
         $baseOptions = $this->typeOptions();
         $typeOptions = ['all' => 'Semua'] + $baseOptions;
         $routeMap = [
@@ -394,6 +399,7 @@ class OutboundController extends Controller
             'deleteUrlTpl' => route("admin.outbound.{$routeBase}.destroy", ':id'),
             'detailUrlTpl' => route("admin.outbound.{$routeBase}.detail", ':id'),
             'items' => $items,
+            'warehouses' => $warehouses,
             'typeOptions' => $typeOptions,
             'typeDefault' => $type,
             'routeMap' => $routeMap,
@@ -428,7 +434,7 @@ class OutboundController extends Controller
         }
 
         $query = OutboundTransaction::query()
-            ->with(['items.item', 'creator'])
+            ->with(['items.item', 'creator', 'warehouse'])
             ->select([
                 'outbound_transactions.id',
                 'outbound_transactions.code',
@@ -438,6 +444,7 @@ class OutboundController extends Controller
                 'outbound_transactions.note',
                 'outbound_transactions.status',
                 'outbound_transactions.created_by',
+                'outbound_transactions.warehouse_id',
             ])
             ->orderBy('outbound_transactions.transacted_at', 'desc');
         if ($baseType) {
@@ -489,6 +496,7 @@ class OutboundController extends Controller
                 'code' => $row->code,
                 'transacted_at' => $ts,
                 'submit_by' => $row->creator?->name ?? '-',
+                'warehouse' => $row->warehouse?->name ?? '-',
                 'item' => $itemLabel ?: '-',
                 'qty' => $totalQty,
                 'note' => $row->note ?? '',
@@ -517,11 +525,13 @@ class OutboundController extends Controller
             'ref_no' => $tx->ref_no,
             'note' => $tx->note,
             'status' => $tx->status ?? 'pending',
+            'warehouse_id' => $tx->warehouse_id ?: Warehouse::defaultId(),
             'transacted_at' => $tx->transacted_at?->format('Y-m-d\TH:i'),
             'items' => $tx->items->map(function ($item) {
                 return [
                     'item_id' => $item->item_id,
-                    'qty' => $item->qty,
+                    'unit_id' => $item->unit_id,
+                    'qty' => $item->qty_input ?: $item->qty,
                     'stock_source' => $item->stock_source ?? 'regular',
                     'note' => $item->note ?? '',
                 ];
@@ -549,7 +559,7 @@ class OutboundController extends Controller
     {
         $validated = $this->validatePayload($request);
         if ($type === 'return') {
-            $this->assertOutboundReturnStockAvailable($validated['items']);
+            $this->assertOutboundReturnStockAvailable($validated['items'], $validated['warehouse_id']);
         }
 
         $prefix = match ($type) {
@@ -564,6 +574,7 @@ class OutboundController extends Controller
         DB::beginTransaction();
         try {
             $tx = OutboundTransaction::create([
+                'warehouse_id' => $validated['warehouse_id'],
                 'code' => $code,
                 'type' => $type,
                 'ref_no' => $validated['ref_no'] ?? null,
@@ -577,6 +588,9 @@ class OutboundController extends Controller
                 OutboundItem::create([
                     'outbound_transaction_id' => $tx->id,
                     'item_id' => $row['item_id'],
+                    'unit_id' => $row['unit_id'] ?? null,
+                    'qty_input' => $row['qty_input'] ?? $row['qty'],
+                    'conversion_qty' => $row['conversion_qty'] ?? 1,
                     'stock_source' => $row['stock_source'] ?? 'regular',
                     'qty' => $row['qty'],
                     'note' => $row['note'] ?? null,
@@ -605,7 +619,7 @@ class OutboundController extends Controller
     {
         $validated = $this->validatePayload($request);
         if ($type === 'return') {
-            $this->assertOutboundReturnStockAvailable($validated['items']);
+            $this->assertOutboundReturnStockAvailable($validated['items'], $validated['warehouse_id']);
         }
 
         DB::beginTransaction();
@@ -623,6 +637,7 @@ class OutboundController extends Controller
             OutboundItem::where('outbound_transaction_id', $tx->id)->delete();
 
             $tx->update([
+                'warehouse_id' => $validated['warehouse_id'],
                 'ref_no' => $validated['ref_no'] ?? null,
                 'note' => $validated['note'] ?? null,
                 'transacted_at' => $validated['transacted_at'] ?? $tx->transacted_at,
@@ -632,6 +647,9 @@ class OutboundController extends Controller
                 OutboundItem::create([
                     'outbound_transaction_id' => $tx->id,
                     'item_id' => $row['item_id'],
+                    'unit_id' => $row['unit_id'] ?? null,
+                    'qty_input' => $row['qty_input'] ?? $row['qty'],
+                    'conversion_qty' => $row['conversion_qty'] ?? 1,
                     'stock_source' => $row['stock_source'] ?? 'regular',
                     'qty' => $row['qty'],
                     'note' => $row['note'] ?? null,
@@ -736,8 +754,9 @@ class OutboundController extends Controller
         return response()->json(['message' => 'Outbound berhasil disetujui']);
     }
 
-    private function assertOutboundReturnStockAvailable(array $items): void
+    private function assertOutboundReturnStockAvailable(array $items, ?int $warehouseId = null): void
     {
+        $warehouseId ??= Warehouse::defaultId();
         $grouped = collect($items)
             ->groupBy(fn ($row) => ((int) ($row['item_id'] ?? 0)).'|'.($row['stock_source'] ?? 'regular'))
             ->map(fn ($rows) => [
@@ -748,8 +767,12 @@ class OutboundController extends Controller
 
         $itemIds = $grouped->pluck('item_id')->filter()->unique()->values()->all();
         $itemsById = Item::whereIn('id', $itemIds)->get(['id', 'sku', 'is_bundle'])->keyBy('id');
-        $regularStocks = ItemStock::whereIn('item_id', $itemIds)->pluck('stock', 'item_id');
-        $damagedStocks = DamagedItemStock::whereIn('item_id', $itemIds)->pluck('stock', 'item_id');
+        $regularStocks = ItemStock::where('warehouse_id', $warehouseId)
+            ->whereIn('item_id', $itemIds)
+            ->pluck('stock', 'item_id');
+        $damagedStocks = DamagedItemStock::where('warehouse_id', $warehouseId)
+            ->whereIn('item_id', $itemIds)
+            ->pluck('stock', 'item_id');
 
         foreach ($grouped as $row) {
             $itemId = (int) $row['item_id'];
@@ -769,7 +792,7 @@ class OutboundController extends Controller
             }
 
             if ($item?->is_bundle) {
-                BundleService::assertVirtualStockSufficient($itemId, $qty);
+                BundleService::assertVirtualStockSufficient($itemId, $qty, $warehouseId);
                 continue;
             }
 
@@ -796,6 +819,7 @@ class OutboundController extends Controller
 
             if ($stockSource === 'damaged') {
                 DamagedStockService::mutate([
+                    'warehouse_id' => $tx->warehouse_id ?: Warehouse::defaultId(),
                     'item_id' => $row->item_id,
                     'direction' => 'out',
                     'qty' => $row->qty,
@@ -815,9 +839,13 @@ class OutboundController extends Controller
                 $this->deductBundleComponentsForOutbound($item, $row->qty, $tx, $type, $baseKey);
             } else {
                 StockService::mutate([
+                    'warehouse_id' => $tx->warehouse_id ?: Warehouse::defaultId(),
                     'item_id' => $row->item_id,
+                    'unit_id' => $row->unit_id,
                     'direction' => 'out',
                     'qty' => $row->qty,
+                    'qty_input' => (int) ($row->qty_input ?: $row->qty),
+                    'conversion_qty' => (int) ($row->conversion_qty ?: 1),
                     'source_type' => 'outbound',
                     'source_subtype' => $type,
                     'source_id' => $tx->id,
@@ -835,7 +863,8 @@ class OutboundController extends Controller
     {
         $components = ItemBundle::where('bundle_item_id', $item->id)->lockForUpdate()->get();
 
-        BundleService::assertVirtualStockSufficient($item->id, $bundleQty);
+        $warehouseId = (int) ($tx->warehouse_id ?: Warehouse::defaultId());
+        BundleService::assertVirtualStockSufficient($item->id, $bundleQty, $warehouseId);
 
         foreach ($components as $index => $component) {
             $componentQty = $bundleQty * (int) $component->qty;
@@ -844,6 +873,7 @@ class OutboundController extends Controller
                 : StockService::idempotencyKey([$baseKey, 'comp', $component->component_item_id]);
 
             StockService::mutate([
+                'warehouse_id' => $warehouseId,
                 'item_id' => $component->component_item_id,
                 'direction' => 'out',
                 'qty' => $componentQty,
@@ -864,20 +894,40 @@ class OutboundController extends Controller
         $validated = $request->validate([
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_id' => ['required', 'integer', 'exists:items,id'],
+            'items.*.unit_id' => ['nullable', 'integer', 'exists:item_units,id'],
             'items.*.qty' => ['required', 'integer', 'min:1'],
             'items.*.stock_source' => ['nullable', 'in:regular,damaged'],
             'items.*.note' => ['nullable', 'string'],
             'ref_no' => ['nullable', 'string', 'max:100'],
             'note' => ['nullable', 'string'],
             'transacted_at' => ['required', 'date'],
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
         ]);
+        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
 
         $items = collect($validated['items'] ?? [])
             ->filter(fn ($row) => (int) ($row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)
             ->map(function ($row) {
+                $qtyInput = (int) ($row['qty'] ?? 0);
+                $unitId = (int) ($row['unit_id'] ?? 0);
+                $conversionQty = 1;
+                if ($unitId > 0) {
+                    $unit = ItemUnit::whereKey($unitId)
+                        ->where('item_id', (int) $row['item_id'])
+                        ->first();
+                    if (!$unit) {
+                        throw ValidationException::withMessages([
+                            'items' => 'Satuan item outbound tidak valid.',
+                        ]);
+                    }
+                    $conversionQty = (int) $unit->conversion_qty;
+                }
                 return [
                     'item_id' => (int) $row['item_id'],
-                    'qty' => (int) $row['qty'],
+                    'unit_id' => $unitId ?: null,
+                    'qty_input' => $qtyInput,
+                    'conversion_qty' => $conversionQty,
+                    'qty' => $qtyInput * $conversionQty,
                     'stock_source' => in_array($row['stock_source'] ?? null, ['regular', 'damaged'], true) ? $row['stock_source'] : 'regular',
                     'note' => $row['note'] ?? null,
                 ];
@@ -904,6 +954,9 @@ class OutboundController extends Controller
                 $note = $rows->pluck('note')->first(fn ($n) => $n !== null && $n !== '') ?? null;
                 return [
                     'item_id' => (int) $first['item_id'],
+                    'unit_id' => $first['unit_id'] ?? null,
+                    'qty_input' => $rows->sum('qty_input'),
+                    'conversion_qty' => $first['conversion_qty'] ?? 1,
                     'qty' => $qty,
                     'stock_source' => $first['stock_source'],
                     'note' => $note,

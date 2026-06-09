@@ -12,6 +12,9 @@ class OutboundItem extends Model
     protected $fillable = [
         'outbound_transaction_id',
         'item_id',
+        'unit_id',
+        'qty_input',
+        'conversion_qty',
         'stock_source',
         'qty',
         'note',
@@ -25,5 +28,10 @@ class OutboundItem extends Model
     public function item()
     {
         return $this->belongsTo(Item::class, 'item_id');
+    }
+
+    public function unit()
+    {
+        return $this->belongsTo(ItemUnit::class, 'unit_id');
     }
 }

@@ -19,6 +19,12 @@
         </div>
         <div class="card-toolbar">
             <div class="d-flex align-items-center gap-2">
+                <select class="form-select form-select-solid w-200px" id="filter_warehouse">
+                    <option value="">Semua Gudang</option>
+                    @foreach($warehouses as $warehouse)
+                        <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                    @endforeach
+                </select>
                 <input type="text" class="form-control form-control-solid w-150px" id="filter_date_from" placeholder="Dari" />
                 <input type="text" class="form-control form-control-solid w-150px" id="filter_date_to" placeholder="Sampai" />
                 <button type="button" class="btn btn-light" id="filter_apply">Filter</button>
@@ -34,9 +40,12 @@
                         <th>ID</th>
                         <th>Tanggal</th>
                         <th>Item</th>
+                        <th>Gudang</th>
                         <th>Submit By</th>
                         <th>Arah</th>
                         <th>Qty</th>
+                        <th>Stok Sebelum</th>
+                        <th>Stok Sesudah</th>
                         <th>Sumber</th>
                         <th>Kode</th>
                         <th>Catatan</th>
@@ -83,7 +92,11 @@
                         <div class="fw-bold text-gray-600">Item</div>
                         <div id="mutation_item">-</div>
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-3">
+                        <div class="fw-bold text-gray-600">Gudang</div>
+                        <div id="mutation_warehouse">-</div>
+                    </div>
+                    <div class="col-md-3">
                         <div class="fw-bold text-gray-600">Arah</div>
                         <div id="mutation_direction">-</div>
                     </div>
@@ -95,6 +108,10 @@
                         <div class="fw-bold text-gray-600">Sumber</div>
                         <div id="mutation_source">-</div>
                     </div>
+                </div>
+                <div class="row mb-6">
+                    <div class="col-md-4"><div class="fw-bold text-gray-600">Stok Sebelum</div><div id="mutation_stock_before">-</div></div>
+                    <div class="col-md-4"><div class="fw-bold text-gray-600">Stok Sesudah</div><div id="mutation_stock_after">-</div></div>
                 </div>
                 <div class="row mb-6">
                     <div class="col-md-4">
@@ -167,6 +184,7 @@
         const dateToEl = document.getElementById('filter_date_to');
         const filterApplyBtn = document.getElementById('filter_apply');
         const filterResetBtn = document.getElementById('filter_reset');
+        const warehouseEl = document.getElementById('filter_warehouse');
         let fpFrom = null;
         let fpTo = null;
 
@@ -194,6 +212,7 @@
                 dataSrc: 'data',
                 data: function(params) {
                     params.q = searchInput?.value || '';
+                    if (warehouseEl?.value) params.warehouse_id = warehouseEl.value;
                     if (dateFromEl?.value) params.date_from = dateFromEl.value;
                     if (dateToEl?.value) params.date_to = dateToEl.value;
                 }
@@ -202,9 +221,12 @@
                 { data: 'id' },
                 { data: 'occurred_at' },
                 { data: 'item' },
+                { data: 'warehouse' },
                 { data: 'user' },
                 { data: 'direction' },
-                { data: 'qty' },
+                { data: 'qty', render: (v,t,r) => r.unit ? `${r.qty_input} ${r.unit} (${v} dasar)` : v },
+                { data: 'stock_before', render: v => v ?? '-' },
+                { data: 'stock_after', render: v => v ?? '-' },
                 { data: 'source' },
                 { data: 'source_code' },
                 { data: 'note' },
@@ -236,9 +258,11 @@
         const reloadTable = () => dt.ajax.reload();
         searchInput?.addEventListener('keyup', reloadTable);
         filterApplyBtn?.addEventListener('click', reloadTable);
+        warehouseEl?.addEventListener('change', reloadTable);
         filterResetBtn?.addEventListener('click', () => {
             if (fpFrom) fpFrom.clear(); else if (dateFromEl) dateFromEl.value = '';
             if (fpTo) fpTo.clear(); else if (dateToEl) dateToEl.value = '';
+            if (warehouseEl) warehouseEl.value = '';
             reloadTable();
         });
 
@@ -264,8 +288,11 @@
                 setText('mutation_id', m.id);
                 setText('mutation_date', m.occurred_at);
                 setText('mutation_item', m.item);
+                setText('mutation_warehouse', m.warehouse);
                 setText('mutation_direction', m.direction);
                 setText('mutation_qty', m.qty);
+                setText('mutation_stock_before', m.stock_before);
+                setText('mutation_stock_after', m.stock_after);
                 setText('mutation_source', m.source);
                 setText('mutation_source_code', m.source_code);
                 setText('mutation_note', m.note);

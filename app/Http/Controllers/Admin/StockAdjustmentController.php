@@ -7,6 +7,7 @@ use App\Models\Item;
 use App\Models\StockAdjustment;
 use App\Models\StockAdjustmentItem;
 use App\Models\StockMutation;
+use App\Models\Warehouse;
 use App\Imports\StockAdjustmentsImport;
 use App\Support\StockService;
 use Illuminate\Http\Request;
@@ -22,19 +23,21 @@ class StockAdjustmentController extends Controller
     public function index()
     {
         $items = Item::orderBy('name')->get(['id', 'sku', 'name']);
+        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']);
 
         return view('admin.inventory.stock-adjustments.index', [
             'items' => $items,
             'dataUrl' => route('admin.inventory.stock-adjustments.data'),
             'storeUrl' => route('admin.inventory.stock-adjustments.store'),
             'importUrl' => route('admin.inventory.stock-adjustments.import'),
+            'warehouses' => $warehouses,
         ]);
     }
 
     public function data(Request $request)
     {
         $query = StockAdjustment::query()
-            ->with(['items.item', 'creator'])
+            ->with(['items.item', 'creator', 'warehouse'])
             ->orderBy('transacted_at', 'desc');
 
         $search = trim((string) $request->input('q', ''));
@@ -80,6 +83,7 @@ class StockAdjustmentController extends Controller
                 'code' => $row->code,
                 'transacted_at' => $ts,
                 'submit_by' => $row->creator?->name ?? '-',
+                'warehouse' => $row->warehouse?->name ?? '-',
                 'item' => $itemLabel ?: '-',
                 'qty_in' => $totalIn,
                 'qty_out' => $totalOut,
@@ -106,6 +110,7 @@ class StockAdjustmentController extends Controller
         DB::beginTransaction();
         try {
             $adjustment = StockAdjustment::create([
+                'warehouse_id' => $validated['warehouse_id'],
                 'code' => $code,
                 'note' => $validated['note'] ?? null,
                 'transacted_at' => $transactedAt,
@@ -218,6 +223,7 @@ class StockAdjustmentController extends Controller
             'code' => $adjustment->code,
             'note' => $adjustment->note,
             'status' => $adjustment->status ?? 'pending',
+            'warehouse_id' => $adjustment->warehouse_id ?: Warehouse::defaultId(),
             'transacted_at' => $adjustment->transacted_at?->format('Y-m-d H:i'),
             'items' => $adjustment->items->map(function ($row) {
                 return [
@@ -266,6 +272,7 @@ class StockAdjustmentController extends Controller
             StockAdjustmentItem::where('stock_adjustment_id', $adjustment->id)->delete();
 
             $adjustment->update([
+                'warehouse_id' => $validated['warehouse_id'],
                 'note' => $validated['note'] ?? null,
                 'transacted_at' => $validated['transacted_at'] ?? now(),
             ]);
@@ -365,6 +372,7 @@ class StockAdjustmentController extends Controller
         $adjustment->loadMissing('items');
         foreach ($adjustment->items as $row) {
             StockService::mutate([
+                'warehouse_id' => $adjustment->warehouse_id ?: Warehouse::defaultId(),
                 'item_id' => $row->item_id,
                 'direction' => $row->direction,
                 'qty' => $row->qty,
@@ -390,7 +398,9 @@ class StockAdjustmentController extends Controller
             'items.*.note' => ['nullable', 'string'],
             'note' => ['nullable', 'string'],
             'transacted_at' => ['required', 'date'],
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
         ]);
+        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
 
         $items = collect($validated['items'] ?? [])
             ->filter(fn ($row) => (int) ($row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)

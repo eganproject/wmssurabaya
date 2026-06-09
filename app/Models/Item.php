@@ -31,7 +31,28 @@ class Item extends Model
 
     public function stock()
     {
-        return $this->hasOne(ItemStock::class, 'item_id');
+        return $this->hasOne(ItemStock::class, 'item_id')
+            ->where('warehouse_id', Warehouse::defaultId());
+    }
+
+    public function stocks()
+    {
+        return $this->hasMany(ItemStock::class, 'item_id');
+    }
+
+    public function units()
+    {
+        return $this->hasMany(ItemUnit::class);
+    }
+
+    public function warehouseSettings()
+    {
+        return $this->hasMany(ItemWarehouseSetting::class);
+    }
+
+    public function baseUnit()
+    {
+        return $this->hasOne(ItemUnit::class)->where('is_base', true);
     }
 
     /** Components that make up this bundle (only meaningful when is_bundle = true). */

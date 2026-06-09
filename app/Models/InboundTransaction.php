@@ -10,6 +10,7 @@ class InboundTransaction extends Model
     use HasFactory;
 
     protected $fillable = [
+        'warehouse_id',
         'code',
         'type',
         'ref_no',
@@ -29,6 +30,13 @@ class InboundTransaction extends Model
         'finalized_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        static::creating(function (InboundTransaction $transaction) {
+            $transaction->warehouse_id ??= Warehouse::defaultId();
+        });
+    }
+
     public function items()
     {
         return $this->hasMany(InboundItem::class, 'inbound_transaction_id');
@@ -47,5 +55,10 @@ class InboundTransaction extends Model
     public function finalizer()
     {
         return $this->belongsTo(User::class, 'finalized_by');
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 }

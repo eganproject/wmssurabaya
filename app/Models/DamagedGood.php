@@ -10,6 +10,7 @@ class DamagedGood extends Model
     use HasFactory;
 
     protected $fillable = [
+        'warehouse_id',
         'code',
         'source_type',
         'source_ref',
@@ -45,5 +46,10 @@ class DamagedGood extends Model
     public function inboundTransaction()
     {
         return $this->belongsTo(InboundTransaction::class, 'inbound_transaction_id');
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 }
