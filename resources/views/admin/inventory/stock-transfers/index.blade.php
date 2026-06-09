@@ -13,36 +13,70 @@
 @section('content')
 <div class="card">
     <div class="card-header border-0 pt-6">
-        <div class="card-title d-flex flex-wrap gap-3">
-            <input class="form-control form-control-solid w-250px" id="transfer_search" placeholder="Kode, gudang, SKU, atau item">
-            <select class="form-select form-select-solid w-200px" id="transfer_status_filter">
-                <option value="">Semua Status</option>
-                <option value="draft">Draft</option>
-                <option value="shipped">Dalam Pengiriman</option>
-                <option value="received">Diterima Lengkap</option>
-                <option value="received_with_discrepancy">Diterima Berselisih</option>
-                <option value="cancelled">Dibatalkan</option>
-            </select>
-            <select class="form-select form-select-solid w-200px" id="transfer_warehouse_filter">
-                <option value="">Semua Gudang</option>
-                @foreach($warehouses as $warehouse)
-                    <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
-                @endforeach
-            </select>
+        <div class="card-title">
+            <div class="d-flex align-items-center position-relative my-1">
+                <i class="fa-solid fa-magnifying-glass position-absolute ms-5 text-gray-500"></i>
+                <input type="text" class="form-control form-control-solid w-250px ps-14" id="transfer_search" placeholder="Cari transfer stok" />
+            </div>
         </div>
-        @if($canCreate)
-            <div class="card-toolbar"><button class="btn btn-primary" id="transfer_add">Buat Transfer</button></div>
-        @endif
+        <div class="card-toolbar">
+            <div class="d-flex justify-content-end align-items-center gap-2">
+                <button type="button" class="btn btn-light-primary" data-kt-menu-trigger="click" data-kt-menu-placement="bottom-end">
+                    <i class="fa-solid fa-filter"></i> Filter
+                </button>
+                <div class="menu menu-sub menu-sub-dropdown w-300px w-md-325px" data-kt-menu="true" data-kt-menu-dismiss="false">
+                    <div class="px-7 py-5"><div class="fs-5 text-dark fw-bolder">Filter Transfer</div></div>
+                    <div class="separator border-gray-200"></div>
+                    <div class="px-7 py-5">
+                        <div class="mb-7">
+                            <label class="form-label fs-6 fw-bold">Status</label>
+                            <select class="form-select form-select-solid" id="transfer_status_filter">
+                                <option value="">Semua Status</option>
+                                <option value="draft">Draft</option>
+                                <option value="shipped">Dalam Pengiriman</option>
+                                <option value="received">Diterima Lengkap</option>
+                                <option value="received_with_discrepancy">Diterima Berselisih</option>
+                                <option value="cancelled">Dibatalkan</option>
+                            </select>
+                        </div>
+                        <div class="mb-7">
+                            <label class="form-label fs-6 fw-bold">Gudang</label>
+                            <select class="form-select form-select-solid" id="transfer_warehouse_filter">
+                                <option value="">Semua Gudang</option>
+                                @foreach($warehouses as $warehouse)
+                                    <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="d-flex justify-content-end">
+                            <button type="button" class="btn btn-light btn-active-light-primary me-2" id="transfer_filter_reset">Reset</button>
+                            <button type="button" class="btn btn-primary" id="transfer_filter_apply">Terapkan</button>
+                        </div>
+                    </div>
+                </div>
+                @if($canCreate)
+                    <button type="button" class="btn btn-primary" id="transfer_add">
+                        <i class="fa-solid fa-plus"></i> Buat Transfer
+                    </button>
+                @endif
+            </div>
+        </div>
     </div>
-    <div class="card-body">
-        <div class="alert alert-light-primary mb-6">
-            Transfer dari Gudang Besar dikirim dalam koli. Jika tujuannya Gudang Kecil, penerimaan dihitung dalam satuan dasar
-            (PCS/SET), sehingga selisih sebagian isi koli tetap dapat dicatat.
+    <div class="card-body py-6">
+        <div class="notice d-flex bg-light-primary rounded border-primary border border-dashed p-6 mb-7">
+            <i class="fa-solid fa-circle-info fs-2x text-primary me-4"></i>
+            <div class="d-flex flex-stack flex-grow-1">
+                <div class="fw-semibold">
+                    <div class="fs-6 text-gray-700">
+                        Gudang Besar mengirim dalam koli. Penerimaan di Gudang Kecil dihitung dalam PCS/SET agar selisih sebagian isi koli dapat dicatat.
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="table-responsive">
-            <table class="table table-row-dashed align-middle" id="transfer_table">
+            <table class="table align-middle table-row-dashed fs-6 gy-5" id="transfer_table">
                 <thead>
-                    <tr>
+                    <tr class="text-start text-gray-400 fw-bolder fs-7 text-uppercase gs-0">
                         <th>Kode / Tanggal</th>
                         <th>Rute</th>
                         <th>Item</th>
@@ -62,43 +96,63 @@
 
 <div class="modal fade" id="transfer_modal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered mw-1000px">
-        <form class="modal-content" id="transfer_form">
-            @csrf
-            <div class="modal-header"><h3 id="transfer_modal_title">Buat Transfer</h3><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body">
-                <div class="row mb-5">
-                    <div class="col-md-4"><label class="required form-label">Gudang Asal</label><select class="form-select" id="transfer_source" required>@foreach($warehouses as $w)<option value="{{ $w->id }}">{{ $w->name }}</option>@endforeach</select></div>
-                    <div class="col-md-4"><label class="required form-label">Gudang Tujuan</label><select class="form-select" id="transfer_destination" required>@foreach($warehouses as $w)<option value="{{ $w->id }}">{{ $w->name }}</option>@endforeach</select></div>
-                    <div class="col-md-4"><label class="required form-label">Tanggal</label><input type="datetime-local" class="form-control" id="transfer_date" required></div>
-                </div>
-                <div class="mb-5"><label class="form-label">Catatan Transfer</label><textarea class="form-control" id="transfer_note" rows="2"></textarea></div>
-                <div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-1">Item Transfer</h5><span class="text-muted fs-7">Qty mengikuti satuan kirim; nilai PCS dihitung otomatis.</span></div><button type="button" class="btn btn-sm btn-light-primary" id="transfer_add_item">Tambah Item</button></div>
-                <div id="transfer_items"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="fw-bolder" id="transfer_modal_title">Buat Transfer</h2>
+                <button type="button" class="btn btn-icon btn-sm btn-active-icon-primary" data-bs-dismiss="modal"><i class="fa-solid fa-xmark fs-2"></i></button>
             </div>
-            <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button><button class="btn btn-primary">Simpan Draft</button></div>
-        </form>
+            <div class="modal-body scroll-y mx-5 mx-xl-10 my-7">
+                <form class="form" id="transfer_form">
+                    @csrf
+                    <div class="row g-4 mb-7">
+                        <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Gudang Asal</label><select class="form-select form-select-solid" id="transfer_source" required>@foreach($warehouses as $w)<option value="{{ $w->id }}">{{ $w->name }}</option>@endforeach</select></div>
+                        <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Gudang Tujuan</label><select class="form-select form-select-solid" id="transfer_destination" required>@foreach($warehouses as $w)<option value="{{ $w->id }}">{{ $w->name }}</option>@endforeach</select></div>
+                        <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Tanggal Transfer</label><input type="text" class="form-control form-control-solid" id="transfer_date" required></div>
+                    </div>
+                    <div class="fv-row mb-7"><label class="fs-6 fw-bold form-label mb-2">Catatan Transfer</label><textarea class="form-control form-control-solid" id="transfer_note" rows="3"></textarea></div>
+                    <div class="separator mb-7"></div>
+                    <div class="d-flex justify-content-between align-items-center mb-5"><div><h5 class="fw-bolder mb-1">Item Transfer</h5><span class="text-muted fs-7">Qty mengikuti satuan kirim dan dikonversi otomatis ke satuan dasar.</span></div><button type="button" class="btn btn-sm btn-light-primary" id="transfer_add_item"><i class="fa-solid fa-plus"></i> Tambah Item</button></div>
+                    <div id="transfer_items"></div>
+                    <div class="text-end pt-5">
+                        <button type="button" class="btn btn-light me-3" data-bs-dismiss="modal">Batal</button>
+                        <button type="submit" class="btn btn-primary" id="transfer_submit">
+                            <span class="indicator-label">Simpan Draft</span>
+                            <span class="indicator-progress">Menyimpan... <span class="spinner-border spinner-border-sm align-middle ms-2"></span></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
 
 <div class="modal fade" id="receive_modal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered mw-1000px">
-        <form class="modal-content" id="receive_form">
-            <div class="modal-header"><div><h3 class="mb-1">Konfirmasi Penerimaan</h3><div class="text-muted" id="receive_route"></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body">
+        <div class="modal-content">
+            <div class="modal-header"><div><h2 class="fw-bolder mb-1">Konfirmasi Penerimaan</h2><div class="text-muted" id="receive_route"></div></div><button type="button" class="btn btn-icon btn-sm btn-active-icon-primary" data-bs-dismiss="modal"><i class="fa-solid fa-xmark fs-2"></i></button></div>
+            <div class="modal-body scroll-y mx-5 mx-xl-10 my-7">
+              <form class="form" id="receive_form">
                 <div class="alert alert-light-info" id="receive_instruction"></div>
                 <div id="receive_items"></div>
-                <div class="mt-5"><label class="form-label">Catatan Selisih Umum</label><textarea class="form-control" id="receive_note" rows="2" placeholder="Opsional jika alasan sudah dijelaskan per item"></textarea></div>
+                <div class="fv-row mt-7"><label class="fs-6 fw-bold form-label mb-2">Catatan Selisih Umum</label><textarea class="form-control form-control-solid" id="receive_note" rows="3" placeholder="Opsional jika alasan sudah dijelaskan per item"></textarea></div>
+                <div class="text-end pt-7">
+                    <button type="button" class="btn btn-light me-3" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-success" id="receive_submit">
+                        <span class="indicator-label">Simpan Penerimaan</span>
+                        <span class="indicator-progress">Menyimpan... <span class="spinner-border spinner-border-sm align-middle ms-2"></span></span>
+                    </button>
+                </div>
+              </form>
             </div>
-            <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button><button class="btn btn-success">Simpan Penerimaan</button></div>
-        </form>
+        </div>
     </div>
 </div>
 
 <div class="modal fade" id="detail_modal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered mw-1000px">
         <div class="modal-content">
-            <div class="modal-header"><div><h3 class="mb-1" id="detail_code">Detail Transfer</h3><div class="text-muted" id="detail_route"></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body" id="detail_content"></div>
+            <div class="modal-header"><div><h2 class="fw-bolder mb-1" id="detail_code">Detail Transfer</h2><div class="text-muted" id="detail_route"></div></div><button type="button" class="btn btn-icon btn-sm btn-active-icon-primary" data-bs-dismiss="modal"><i class="fa-solid fa-xmark fs-2"></i></button></div>
+            <div class="modal-body scroll-y mx-5 mx-xl-10 my-7" id="detail_content"></div>
             <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Tutup</button></div>
         </div>
     </div>
@@ -125,8 +179,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const transferModal = new bootstrap.Modal(document.getElementById('transfer_modal'));
     const receiveModal = new bootstrap.Modal(document.getElementById('receive_modal'));
     const detailModal = new bootstrap.Modal(document.getElementById('detail_modal'));
+    const transferSubmit = document.getElementById('transfer_submit');
+    const receiveSubmit = document.getElementById('receive_submit');
+    const transferDate = document.getElementById('transfer_date');
     let editId = null;
     let receiveId = null;
+    let transferDatePicker = null;
 
     const statusLabels = {
         draft: ['Draft', 'secondary'],
@@ -143,8 +201,59 @@ document.addEventListener('DOMContentLoaded', () => {
     const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
     const errorMessage = json => Object.values(json.errors || {}).flat().join('\n') || json.message || 'Terjadi kesalahan';
     const showUrl = (template, id) => template.replace(':id', id);
+    const notify = (title, text, icon = 'info') => {
+        if (typeof Swal !== 'undefined') return Swal.fire(title, text, icon);
+        window.alert(text);
+    };
+    const confirmAction = async (title, text, confirmButtonText, icon = 'question') => {
+        if (typeof Swal === 'undefined') return window.confirm(text);
+        const result = await Swal.fire({
+            title,
+            text,
+            icon,
+            showCancelButton: true,
+            confirmButtonText,
+            cancelButtonText: 'Batal',
+            buttonsStyling: false,
+            customClass: {
+                confirmButton: icon === 'warning' ? 'btn btn-danger' : 'btn btn-primary',
+                cancelButton: 'btn btn-light ms-3',
+            },
+        });
+        return result.isConfirmed;
+    };
+    const setLoading = (button, loading) => {
+        if (!button) return;
+        button.disabled = loading;
+        button.setAttribute('data-kt-indicator', loading ? 'on' : 'off');
+    };
+    const initSelect2 = (element, dropdownParent = null, placeholder = null) => {
+        if (!element || typeof $ === 'undefined' || !$.fn.select2) return;
+        if ($(element).hasClass('select2-hidden-accessible')) $(element).select2('destroy');
+        $(element).select2({
+            width: '100%',
+            dropdownParent: dropdownParent ? $(dropdownParent) : undefined,
+            placeholder: placeholder || undefined,
+        });
+    };
+    const refreshMenus = () => window.KTMenu?.createInstances();
+
+    initSelect2(document.getElementById('transfer_status_filter'));
+    initSelect2(document.getElementById('transfer_warehouse_filter'));
+    initSelect2(document.getElementById('transfer_source'), document.getElementById('transfer_modal'));
+    initSelect2(document.getElementById('transfer_destination'), document.getElementById('transfer_modal'));
+    if (typeof flatpickr !== 'undefined' && transferDate) {
+        transferDatePicker = flatpickr(transferDate, {
+            enableTime: true,
+            dateFormat: 'Y-m-d H:i',
+            allowInput: true,
+        });
+    }
 
     const table = $('#transfer_table').DataTable({
+        processing: true,
+        serverSide: false,
+        dom: 'rtip',
         ajax: {
             url: urls.data,
             data: data => {
@@ -166,20 +275,27 @@ document.addEventListener('DOMContentLoaded', () => {
             }},
             {data: 'status', render: badge},
             {data: 'creator'},
-            {data: null, className: 'text-end', orderable: false, render: row => {
-                const actions = [`<button class="btn btn-sm btn-light-info detail me-1" data-id="${row.id}">Detail</button>`];
+            {data: null, className: 'text-end', orderable: false, searchable: false, render: row => {
+                const actions = [`<div class="menu-item px-3"><a href="#" class="menu-link px-3 detail" data-id="${row.id}">Detail</a></div>`];
                 if (row.status === 'draft' && canUpdate) {
-                    actions.push(`<button class="btn btn-sm btn-light-primary edit me-1" data-id="${row.id}">Edit</button>`);
-                    actions.push(`<button class="btn btn-sm btn-primary ship me-1" data-id="${row.id}">Kirim</button>`);
+                    actions.push(`<div class="menu-item px-3"><a href="#" class="menu-link px-3 edit" data-id="${row.id}">Edit</a></div>`);
+                    actions.push(`<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-primary ship" data-id="${row.id}">Kirim</a></div>`);
                 }
-                if (row.status === 'draft' && canDelete) actions.push(`<button class="btn btn-sm btn-light-danger cancel" data-id="${row.id}">Batal</button>`);
-                if (row.status === 'shipped' && canUpdate) actions.push(`<button class="btn btn-sm btn-success receive" data-id="${row.id}">Terima</button>`);
-                return actions.join('');
+                if (row.status === 'draft' && canDelete) actions.push(`<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-danger cancel" data-id="${row.id}">Batalkan</a></div>`);
+                if (row.status === 'shipped' && canUpdate) actions.push(`<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-success receive" data-id="${row.id}">Konfirmasi Penerimaan</a></div>`);
+                return `<button type="button" class="btn btn-sm btn-light btn-active-light-primary" data-kt-menu-trigger="click" data-kt-menu-placement="bottom-end">Actions</button>
+                    <div class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-600 menu-state-bg-light-primary fw-bold fs-7 w-200px py-3" data-kt-menu="true">${actions.join('')}</div>`;
             }},
         ],
     });
-    [transfer_search, transfer_status_filter, transfer_warehouse_filter].forEach(element => {
-        element.addEventListener(element.tagName === 'INPUT' ? 'keyup' : 'change', () => table.ajax.reload());
+    table.on('draw', refreshMenus);
+    transfer_search.addEventListener('keyup', () => table.ajax.reload());
+    transfer_filter_apply.addEventListener('click', () => table.ajax.reload());
+    transfer_filter_reset.addEventListener('click', () => {
+        transfer_status_filter.value = '';
+        transfer_warehouse_filter.value = '';
+        $('#transfer_status_filter, #transfer_warehouse_filter').trigger('change.select2');
+        table.ajax.reload();
     });
 
     const itemOptions = items.map(item => `<option value="${item.id}">${escapeHtml(item.sku)} - ${escapeHtml(item.name)}</option>`).join('');
@@ -196,16 +312,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const selected = units.find(unit => String(unit.id) === String(unitSelect.value));
         const qty = Number(row.querySelector('.qty').value || 0);
         row.querySelector('.base-preview').textContent = `${qty * Number(selected?.conversion_qty || 0)} satuan dasar`;
+        if ($(unitSelect).hasClass('select2-hidden-accessible')) $(unitSelect).trigger('change.select2');
     }
     function addRow(data = {}) {
         const row = document.createElement('div');
-        row.className = 'border rounded p-4 mb-3 transfer-row';
+        row.className = 'border border-gray-300 border-dashed rounded p-5 mb-5 transfer-row';
         row.innerHTML = `<div class="row g-3 align-items-end">
-            <div class="col-md-4"><label class="required form-label">Item</label><select class="form-select item">${itemOptions}</select></div>
-            <div class="col-md-2"><label class="required form-label">Satuan Kirim</label><select class="form-select unit"></select></div>
-            <div class="col-md-2"><label class="required form-label">Qty Kirim</label><input type="number" min="1" value="1" class="form-control qty"><div class="text-muted fs-8 base-preview"></div></div>
-            <div class="col-md-3"><label class="form-label">Catatan Item</label><input class="form-control item-note" value="${escapeHtml(data.note || '')}"></div>
-            <div class="col-md-1"><button type="button" class="btn btn-icon btn-light-danger remove">×</button></div>
+            <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Item</label><select class="form-select form-select-solid item">${itemOptions}</select></div>
+            <div class="col-md-2"><label class="required fs-6 fw-bold form-label mb-2">Satuan Kirim</label><select class="form-select form-select-solid unit"></select></div>
+            <div class="col-md-2"><label class="required fs-6 fw-bold form-label mb-2">Qty Kirim</label><input type="number" min="1" value="1" class="form-control form-control-solid qty"><div class="text-muted fs-8 mt-1 base-preview"></div></div>
+            <div class="col-md-3"><label class="fs-6 fw-bold form-label mb-2">Catatan Item</label><input class="form-control form-control-solid item-note" value="${escapeHtml(data.note || '')}"></div>
+            <div class="col-md-1 text-end"><button type="button" class="btn btn-icon btn-light-danger remove" title="Hapus item"><i class="fa-solid fa-trash"></i></button></div>
         </div>`;
         transfer_items.appendChild(row);
         if (data.item_id) row.querySelector('.item').value = String(data.item_id);
@@ -215,6 +332,8 @@ document.addEventListener('DOMContentLoaded', () => {
         row.querySelector('.qty').addEventListener('input', () => refreshTransferRow(row));
         row.querySelector('.remove').addEventListener('click', () => row.remove());
         refreshTransferRow(row, data.unit_id);
+        initSelect2(row.querySelector('.item'), document.getElementById('transfer_modal'), 'Pilih item');
+        initSelect2(row.querySelector('.unit'), document.getElementById('transfer_modal'), 'Pilih satuan');
     }
     [transfer_source, transfer_destination].forEach(select => select.addEventListener('change', () => {
         document.querySelectorAll('.transfer-row').forEach(row => refreshTransferRow(row));
@@ -224,8 +343,10 @@ document.addEventListener('DOMContentLoaded', () => {
         editId = null;
         transfer_modal_title.textContent = 'Buat Transfer';
         transfer_form.reset();
+        $('#transfer_source, #transfer_destination').trigger('change.select2');
         transfer_items.innerHTML = '';
-        transfer_date.value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        if (transferDatePicker) transferDatePicker.setDate(new Date(), true);
+        else transferDate.value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16).replace('T', ' ');
         addRow();
         transferModal.show();
     });
@@ -243,15 +364,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 note: row.querySelector('.item-note').value,
             })),
         };
-        const response = await fetch(editId ? showUrl(urls.update, editId) : urls.store, {
-            method: editId ? 'PUT' : 'POST',
-            headers: {'X-CSRF-TOKEN': csrf, 'Content-Type': 'application/json', Accept: 'application/json'},
-            body: JSON.stringify(payload),
-        });
-        const json = await response.json();
-        if (!response.ok) return alert(errorMessage(json));
-        transferModal.hide();
-        table.ajax.reload();
+        setLoading(transferSubmit, true);
+        try {
+            const response = await fetch(editId ? showUrl(urls.update, editId) : urls.store, {
+                method: editId ? 'PUT' : 'POST',
+                headers: {'X-CSRF-TOKEN': csrf, 'Content-Type': 'application/json', Accept: 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            const json = await response.json();
+            if (!response.ok) return notify('Gagal', errorMessage(json), 'error');
+            transferModal.hide();
+            table.ajax.reload();
+            notify('Berhasil', json.message || 'Transfer berhasil disimpan', 'success');
+        } catch (error) {
+            notify('Gagal', 'Tidak dapat menghubungi server', 'error');
+        } finally {
+            setLoading(transferSubmit, false);
+        }
     });
 
     async function getTransfer(id) {
@@ -260,32 +389,45 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!response.ok) throw new Error(errorMessage(json));
         return json;
     }
-    $('#transfer_table').on('click', '.edit', async function() {
+    $('#transfer_table').on('click', '.edit', async function(event) {
+        event.preventDefault();
         try {
             const json = await getTransfer(this.dataset.id);
             editId = json.id;
             transfer_modal_title.textContent = `Edit ${json.code}`;
             transfer_source.value = json.source_warehouse_id;
             transfer_destination.value = json.destination_warehouse_id;
-            transfer_date.value = (json.transacted_at || '').slice(0, 16);
+            $('#transfer_source, #transfer_destination').trigger('change.select2');
+            const editDate = json.transacted_at ? new Date(json.transacted_at) : new Date();
+            if (transferDatePicker) transferDatePicker.setDate(editDate, true);
+            else transfer_date.value = (json.transacted_at || '').slice(0, 16).replace('T', ' ');
             transfer_note.value = json.note || '';
             transfer_items.innerHTML = '';
             (json.items || []).forEach(addRow);
             transferModal.show();
-        } catch (error) { alert(error.message); }
+        } catch (error) { notify('Gagal', error.message, 'error'); }
     });
-    $('#transfer_table').on('click', '.ship,.cancel', async function() {
+    $('#transfer_table').on('click', '.ship,.cancel', async function(event) {
+        event.preventDefault();
         const isShip = this.classList.contains('ship');
-        if (!confirm(isShip ? 'Kirim transfer dan kurangi stok gudang asal?' : 'Batalkan draft transfer?')) return;
+        const confirmed = await confirmAction(
+            isShip ? 'Kirim transfer?' : 'Batalkan transfer?',
+            isShip ? 'Stok gudang asal akan langsung berkurang.' : 'Draft transfer akan dibatalkan.',
+            isShip ? 'Ya, Kirim' : 'Ya, Batalkan',
+            isShip ? 'question' : 'warning'
+        );
+        if (!confirmed) return;
         const response = await fetch(showUrl(isShip ? urls.ship : urls.cancel, this.dataset.id), {
             method: 'POST',
             headers: {'X-CSRF-TOKEN': csrf, Accept: 'application/json'},
         });
         const json = await response.json();
-        if (!response.ok) return alert(errorMessage(json));
+        if (!response.ok) return notify('Gagal', errorMessage(json), 'error');
         table.ajax.reload();
+        notify('Berhasil', json.message || 'Status transfer diperbarui', 'success');
     });
-    $('#transfer_table').on('click', '.receive', async function() {
+    $('#transfer_table').on('click', '.receive', async function(event) {
+        event.preventDefault();
         try {
             const json = await getTransfer(this.dataset.id);
             receiveId = json.id;
@@ -297,20 +439,20 @@ document.addEventListener('DOMContentLoaded', () => {
             receive_items.innerHTML = (json.items || []).map(row => {
                 const receiveUnit = destinationIsBulk ? row.item?.package_unit : row.item?.base_unit;
                 const expectedReceiveQty = destinationIsBulk ? row.qty_input : row.qty_base;
-                return `<div class="border rounded p-4 mb-4 receive-row" data-item-id="${row.item_id}" data-conversion="${receiveUnit?.conversion_qty || 1}" data-sent-base="${row.qty_base}">
+                return `<div class="border border-gray-300 border-dashed rounded p-5 mb-5 receive-row" data-item-id="${row.item_id}" data-conversion="${receiveUnit?.conversion_qty || 1}" data-sent-base="${row.qty_base}">
                     <div class="row g-3 align-items-end">
-                        <div class="col-md-3"><label class="form-label">Item</label><div class="fw-bold">${escapeHtml(row.item?.sku)} - ${escapeHtml(row.item?.name)}</div><div class="text-muted fs-7">${escapeHtml(row.note || '')}</div></div>
-                        <div class="col-md-2"><label class="form-label">Dikirim</label><div>${row.qty_input} ${escapeHtml(row.unit?.name || '')}</div><div class="text-muted fs-7">${row.qty_base} satuan dasar</div></div>
-                        <div class="col-md-2"><label class="required form-label">Diterima (${escapeHtml(receiveUnit?.name || 'UNIT')})</label><input class="form-control received-qty" type="number" min="0" max="${expectedReceiveQty}" value="${expectedReceiveQty}"></div>
-                        <div class="col-md-2"><label class="form-label">Selisih</label><div class="fw-bold discrepancy-preview text-success">0 satuan dasar</div></div>
-                        <div class="col-md-3"><label class="form-label">Alasan Selisih</label><input class="form-control discrepancy" placeholder="Wajib jika ada selisih"></div>
+                        <div class="col-md-3"><label class="fs-6 fw-bold form-label mb-2">Item</label><div class="fw-bold text-gray-800">${escapeHtml(row.item?.sku)} - ${escapeHtml(row.item?.name)}</div><div class="text-muted fs-7">${escapeHtml(row.note || '')}</div></div>
+                        <div class="col-md-2"><label class="fs-6 fw-bold form-label mb-2">Dikirim</label><div class="fw-semibold">${row.qty_input} ${escapeHtml(row.unit?.name || '')}</div><div class="text-muted fs-7">${row.qty_base} satuan dasar</div></div>
+                        <div class="col-md-2"><label class="required fs-6 fw-bold form-label mb-2">Diterima (${escapeHtml(receiveUnit?.name || 'UNIT')})</label><input class="form-control form-control-solid received-qty" type="number" min="0" max="${expectedReceiveQty}" value="${expectedReceiveQty}"></div>
+                        <div class="col-md-2"><label class="fs-6 fw-bold form-label mb-2">Selisih</label><div class="fw-bold discrepancy-preview text-success">0 satuan dasar</div></div>
+                        <div class="col-md-3"><label class="fs-6 fw-bold form-label mb-2">Alasan Selisih</label><input class="form-control form-control-solid discrepancy" placeholder="Wajib jika ada selisih"></div>
                     </div>
                 </div>`;
             }).join('');
             receive_items.querySelectorAll('.received-qty').forEach(input => input.addEventListener('input', updateDiscrepancyPreview));
             receive_note.value = '';
             receiveModal.show();
-        } catch (error) { alert(error.message); }
+        } catch (error) { notify('Gagal', error.message, 'error'); }
     });
     function updateDiscrepancyPreview(event) {
         const row = event.target.closest('.receive-row');
@@ -331,17 +473,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 discrepancy_note: row.querySelector('.discrepancy').value,
             })),
         };
-        const response = await fetch(showUrl(urls.receive, receiveId), {
-            method: 'POST',
-            headers: {'X-CSRF-TOKEN': csrf, 'Content-Type': 'application/json', Accept: 'application/json'},
-            body: JSON.stringify(payload),
-        });
-        const json = await response.json();
-        if (!response.ok) return alert(errorMessage(json));
-        receiveModal.hide();
-        table.ajax.reload();
+        setLoading(receiveSubmit, true);
+        try {
+            const response = await fetch(showUrl(urls.receive, receiveId), {
+                method: 'POST',
+                headers: {'X-CSRF-TOKEN': csrf, 'Content-Type': 'application/json', Accept: 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            const json = await response.json();
+            if (!response.ok) return notify('Gagal', errorMessage(json), 'error');
+            receiveModal.hide();
+            table.ajax.reload();
+            notify('Berhasil', json.message || 'Penerimaan transfer berhasil disimpan', 'success');
+        } catch (error) {
+            notify('Gagal', 'Tidak dapat menghubungi server', 'error');
+        } finally {
+            setLoading(receiveSubmit, false);
+        }
     });
-    $('#transfer_table').on('click', '.detail', async function() {
+    $('#transfer_table').on('click', '.detail', async function(event) {
+        event.preventDefault();
         try {
             const json = await getTransfer(this.dataset.id);
             detail_code.innerHTML = `${escapeHtml(json.code)} ${badge(json.status)}`;
@@ -364,7 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="table-responsive"><table class="table table-row-dashed"><thead><tr><th>Item</th><th>Dikirim</th><th>Diterima</th><th>Selisih Dasar</th><th>Alasan</th></tr></thead><tbody>${itemRows}</tbody></table></div>
                 ${json.discrepancy_note ? `<div class="alert alert-light-danger mt-4"><strong>Catatan selisih umum:</strong> ${escapeHtml(json.discrepancy_note)}</div>` : ''}`;
             detailModal.show();
-        } catch (error) { alert(error.message); }
+        } catch (error) { notify('Gagal', error.message, 'error'); }
     });
 });
 </script>

@@ -362,23 +362,23 @@ class StockTransferController extends Controller
                 }
 
                 if ($qtyReceivedBase > 0) {
-                StockService::mutate([
-                    'warehouse_id' => $transfer->destination_warehouse_id,
-                    'item_id' => $row->item_id,
-                    'unit_id' => $receivedUnit->id,
-                    'direction' => 'in',
-                    'qty' => $qtyReceivedBase,
-                    'qty_input' => $qtyReceivedUnit,
-                    'conversion_qty' => $receivedUnit->conversion_qty,
-                    'source_type' => 'transfer',
-                    'source_subtype' => 'receive',
-                    'source_id' => $transfer->id,
-                    'source_code' => $transfer->code,
-                    'note' => $row->note,
-                    'occurred_at' => now(),
-                    'created_by' => auth()->id(),
-                    'idempotency_key' => StockService::idempotencyKey(['transfer', 'receive', $transfer->id, $row->item_id]),
-                ]);
+                    StockService::mutate([
+                        'warehouse_id' => $transfer->destination_warehouse_id,
+                        'item_id' => $row->item_id,
+                        'unit_id' => $receivedUnit->id,
+                        'direction' => 'in',
+                        'qty' => $qtyReceivedBase,
+                        'qty_input' => $qtyReceivedUnit,
+                        'conversion_qty' => $receivedUnit->conversion_qty,
+                        'source_type' => 'transfer',
+                        'source_subtype' => 'receive',
+                        'source_id' => $transfer->id,
+                        'source_code' => $transfer->code,
+                        'note' => $row->note,
+                        'occurred_at' => now(),
+                        'created_by' => auth()->id(),
+                        'idempotency_key' => StockService::idempotencyKey(['transfer', 'receive', $transfer->id, $row->item_id]),
+                    ]);
                 }
                 $row->update([
                     'qty_received_base' => $qtyReceivedBase,
