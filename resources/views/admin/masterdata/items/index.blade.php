@@ -11,79 +11,87 @@
 @endphp
 
 @section('content')
-<div class="card">
-    <div class="card-header border-0 pt-6">
-        <div class="card-title">
-            <div class="d-flex align-items-center position-relative my-1">
-                <span class="svg-icon svg-icon-1 position-absolute ms-6">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                        <rect opacity="0.5" x="17.0365" y="15.1223" width="8.15546" height="2" rx="1" transform="rotate(45 17.0365 15.1223)" fill="black" />
-                        <path d="M11 19C6.55556 19 3 15.4444 3 11C3 6.55556 6.55556 3 11 3C15.4444 3 19 6.55556 19 11C19 15.4444 15.4444 19 11 19ZM11 5C7.53333 5 5 7.53333 5 11C5 14.4667 7.53333 17 11 17C14.4667 17 17 14.4667 17 11C17 7.53333 14.4667 5 11 5Z" fill="black" />
-                    </svg>
-                </span>
-                <input type="text" class="form-control form-control-solid w-250px ps-14" placeholder="Search items" data-kt-filter="search" />
-            </div>
-        </div>
-        <div class="card-toolbar">
-            <div class="d-flex justify-content-end align-items-center gap-2" data-kt-user-table-toolbar="base">
-                <select class="form-select form-select-solid w-100px" id="filter_items_limit" aria-label="Limit">
-                    <option value="10" selected>10</option>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                </select>
-                <button type="button" class="btn btn-light-primary me-3" data-kt-menu-trigger="click" data-kt-menu-placement="bottom-end">
-                    <span class="svg-icon svg-icon-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                            <path d="M19.0759 3H4.72777C3.95892 3 3.47768 3.83148 3.86067 4.49814L8.56967 12.6949C9.17923 13.7559 9.5 14.9582 9.5 16.1819V19.5072C9.5 20.2189 10.2223 20.7028 10.8805 20.432L13.8805 19.1977C14.2553 19.0435 14.5 18.6783 14.5 18.273V13.8372C14.5 12.8089 14.8171 11.8056 15.408 10.964L19.8943 4.57465C20.3596 3.912 19.8856 3 19.0759 3Z" fill="black" />
-                        </svg>
-                    </span>
-                    Filter
-                </button>
-                <div class="menu menu-sub menu-sub-dropdown w-300px w-md-325px" data-kt-menu="true" data-kt-menu-dismiss="false">
-                    <div class="px-7 py-5">
-                        <div class="fs-5 text-dark fw-bolder">Filter Options</div>
-                    </div>
-                    <div class="separator border-gray-200"></div>
-                    <div class="px-7 py-5">
-                        <div class="mb-10">
-                            <label class="form-label fs-6 fw-bold">Category:</label>
-                            <select id="filter_item_category" class="form-select form-select-solid fw-bolder" data-placeholder="Select option" data-allow-clear="true">
-                                <option value="">Semua</option>
-                                <option value="0">Tanpa Kategori</option>
-                                @foreach($categories as $c)
-                                    <option value="{{ $c->id }}">{{ $c->name }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="d-flex justify-content-end">
-                            <button type="button" class="btn btn-light btn-active-light-primary me-2" id="filter_items_reset">Reset</button>
-                            <button type="button" class="btn btn-primary" id="filter_items_apply">Apply</button>
-                        </div>
-                    </div>
-                </div>
-                @if($canCreate)
-                    <button type="button" class="btn btn-light-primary me-3" id="btn_import_items" data-bs-toggle="modal" data-bs-target="#modal_import_items">Import Excel</button>
-                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal_item_form" id="btn_open_create_item">
-                        Add Item
-                    </button>
-                @endif
-            </div>
+<style>
+    .items-toolbar { gap: .75rem; }
+    .items-toolbar .items-search { min-width: 260px; flex: 1 1 340px; }
+    .items-table tbody tr { transition: background-color .15s ease; }
+    .items-table tbody tr:hover { background: #f8fafc; }
+    .items-table td { padding-top: 1.15rem !important; padding-bottom: 1.15rem !important; }
+    .item-primary { min-width: 260px; }
+    .item-name { font-size: 1rem; line-height: 1.35; color: #181c32; }
+    .item-secondary { color: #5e6278; font-size: .84rem; line-height: 1.45; }
+    .item-description { max-width: 360px; color: #5e6278; line-height: 1.5; }
+    .warehouse-info { min-width: 210px; }
+    .table-action-button { white-space: nowrap; }
+    @media (max-width: 991.98px) {
+        .items-toolbar > * { flex: 1 1 200px; }
+    }
+    @media (max-width: 575.98px) {
+        .items-toolbar > * { width: 100% !important; max-width: none !important; flex-basis: 100%; }
+        .items-toolbar .btn { justify-content: center; }
+    }
+</style>
+
+<div class="card card-flush">
+    <div class="card-header border-0 pt-6 pb-3">
+        <div class="card-title d-block">
+            <h2 class="fw-bolder text-gray-900 mb-1">Master Item</h2>
+            <div class="text-muted fs-7">Kelola identitas item, kategori, dan pengaturan penyimpanan gudang.</div>
         </div>
     </div>
-    <div class="card-body py-6">
+    <div class="card-body pt-2">
+        <div class="d-flex flex-wrap align-items-center items-toolbar mb-6" data-kt-user-table-toolbar="base">
+            <div class="position-relative items-search">
+                <i class="fas fa-search position-absolute top-50 translate-middle-y ms-5 text-gray-500"></i>
+                <input type="text" class="form-control form-control-solid ps-12" placeholder="Cari SKU, nama, lokasi, atau deskripsi..." data-kt-filter="search" />
+            </div>
+            <select class="form-select form-select-solid w-125px" id="filter_items_limit" aria-label="Jumlah data">
+                <option value="10" selected>10 baris</option>
+                <option value="25">25 baris</option>
+                <option value="50">50 baris</option>
+                <option value="100">100 baris</option>
+            </select>
+            <button type="button" class="btn btn-light-primary" data-kt-menu-trigger="click" data-kt-menu-placement="bottom-end">
+                <i class="fas fa-filter me-2"></i>Filter
+            </button>
+            <div class="menu menu-sub menu-sub-dropdown w-300px w-md-325px" data-kt-menu="true" data-kt-menu-dismiss="false">
+                <div class="px-7 py-5"><div class="fs-5 text-dark fw-bolder">Filter Item</div></div>
+                <div class="separator border-gray-200"></div>
+                <div class="px-7 py-5">
+                    <div class="mb-7">
+                        <label class="form-label fs-6 fw-bold">Kategori</label>
+                        <select id="filter_item_category" class="form-select form-select-solid fw-bolder" data-placeholder="Semua kategori" data-allow-clear="true">
+                            <option value="">Semua</option>
+                            <option value="0">Tanpa Kategori</option>
+                            @foreach($categories as $c)
+                                <option value="{{ $c->id }}">{{ $c->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button type="button" class="btn btn-light btn-active-light-primary me-2" id="filter_items_reset">Reset</button>
+                        <button type="button" class="btn btn-primary" id="filter_items_apply">Terapkan</button>
+                    </div>
+                </div>
+            </div>
+            @if($canCreate)
+                <button type="button" class="btn btn-light-primary" id="btn_import_items" data-bs-toggle="modal" data-bs-target="#modal_import_items">
+                    <i class="fas fa-file-import me-2"></i>Import Excel
+                </button>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal_item_form" id="btn_open_create_item">
+                    <i class="fas fa-plus me-2"></i>Tambah Item
+                </button>
+            @endif
+        </div>
+
         <div class="table-responsive">
-            <table class="table align-middle table-row-dashed fs-6 gy-5" id="items_table">
+            <table class="table align-middle table-row-dashed items-table fs-6 gy-4" id="items_table">
                 <thead>
-                    <tr class="text-start text-gray-400 fw-bolder fs-7 text-uppercase gs-0">
+                    <tr class="text-start text-gray-600 fw-bolder fs-7 text-uppercase gs-0">
                         <th>No</th>
-                        <th>SKU</th>
-                        <th>Nama</th>
-                        <th>Tipe</th>
-                        <th>Kategori</th>
-                        <th>Lokasi Gudang Kecil</th>
-                        <th>Deskripsi</th>
-                        <th class="text-end">Safety Stock Gudang Kecil</th>
+                        <th>Identitas Item</th>
+                        <th>Kategori & Deskripsi</th>
+                        <th>Pengaturan Gudang Kecil</th>
                         <th class="text-end">Aksi</th>
                     </tr>
                 </thead>
@@ -424,6 +432,7 @@
             .replace(/[^a-z0-9\-_]+/gi, '-')
             .replace(/^-+|-+$/g, '')
             .slice(0, 80) || 'sku';
+        const escapeHtml = (value) => $('<div>').text(value ?? '').html();
         const escapeAttr = (value) => String(value ?? '')
             .replace(/&/g, '&amp;')
             .replace(/"/g, '&quot;')
@@ -566,29 +575,52 @@
             },
             columns: [
                 { data: null, orderable: false, searchable: false, render: (d, t, r, m) => m.row + m.settings._iDisplayStart + 1 },
-                { data: 'sku' },
-                { data: 'name' },
-                { data: 'is_bundle', render: v => v
-                    ? '<span class="badge badge-light-primary">Bundle</span>'
-                    : '<span class="badge badge-light-secondary">Regular</span>' },
-                { data: 'category' },
-                { data: 'default_location' },
-                { data: 'description' },
-                { data: 'default_safety_stock', className: 'text-end', render: d => d ?? 0 },
+                {
+                    data: 'name',
+                    render: (value, type, row) => `
+                        <div class="item-primary">
+                            <div class="item-name fw-bolder">${escapeHtml(value)}</div>
+                            <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                                <span class="badge badge-light-dark">${escapeHtml(row.sku)}</span>
+                                <span class="badge ${row.is_bundle ? 'badge-light-primary' : 'badge-light-secondary'}">
+                                    ${row.is_bundle ? 'Bundle / Set' : 'Item Reguler'}
+                                </span>
+                            </div>
+                        </div>`
+                },
+                {
+                    data: 'category',
+                    render: (value, type, row) => `
+                        <div>
+                            <div class="fw-semibold text-gray-800 mb-1">${escapeHtml(value || 'Tanpa kategori')}</div>
+                            <div class="item-description">
+                                ${row.description ? escapeHtml(row.description) : '<span class="text-muted">Tidak ada deskripsi</span>'}
+                            </div>
+                        </div>`
+                },
+                {
+                    data: 'default_location',
+                    render: (value, type, row) => `
+                        <div class="warehouse-info">
+                            <div class="mb-2">
+                                <span class="text-muted me-2">Lokasi:</span>
+                                <span class="fw-semibold text-gray-800">${value ? escapeHtml(value) : 'Belum diatur'}</span>
+                            </div>
+                            <div>
+                                <span class="text-muted me-2">Safety stock:</span>
+                                <span class="fw-bolder text-gray-900">${Number(row.default_safety_stock || 0).toLocaleString('id-ID')}</span>
+                            </div>
+                        </div>`
+                },
                 { data: 'id', orderable: false, searchable: false, className: 'text-end', render: (id, t, row) => {
-                    const qrItem = `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-download-qr" data-sku="${escapeAttr(row.sku)}">Download QR</a></div>`;
-                    const editItem = canUpdate ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${id}">Edit</a></div>` : '';
+                    const qrItem = `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-download-qr" data-sku="${escapeAttr(row.sku)}"><i class="fas fa-qrcode me-2"></i>Download QR</a></div>`;
+                    const editItem = canUpdate ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${id}"><i class="fas fa-edit me-2"></i>Edit Item</a></div>` : '';
                     const delItem  = canDelete ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-danger btn-delete" data-id="${id}">Hapus</a></div>` : '';
                     const actions = `${qrItem}${editItem}${delItem}`;
                     if (!actions) return '';
                     return `<div class="text-end">
-                        <a href="#" class="btn btn-sm btn-light btn-active-light-primary" data-kt-menu-trigger="click" data-kt-menu-placement="bottom-end">
-                            Actions
-                            <span class="svg-icon svg-icon-5 m-0">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                    <path d="M11.4343 12.7344L7.25 8.55005C6.83579 8.13583 6.16421 8.13584 5.75 8.55005C5.33579 8.96426 5.33579 9.63583 5.75 10.05L11.2929 15.5929C11.6834 15.9835 12.3166 15.9835 12.7071 15.5929L18.25 10.05C18.6642 9.63584 18.6642 8.96426 18.25 8.55005C17.8358 8.13584 17.1642 8.13584 16.75 8.55005L12.5657 12.7344C12.2533 13.0468 11.7467 13.0468 11.4343 12.7344Z" fill="black"></path>
-                                </svg>
-                            </span>
+                        <a href="#" class="btn btn-sm btn-light-primary table-action-button" data-kt-menu-trigger="click" data-kt-menu-placement="bottom-end">
+                            Kelola <i class="fas fa-chevron-down ms-2 fs-8"></i>
                         </a>
                         <div class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-600 menu-state-bg-light-primary fw-bold fs-7 w-175px py-3" data-kt-menu="true">
                             ${actions}
@@ -602,7 +634,11 @@
 
         const reloadTable = (keepPage = false) => dt.ajax.reload(null, keepPage ? false : true);
 
-        searchInput?.addEventListener('keyup', reloadTable);
+        let searchTimer;
+        searchInput?.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(reloadTable, 300);
+        });
         applyBtn?.addEventListener('click', reloadTable);
         categoryFilter?.addEventListener('change', reloadTable);
         limitSelect?.addEventListener('change', () => {

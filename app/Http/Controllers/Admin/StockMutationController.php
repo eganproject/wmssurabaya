@@ -63,9 +63,28 @@ class StockMutationController extends Controller
 
         $data = $query->get()->map(function ($m) {
             $itemLabel = trim(($m->item?->sku ?? '').' - '.($m->item?->name ?? ''));
-            $ts = $m->occurred_at ? Carbon::parse($m->occurred_at)->format('Y-m-d H:i') : '';
+            $ts = $m->occurred_at ? Carbon::parse($m->occurred_at)->format('d/m/Y H:i') : '';
             $direction = $m->direction === 'in' ? 'IN' : 'OUT';
-            $source = strtoupper($m->source_type ?? '').($m->source_subtype ? ' / '.$m->source_subtype : '');
+            $sourceType = match ($m->source_type) {
+                'inbound' => 'Penerimaan Barang',
+                'outbound' => 'Pengeluaran Barang',
+                'transfer' => 'Transfer Gudang',
+                'adjustment' => 'Penyesuaian Stok',
+                'opname' => 'Stock Opname',
+                'damaged' => 'Barang Rusak',
+                'picker', 'qc' => 'QC Scan',
+                'qc_resi' => 'QC Scan Resi',
+                default => ucfirst((string) ($m->source_type ?: '-')),
+            };
+            $sourceSubtype = match ($m->source_subtype) {
+                'receipt' => 'Penerimaan',
+                'return' => 'Retur',
+                'manual' => 'Manual',
+                'picker' => 'Picker',
+                default => $m->source_subtype ? ucfirst($m->source_subtype) : null,
+            };
+            $source = $sourceType.($sourceSubtype ? ' / '.$sourceSubtype : '');
+
             return [
                 'id' => $m->id,
                 'occurred_at' => $ts,

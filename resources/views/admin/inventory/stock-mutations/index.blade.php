@@ -8,7 +8,16 @@
     .mutation-filters { gap: .75rem; }
     .mutation-filters .search-box { min-width: 260px; flex: 1 1 320px; }
     .mutation-filters .warehouse-filter { min-width: 210px; }
-    .stock-flow-line { min-width: 210px; }
+    .mutation-table tbody tr { transition: background-color .15s ease; }
+    .mutation-table tbody tr:hover { background: #f8fafc; }
+    .mutation-table td { padding-top: 1.15rem !important; padding-bottom: 1.15rem !important; }
+    .mutation-item { min-width: 260px; }
+    .mutation-item-name { color: #181c32; font-size: .98rem; line-height: 1.4; }
+    .movement-value { font-size: 1.05rem; line-height: 1.3; }
+    .stock-balance { min-width: 180px; }
+    .stock-balance-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    .stock-balance-row + .stock-balance-row { margin-top: .45rem; padding-top: .45rem; border-top: 1px dashed #e4e6ef; }
+    .source-info { min-width: 210px; max-width: 300px; }
     @media (max-width: 991.98px) {
         .mutation-filters > * { flex: 1 1 210px; }
     }
@@ -49,15 +58,14 @@
         </div>
 
         <div class="table-responsive">
-            <table class="table align-middle table-row-dashed fs-6 gy-5" id="stock_mutations_table">
+            <table class="table align-middle table-row-dashed mutation-table fs-6 gy-4" id="stock_mutations_table">
                 <thead>
-                    <tr class="text-start text-gray-500 fw-bolder fs-7 text-uppercase gs-0">
-                        <th>Waktu</th>
+                    <tr class="text-start text-gray-600 fw-bolder fs-7 text-uppercase gs-0">
+                        <th>Waktu & Petugas</th>
                         <th>Item & Gudang</th>
-                        <th>Pergerakan</th>
-                        <th>Saldo Stok</th>
-                        <th>Dokumen Sumber</th>
-                        <th>Petugas</th>
+                        <th>Mutasi</th>
+                        <th>Saldo</th>
+                        <th>Referensi</th>
                         <th class="text-end">Aksi</th>
                     </tr>
                 </thead>
@@ -91,6 +99,9 @@
 
         const escapeHtml = value => $('<div>').text(value ?? '').html();
         const formatNumber = value => Number(value || 0).toLocaleString('id-ID');
+        const formatStock = value => value === null || value === undefined
+            ? '-'
+            : Number(value).toLocaleString('id-ID');
 
         if (typeof flatpickr !== 'undefined') {
             fpFrom = dateFromEl ? flatpickr(dateFromEl, { dateFormat: 'Y-m-d', allowInput: true }) : null;
@@ -116,14 +127,20 @@
             columns: [
                 {
                     data: 'occurred_at',
-                    render: value => `<span class="text-nowrap fw-semibold text-gray-700">${escapeHtml(value || '-')}</span>`
+                    render: (value, type, row) => `
+                        <div class="text-nowrap fw-semibold text-gray-900">${escapeHtml(value || '-')}</div>
+                        <div class="text-gray-600 mt-2">
+                            <i class="fas fa-user-circle me-1 text-gray-400"></i>${escapeHtml(row.user || '-')}
+                        </div>`
                 },
                 {
                     data: 'item',
                     render: (value, type, row) => `
-                        <div class="d-flex flex-column">
-                            <span class="fw-bolder text-gray-900">${escapeHtml(value)}</span>
-                            <span class="text-muted fs-7"><i class="fas fa-warehouse me-1"></i>${escapeHtml(row.warehouse)}</span>
+                        <div class="mutation-item">
+                            <div class="mutation-item-name fw-bolder">${escapeHtml(value)}</div>
+                            <div class="text-gray-600 mt-2">
+                                <i class="fas fa-warehouse me-1 text-gray-400"></i>${escapeHtml(row.warehouse)}
+                            </div>
                         </div>`
                 },
                 {
@@ -137,33 +154,38 @@
                                 <i class="fas ${incoming ? 'fa-arrow-down' : 'fa-arrow-up'} me-1"></i>
                                 ${incoming ? 'Masuk' : 'Keluar'}
                             </span>
-                            <div class="fw-bolder ${incoming ? 'text-success' : 'text-danger'} mt-2">
+                            <div class="movement-value fw-bolder ${incoming ? 'text-success' : 'text-danger'} mt-2">
                                 ${incoming ? '+' : '-'}${unitText}
                             </div>
                             ${row.unit && Number(row.qty_input) !== Number(value)
-                                ? `<div class="text-muted fs-8">${formatNumber(value)} satuan dasar</div>`
+                                ? `<div class="text-gray-600 mt-1">Setara ${formatNumber(value)} satuan dasar</div>`
                                 : ''}`;
                     }
                 },
                 {
                     data: 'stock_before',
                     render: (value, type, row) => `
-                        <div class="stock-flow-line d-flex align-items-center gap-2">
-                            <span class="badge badge-light">${formatNumber(value)}</span>
-                            <i class="fas fa-long-arrow-alt-right text-gray-400"></i>
-                            <span class="badge badge-light-primary">${formatNumber(row.stock_after)}</span>
+                        <div class="stock-balance">
+                            <div class="stock-balance-row">
+                                <span class="text-gray-600">Sebelum</span>
+                                <span class="fw-semibold text-gray-800">${formatStock(value)}</span>
+                            </div>
+                            <div class="stock-balance-row">
+                                <span class="text-gray-600">Sesudah</span>
+                                <span class="fw-bolder text-primary">${formatStock(row.stock_after)}</span>
+                            </div>
                         </div>`
                 },
                 {
                     data: 'source',
                     render: (value, type, row) => `
-                        <div class="fw-semibold text-gray-800">${escapeHtml(value || '-')}</div>
-                        <div class="text-muted fs-7">${escapeHtml(row.source_code || 'Tanpa kode')}</div>
-                        ${row.note ? `<div class="text-muted fs-8 text-truncate mw-200px" title="${escapeHtml(row.note)}">${escapeHtml(row.note)}</div>` : ''}`
-                },
-                {
-                    data: 'user',
-                    render: value => `<span class="text-gray-700">${escapeHtml(value || '-')}</span>`
+                        <div class="source-info">
+                            <div class="fw-semibold text-gray-800">${escapeHtml(value || '-')}</div>
+                            <div class="mt-2">
+                                <span class="badge badge-light-dark">${escapeHtml(row.source_code || 'Tanpa kode')}</span>
+                            </div>
+                            ${row.note ? `<div class="text-gray-600 mt-2">${escapeHtml(row.note)}</div>` : ''}
+                        </div>`
                 },
                 {
                     data: 'id',
