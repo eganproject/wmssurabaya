@@ -16,7 +16,11 @@ class ItemStockController extends Controller
 {
     public function index()
     {
-        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        $warehouses = Warehouse::where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderBy('name')
+            ->get(['id', 'name', 'type', 'is_default']);
+
         return view('admin.inventory.item-stocks.index', compact('warehouses'));
     }
 
@@ -26,6 +30,7 @@ class ItemStockController extends Controller
         $warehouse = Warehouse::findOrFail($warehouseId);
         $item = Item::with([
             'category',
+            'units' => fn ($q) => $q->orderByDesc('is_base')->orderBy('conversion_qty'),
             'stocks' => fn ($q) => $q->where('warehouse_id', $warehouseId),
             'warehouseSettings' => fn ($q) => $q->where('warehouse_id', $warehouseId),
         ])->findOrFail($id);
@@ -36,14 +41,34 @@ class ItemStockController extends Controller
             ? BundleService::getVirtualStockBatch([$item->id], $warehouseId)[$item->id] ?? 0
             : ($item->stocks->first()?->stock ?? 0);
 
-        $mutationQuery = StockMutation::with('creator')
+        $mutationQuery = StockMutation::with(['creator', 'unit'])
             ->where('item_id', $id)
-            ->where('warehouse_id', $warehouseId)
+            ->where('warehouse_id', $warehouseId);
+
+        $mutationCount = (clone $mutationQuery)->count();
+        $totalIn = (int) (clone $mutationQuery)->where('direction', 'in')->sum('qty');
+        $totalOut = (int) (clone $mutationQuery)->where('direction', 'out')->sum('qty');
+        $lastMutation = (clone $mutationQuery)
             ->orderByDesc('occurred_at')
-            ->orderByDesc('id');
+            ->orderByDesc('id')
+            ->first();
 
         $perPage = (int) $request->input('per_page', 20);
-        $mutations = $mutationQuery->paginate($perPage)->withQueryString();
+        $mutations = $mutationQuery
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id')
+            ->paginate($perPage)
+            ->withQueryString();
+        $baseUnit = $item->units->firstWhere('is_base', true);
+        $packageUnit = $item->units
+            ->where('is_base', false)
+            ->sortByDesc('conversion_qty')
+            ->first();
+        $packageConversion = max(1, (int) ($packageUnit?->conversion_qty ?? 1));
+        $safetyStock = (int) ($warehouseSetting?->safety_stock ?? 0);
+        $stockStatus = $currentStock <= 0
+            ? 'empty'
+            : ($safetyStock > 0 && $currentStock <= $safetyStock ? 'low' : 'safe');
 
         return view('admin.inventory.item-stocks.show', [
             'item' => $item,
@@ -52,7 +77,15 @@ class ItemStockController extends Controller
             'mutations' => $mutations,
             'warehouse' => $warehouse,
             'warehouseLocation' => $warehouseSetting?->location,
-            'warehouseSafetyStock' => (int) ($warehouseSetting?->safety_stock ?? 0),
+            'warehouseSafetyStock' => $safetyStock,
+            'mutationCount' => $mutationCount,
+            'totalIn' => $totalIn,
+            'totalOut' => $totalOut,
+            'lastMutation' => $lastMutation,
+            'baseUnit' => $baseUnit,
+            'packageUnit' => $packageUnit,
+            'packageConversion' => $packageConversion,
+            'stockStatus' => $stockStatus,
         ]);
     }
 
@@ -60,6 +93,7 @@ class ItemStockController extends Controller
     {
         $warehouseId = $request->integer('warehouse_id') ?: Warehouse::defaultId();
         $query = Item::with([
+            'units' => fn ($q) => $q->orderByDesc('is_base')->orderBy('conversion_qty'),
             'stocks' => fn ($q) => $q->where('warehouse_id', $warehouseId),
             'warehouseSettings' => fn ($q) => $q->where('warehouse_id', $warehouseId),
         ])->orderBy('name');
@@ -95,15 +129,31 @@ class ItemStockController extends Controller
             $stock = $isBundle
                 ? ($virtualStocks[$i->id] ?? 0)
                 : ($i->stocks->first()?->stock ?? 0);
+            $setting = $i->warehouseSettings->first();
+            $safetyStock = (int) ($setting?->safety_stock ?? 0);
+            $baseUnit = $i->units->firstWhere('is_base', true);
+            $packageUnit = $i->units
+                ->where('is_base', false)
+                ->sortByDesc('conversion_qty')
+                ->first();
+            $packageConversion = max(1, (int) ($packageUnit?->conversion_qty ?? 1));
 
             return [
                 'id' => $i->id,
                 'sku' => $i->sku,
                 'name' => $i->name,
                 'stock' => $stock,
-                'location' => $i->warehouseSettings->first()?->location ?? '',
-                'safety_stock' => (int) ($i->warehouseSettings->first()?->safety_stock ?? 0),
+                'location' => $setting?->location ?? '',
+                'safety_stock' => $safetyStock,
                 'is_bundle' => $isBundle,
+                'base_unit' => $baseUnit?->name ?? 'PCS',
+                'package_unit' => $packageUnit?->name,
+                'package_conversion' => $packageConversion,
+                'package_qty' => $packageUnit ? intdiv((int) $stock, $packageConversion) : null,
+                'package_remainder' => $packageUnit ? (int) $stock % $packageConversion : null,
+                'stock_status' => $stock <= 0
+                    ? 'empty'
+                    : ($safetyStock > 0 && $stock <= $safetyStock ? 'low' : 'safe'),
             ];
         });
 

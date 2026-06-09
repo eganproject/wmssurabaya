@@ -111,10 +111,19 @@ class StockMutationController extends Controller
         }
     }
 
-    public function show(int $id)
+    public function show(int $id, Request $request)
     {
         $mutation = StockMutation::with(['item', 'creator', 'warehouse', 'unit'])->findOrFail($id);
         [$sourceSummary, $sourceItems] = $this->resolveSource($mutation);
+
+        if (! $request->expectsJson()) {
+            return view('admin.inventory.stock-mutations.detail', [
+                'mutation' => $mutation,
+                'sourceSummary' => $sourceSummary,
+                'sourceItems' => $sourceItems,
+                'backUrl' => route('admin.inventory.stock-mutations.index'),
+            ]);
+        }
 
         $itemLabel = trim(($mutation->item?->sku ?? '').' - '.($mutation->item?->name ?? ''));
         $direction = $mutation->direction === 'in' ? 'IN' : 'OUT';
