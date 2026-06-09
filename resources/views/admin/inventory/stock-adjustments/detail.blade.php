@@ -102,6 +102,10 @@
             <div class="value">{{ $adjustment->transacted_at?->format('d/m/Y H:i') ?: '-' }}</div>
         </div>
         <div>
+            <div class="label">Gudang</div>
+            <div class="value">{{ $adjustment->warehouse?->name ?? '-' }}</div>
+        </div>
+        <div>
             <div class="label">Dibuat Oleh</div>
             <div class="value">{{ $adjustment->creator?->name ?? '-' }}</div>
         </div>
@@ -137,7 +141,8 @@
                 <th style="width:130px">SKU</th>
                 <th>Nama Item</th>
                 <th class="text-center" style="width:95px">Arah</th>
-                <th class="text-end" style="width:90px">Qty</th>
+                <th class="text-end" style="width:130px">Qty Input</th>
+                <th class="text-end" style="width:110px">Qty Dasar</th>
                 <th>Catatan</th>
             </tr>
         </thead>
@@ -154,28 +159,32 @@
                             <span class="doc-direction doc-direction-out">Kurangi</span>
                         @endif
                     </td>
-                    <td class="text-end fw-bold">{{ $row->direction === 'in' ? '+' : '-' }}{{ number_format((int) $row->qty) }}</td>
+                    <td class="text-end fw-bold">
+                        {{ $row->direction === 'in' ? '+' : '-' }}{{ number_format((int) ($row->qty_input ?: $row->qty)) }}
+                        {{ $row->unit?->name ?: 'satuan dasar' }}
+                    </td>
+                    <td class="text-end">{{ number_format((int) $row->qty) }}</td>
                     <td>{{ $row->note ?: '-' }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6" class="text-muted">Tidak ada item.</td>
+                    <td colspan="7" class="text-muted">Tidak ada item.</td>
                 </tr>
             @endforelse
         </tbody>
         <tfoot>
             <tr>
-                <td colspan="4" style="text-align:right">Total Tambah</td>
+                <td colspan="5" style="text-align:right">Total Tambah (satuan dasar)</td>
                 <td style="text-align:right">+{{ number_format($totalIn) }}</td>
                 <td></td>
             </tr>
             <tr>
-                <td colspan="4" style="text-align:right">Total Kurangi</td>
+                <td colspan="5" style="text-align:right">Total Kurangi (satuan dasar)</td>
                 <td style="text-align:right">-{{ number_format($totalOut) }}</td>
                 <td></td>
             </tr>
             <tr>
-                <td colspan="4" style="text-align:right">Selisih Bersih</td>
+                <td colspan="5" style="text-align:right">Selisih Bersih (satuan dasar)</td>
                 <td style="text-align:right">{{ $netQty >= 0 ? '+' : '' }}{{ number_format($netQty) }}</td>
                 <td></td>
             </tr>

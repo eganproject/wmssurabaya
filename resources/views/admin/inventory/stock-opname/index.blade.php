@@ -79,9 +79,10 @@
                         <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
                         <select class="form-select form-select-solid" name="warehouse_id" id="opname_warehouse_id" required>
                             @foreach($warehouses as $warehouse)
-                                <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                                <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
                             @endforeach
                         </select>
+                        <div class="form-text" id="opname_warehouse_unit_info"></div>
                     </div>
                     <div id="opname_items_container"></div>
                     <div class="mb-7">
@@ -124,6 +125,7 @@
     const canUpdate = {{ $canUpdate ? 'true' : 'false' }};
     const canDelete = {{ $canDelete ? 'true' : 'false' }};
     let itemOptionsHtml = `@foreach($items as $item)<option value="{{ $item->id }}" data-stock="{{ $item->stock }}">{{ $item->sku }} - {{ $item->name }}</option>@endforeach`;
+    let opnameItems = @json($items);
 
     document.addEventListener('DOMContentLoaded', () => {
         const tableEl = $('#stock_opname_table');
@@ -136,6 +138,7 @@
         const openBtn = document.getElementById('btn_open_opname');
         const transactedAtEl = document.getElementById('opname_transacted_at');
         const warehouseEl = document.getElementById('opname_warehouse_id');
+        const warehouseUnitInfo = document.getElementById('opname_warehouse_unit_info');
         const dateFromEl = document.getElementById('filter_date_from');
         const dateToEl = document.getElementById('filter_date_to');
         const filterApplyBtn = document.getElementById('filter_apply');
@@ -232,20 +235,47 @@
             });
         };
 
+        const isBulkWarehouse = () => warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
+        const updateWarehouseInfo = () => {
+            if (!warehouseUnitInfo) return;
+            warehouseUnitInfo.innerHTML = isBulkWarehouse()
+                ? '<span class="text-primary fw-bold">Gudang Besar:</span> hasil hitung fisik wajib dimasukkan sebagai koli/kemasan utuh.'
+                : '<span class="text-success fw-bold">Gudang Kecil:</span> hasil hitung fisik menggunakan PCS/SET.';
+        };
+        const syncRowUnit = (row, selectedUnitId = null) => {
+            const item = opnameItems.find(value => String(value.id) === String(row.querySelector('.opname-item-select')?.value));
+            const units = (item?.units || []).filter(unit => isBulkWarehouse() ? !unit.is_base : unit.is_base);
+            const baseUnit = (item?.units || []).find(unit => unit.is_base);
+            const unitEl = row.querySelector('[data-name="unit_id"]');
+            unitEl.innerHTML = units.length
+                ? units.map(unit => `<option value="${unit.id}" data-conversion="${unit.conversion_qty}" data-name="${unit.name}">${unit.name}</option>`).join('')
+                : '<option value="">Satuan belum dikonfigurasi</option>';
+            if (selectedUnitId && units.some(unit => String(unit.id) === String(selectedUnitId))) unitEl.value = String(selectedUnitId);
+            const selected = units.find(unit => String(unit.id) === String(unitEl.value));
+            const stockBase = Number(row.querySelector('.opname-item-select')?.selectedOptions?.[0]?.dataset?.stock || 0);
+            const conversion = Number(selected?.conversion_qty || 1);
+            const counted = Number(row.querySelector('[data-name="counted_qty_input"]')?.value || 0);
+            row.querySelector('.opname-unit-label').textContent = isBulkWarehouse() ? 'Satuan Koli' : 'Satuan';
+            row.querySelector('.opname-counted-label').textContent = isBulkWarehouse() ? `Jumlah Koli (${selected?.name || 'KOLI'})` : `Counted (${selected?.name || baseUnit?.name || 'PCS'})`;
+            row.querySelector('.opname-count-info').textContent = selected
+                ? `1 ${selected.name} = ${conversion} ${baseUnit?.name || 'dasar'}; hasil hitung ${counted * conversion} ${baseUnit?.name || 'dasar'}`
+                : '';
+            const systemEl = row.querySelector('[data-name="system_qty"]');
+            if (systemEl) systemEl.value = conversion > 0 ? stockBase / conversion : stockBase;
+            row.querySelector('.opname-system-label').textContent = isBulkWarehouse() ? `System (${selected?.name || 'KOLI'})` : `System (${baseUnit?.name || 'PCS'})`;
+        };
+
         const updateSystemQty = (row) => {
             const selectEl = row.querySelector('.opname-item-select');
-            const systemEl = row.querySelector('[data-name="system_qty"]');
             const selected = selectEl?.selectedOptions?.[0];
-            if (systemEl && selected) {
-                systemEl.value = selected.getAttribute('data-stock') || '0';
-            }
+            if (selected) syncRowUnit(row);
         };
 
         const createItemRow = (data = {}) => {
             const row = document.createElement('div');
             row.className = 'row g-3 align-items-end mb-4 opname-item-row';
             row.innerHTML = `
-                <div class="col-md-5">
+                <div class="col-md-4">
                     <label class="required fs-6 fw-bold form-label mb-2">Item</label>
                     <select class="form-select form-select-solid opname-item-select" data-name="item_id" required>
                         <option value=""></option>
@@ -254,15 +284,21 @@
                     <div class="invalid-feedback" data-error-for="item_id"></div>
                 </div>
                 <div class="col-md-2">
-                    <label class="fs-6 fw-bold form-label mb-2">System</label>
+                    <label class="required fs-6 fw-bold form-label mb-2 opname-unit-label">Satuan</label>
+                    <select class="form-select form-select-solid" data-name="unit_id" required></select>
+                    <div class="invalid-feedback" data-error-for="unit_id"></div>
+                </div>
+                <div class="col-md-2">
+                    <label class="fs-6 fw-bold form-label mb-2 opname-system-label">System</label>
                     <input type="number" class="form-control form-control-solid" data-name="system_qty" readonly />
                 </div>
                 <div class="col-md-2">
-                    <label class="required fs-6 fw-bold form-label mb-2">Counted</label>
-                    <input type="number" min="0" class="form-control form-control-solid" data-name="counted_qty" required />
-                    <div class="invalid-feedback" data-error-for="counted_qty"></div>
+                    <label class="required fs-6 fw-bold form-label mb-2 opname-counted-label">Counted</label>
+                    <input type="number" min="0" step="1" class="form-control form-control-solid" data-name="counted_qty_input" required />
+                    <div class="form-text fs-8 opname-count-info"></div>
+                    <div class="invalid-feedback" data-error-for="counted_qty_input"></div>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-1">
                     <label class="fs-6 fw-bold form-label mb-2">Catatan Item</label>
                     <input type="text" class="form-control form-control-solid" data-name="note" />
                 </div>
@@ -276,13 +312,13 @@
             if (data.item_id) {
                 selectEl.value = String(data.item_id);
             }
-            const countedEl = row.querySelector('input[data-name="counted_qty"]');
-            if (countedEl) countedEl.value = data.counted_qty ?? '';
+            const countedEl = row.querySelector('input[data-name="counted_qty_input"]');
+            if (countedEl) countedEl.value = data.counted_qty_input ?? data.counted_qty ?? '';
             const noteEl = row.querySelector('input[data-name="note"]');
             if (noteEl) noteEl.value = data.note ?? '';
 
             initSelect2(selectEl);
-            updateSystemQty(row);
+            syncRowUnit(row, data.unit_id);
             renumberRows();
             validateUniqueItems();
         };
@@ -307,6 +343,13 @@
                 if (row) updateSystemQty(row);
                 validateUniqueItems();
             }
+            if (e.target.matches('[data-name="unit_id"]')) syncRowUnit(e.target.closest('.opname-item-row'), e.target.value);
+        });
+        itemsContainer?.addEventListener('input', event => {
+            if (event.target.matches('[data-name="counted_qty_input"]')) {
+                const row = event.target.closest('.opname-item-row');
+                syncRowUnit(row, row.querySelector('[data-name="unit_id"]').value);
+            }
         });
 
         itemsContainer?.addEventListener('click', (e) => {
@@ -329,12 +372,15 @@
                 headers: {Accept: 'application/json'}
             });
             const json = await res.json();
+            opnameItems = json.data || [];
             itemOptionsHtml = (json.data || []).map(item =>
                 `<option value="${item.id}" data-stock="${item.stock}">${item.sku} - ${item.name}</option>`
             ).join('');
             itemsContainer.innerHTML = '';
             createItemRow();
+            updateWarehouseInfo();
         });
+        updateWarehouseInfo();
 
         if (!tableEl.length || !$.fn.DataTable) {
             console.error('DataTables unavailable');

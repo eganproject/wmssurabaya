@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Item;
+use App\Models\ItemUnit;
 use App\Models\StockAdjustment;
 use App\Models\StockAdjustmentItem;
 use App\Models\StockMutation;
@@ -22,8 +23,9 @@ class StockAdjustmentController extends Controller
 {
     public function index()
     {
-        $items = Item::orderBy('name')->get(['id', 'sku', 'name']);
-        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']);
+        $items = Item::with(['units' => fn ($query) => $query->orderByDesc('is_base')->orderBy('conversion_qty')])
+            ->orderBy('name')->get(['id', 'sku', 'name']);
+        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'type', 'is_default']);
 
         return view('admin.inventory.stock-adjustments.index', [
             'items' => $items,
@@ -37,7 +39,7 @@ class StockAdjustmentController extends Controller
     public function data(Request $request)
     {
         $query = StockAdjustment::query()
-            ->with(['items.item', 'creator', 'warehouse'])
+            ->with(['items.item', 'items.unit', 'creator', 'warehouse'])
             ->orderBy('transacted_at', 'desc');
 
         $search = trim((string) $request->input('q', ''));
@@ -70,9 +72,10 @@ class StockAdjustmentController extends Controller
                 if ($sku === '') {
                     return '';
                 }
-                $qty = (int) ($it->qty ?? 0);
+                $qty = (int) ($it->qty_input ?: $it->qty);
+                $unit = $it->unit?->name ?: 'satuan dasar';
                 $sign = $it->direction === 'in' ? '+' : '-';
-                return sprintf('%s (%s%d)', $sku, $sign, $qty);
+                return sprintf('%s (%s%d %s)', $sku, $sign, $qty, $unit);
             })->filter()->values();
             $itemLabel = $labels->implode(', ');
             $ts = $row->transacted_at ? Carbon::parse($row->transacted_at)->format('Y-m-d H:i') : '';
@@ -122,6 +125,9 @@ class StockAdjustmentController extends Controller
                 StockAdjustmentItem::create([
                     'stock_adjustment_id' => $adjustment->id,
                     'item_id' => $row['item_id'],
+                    'unit_id' => $row['unit_id'],
+                    'qty_input' => $row['qty_input'],
+                    'conversion_qty' => $row['conversion_qty'],
                     'direction' => $row['direction'],
                     'qty' => $row['qty'],
                     'note' => $row['note'] ?? null,
@@ -150,7 +156,9 @@ class StockAdjustmentController extends Controller
     {
         $request->validate([
             'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
+            'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
         ]);
+        $warehouseId = $request->integer('warehouse_id');
 
         $import = new StockAdjustmentsImport();
         DB::beginTransaction();
@@ -175,6 +183,7 @@ class StockAdjustmentController extends Controller
             }
 
             $adjustment = StockAdjustment::create([
+                'warehouse_id' => $warehouseId,
                 'code' => $this->generateCode('ADJ'),
                 'note' => $import->note,
                 'transacted_at' => $transactedAt,
@@ -184,11 +193,20 @@ class StockAdjustmentController extends Controller
 
             $createdItems = 0;
             foreach ($items as $row) {
+                $unit = $this->resolveInputUnit($warehouseId, (int) $row['item_id'], 0);
+                $conversionQty = (int) $unit->conversion_qty;
+                $qtyInput = (int) $row['qty'];
+                $qty = $qtyInput * $conversionQty;
+                StockService::assertWarehouseQuantity($warehouseId, (int) $row['item_id'], $qty, $unit->id);
+
                 StockAdjustmentItem::create([
                     'stock_adjustment_id' => $adjustment->id,
                     'item_id' => $row['item_id'],
+                    'unit_id' => $unit->id,
+                    'qty_input' => $qtyInput,
+                    'conversion_qty' => $conversionQty,
                     'direction' => $row['direction'],
-                    'qty' => $row['qty'],
+                    'qty' => $qty,
                     'note' => $row['note'] ?? null,
                 ]);
                 $createdItems++;
@@ -228,6 +246,9 @@ class StockAdjustmentController extends Controller
             'items' => $adjustment->items->map(function ($row) {
                 return [
                     'item_id' => $row->item_id,
+                    'unit_id' => $row->unit_id,
+                    'qty_input' => (int) ($row->qty_input ?: $row->qty),
+                    'conversion_qty' => (int) ($row->conversion_qty ?: 1),
                     'direction' => $row->direction,
                     'qty' => (int) $row->qty,
                     'note' => $row->note ?? '',
@@ -238,7 +259,7 @@ class StockAdjustmentController extends Controller
 
     public function detail(int $id)
     {
-        $adjustment = StockAdjustment::with(['items.item', 'creator', 'approver'])
+        $adjustment = StockAdjustment::with(['items.item', 'items.unit', 'creator', 'approver', 'warehouse'])
             ->findOrFail($id);
 
         $totalIn = (int) $adjustment->items->where('direction', 'in')->sum('qty');
@@ -281,6 +302,9 @@ class StockAdjustmentController extends Controller
                 StockAdjustmentItem::create([
                     'stock_adjustment_id' => $adjustment->id,
                     'item_id' => $row['item_id'],
+                    'unit_id' => $row['unit_id'],
+                    'qty_input' => $row['qty_input'],
+                    'conversion_qty' => $row['conversion_qty'],
                     'direction' => $row['direction'],
                     'qty' => $row['qty'],
                     'note' => $row['note'] ?? null,
@@ -374,8 +398,11 @@ class StockAdjustmentController extends Controller
             StockService::mutate([
                 'warehouse_id' => $adjustment->warehouse_id ?: Warehouse::defaultId(),
                 'item_id' => $row->item_id,
+                'unit_id' => $row->unit_id,
                 'direction' => $row->direction,
                 'qty' => $row->qty,
+                'qty_input' => $row->qty_input ?: $row->qty,
+                'conversion_qty' => $row->conversion_qty ?: 1,
                 'source_type' => 'adjustment',
                 'source_subtype' => 'manual',
                 'source_id' => $adjustment->id,
@@ -390,11 +417,14 @@ class StockAdjustmentController extends Controller
 
     private function validatePayload(Request $request): array
     {
+        $rawItems = $request->input('items', []);
         $validated = $request->validate([
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_id' => ['required', 'integer', 'exists:items,id'],
             'items.*.direction' => ['required', 'string', Rule::in(['in', 'out'])],
-            'items.*.qty' => ['required', 'integer', 'min:1'],
+            'items.*.unit_id' => ['nullable', 'integer', 'exists:item_units,id'],
+            'items.*.qty_input' => ['nullable', 'integer', 'min:1'],
+            'items.*.qty' => ['nullable', 'integer', 'min:1'],
             'items.*.note' => ['nullable', 'string'],
             'note' => ['nullable', 'string'],
             'transacted_at' => ['required', 'date'],
@@ -403,12 +433,24 @@ class StockAdjustmentController extends Controller
         $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
 
         $items = collect($validated['items'] ?? [])
-            ->filter(fn ($row) => (int) ($row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)
-            ->map(function ($row) {
+            ->filter(fn ($row) => (int) ($row['qty_input'] ?? $row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)
+            ->map(function ($row, $index) use ($validated, $rawItems) {
+                $itemId = (int) $row['item_id'];
+                $unit = $this->resolveInputUnit(
+                    $validated['warehouse_id'],
+                    $itemId,
+                    (int) ($row['unit_id'] ?? 0),
+                    !isset($rawItems[$index]['qty_input'])
+                );
+                $qtyInput = (int) ($row['qty_input'] ?? $row['qty'] ?? 0);
+                $conversionQty = (int) ($unit?->conversion_qty ?? 1);
                 return [
-                    'item_id' => (int) $row['item_id'],
+                    'item_id' => $itemId,
+                    'unit_id' => $unit?->id,
+                    'qty_input' => $qtyInput,
+                    'conversion_qty' => $conversionQty,
                     'direction' => $row['direction'] === 'out' ? 'out' : 'in',
-                    'qty' => (int) $row['qty'],
+                    'qty' => $qtyInput * $conversionQty,
                     'note' => $row['note'] ?? null,
                 ];
             })->values();
@@ -423,7 +465,8 @@ class StockAdjustmentController extends Controller
             StockService::assertWarehouseQuantity(
                 $validated['warehouse_id'],
                 (int) $row['item_id'],
-                (int) $row['qty']
+                (int) $row['qty'],
+                $row['unit_id'] ? (int) $row['unit_id'] : null
             );
         }
 
@@ -442,6 +485,31 @@ class StockAdjustmentController extends Controller
         }
 
         return $validated;
+    }
+
+    private function resolveInputUnit(int $warehouseId, int $itemId, int $unitId, bool $legacyBaseInput = false): ?ItemUnit
+    {
+        $warehouse = Warehouse::findOrFail($warehouseId);
+        $query = ItemUnit::where('item_id', $itemId);
+        if ($unitId > 0) {
+            $query->whereKey($unitId);
+        } elseif ($legacyBaseInput) {
+            $query->where('is_base', true);
+        } elseif ($warehouse->type === Warehouse::TYPE_BULK) {
+            $query->where('is_base', false)->orderBy('conversion_qty');
+        } else {
+            $query->where('is_base', true);
+        }
+        $unit = $query->first();
+        if (!$unit && $legacyBaseInput) {
+            return null;
+        }
+
+        if (!$unit || ($warehouse->type === Warehouse::TYPE_BULK && $unit->is_base)) {
+            throw ValidationException::withMessages(['items' => 'Gudang Besar wajib menggunakan satuan koli/kemasan.']);
+        }
+
+        return $unit;
     }
 
     private function generateCode(string $prefix): string

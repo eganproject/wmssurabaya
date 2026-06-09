@@ -86,9 +86,10 @@
                         <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
                         <select class="form-select form-select-solid" name="warehouse_id" id="adjustment_warehouse_id" required>
                             @foreach($warehouses as $warehouse)
-                                <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                                <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
                             @endforeach
                         </select>
+                        <div class="form-text" id="adjustment_warehouse_unit_info"></div>
                     </div>
                     <div id="adjustment_items_container"></div>
                     <div class="mb-7">
@@ -137,9 +138,19 @@
                 <div class="modal-body scroll-y mx-5 mx-xl-15 my-7">
                     <div class="mb-6">
                         <div class="text-muted fs-7">
-                            Header minimal: <strong>sku</strong>, <strong>qty</strong>, <strong>direction/arah</strong> (in/out atau tambah/kurangi).<br>
+                            Header minimal: <strong>sku</strong>, <strong>qty_input</strong>, <strong>direction/arah</strong> (in/out atau tambah/kurangi).<br>
+                            Pada Gudang Besar, <strong>qty_input</strong> adalah jumlah koli. Pada Gudang Kecil, nilainya adalah PCS/SET.<br>
+                            Header lama <strong>qty</strong> tetap didukung.
                             Opsional: <strong>note</strong>, <strong>item_note</strong>, <strong>transacted_at</strong>.
                         </div>
+                    </div>
+                    <div class="fv-row mb-6">
+                        <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
+                        <select class="form-select form-select-solid" id="import_adjustment_warehouse_id">
+                            @foreach($warehouses as $warehouse)
+                                <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                            @endforeach
+                        </select>
                     </div>
                     <div class="fv-row mb-6">
                         <label class="required fs-6 fw-bold form-label mb-2">File Excel</label>
@@ -171,6 +182,7 @@
     const canUpdate = {{ $canUpdate ? 'true' : 'false' }};
     const canDelete = {{ $canDelete ? 'true' : 'false' }};
     const itemOptionsHtml = `@foreach($items as $item)<option value="{{ $item->id }}">{{ $item->sku }} - {{ $item->name }}</option>@endforeach`;
+    const adjustmentItems = @json($items);
 
     document.addEventListener('DOMContentLoaded', () => {
         const tableEl = $('#stock_adjustments_table');
@@ -184,6 +196,7 @@
         const modalTitle = document.getElementById('adjustment_modal_title');
         const transactedAtEl = document.getElementById('adjustment_transacted_at');
         const warehouseEl = document.getElementById('adjustment_warehouse_id');
+        const warehouseUnitInfo = document.getElementById('adjustment_warehouse_unit_info');
         const dateFromEl = document.getElementById('filter_date_from');
         const dateToEl = document.getElementById('filter_date_to');
         const filterApplyBtn = document.getElementById('filter_apply');
@@ -286,11 +299,36 @@
             });
         };
 
+        const isBulkWarehouse = () => warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
+        const updateWarehouseInfo = () => {
+            if (!warehouseUnitInfo) return;
+            warehouseUnitInfo.innerHTML = isBulkWarehouse()
+                ? '<span class="text-primary fw-bold">Gudang Besar:</span> penyesuaian wajib diinput dalam koli/kemasan utuh.'
+                : '<span class="text-success fw-bold">Gudang Kecil:</span> penyesuaian menggunakan PCS/SET.';
+        };
+        const syncRowUnit = (row, selectedUnitId = null) => {
+            const item = adjustmentItems.find(value => String(value.id) === String(row.querySelector('.adjustment-item-select')?.value));
+            const units = (item?.units || []).filter(unit => isBulkWarehouse() ? !unit.is_base : unit.is_base);
+            const baseUnit = (item?.units || []).find(unit => unit.is_base);
+            const unitEl = row.querySelector('[data-name="unit_id"]');
+            unitEl.innerHTML = units.length
+                ? units.map(unit => `<option value="${unit.id}" data-conversion="${unit.conversion_qty}" data-name="${unit.name}">${unit.name}</option>`).join('')
+                : '<option value="">Satuan belum dikonfigurasi</option>';
+            if (selectedUnitId && units.some(unit => String(unit.id) === String(selectedUnitId))) unitEl.value = String(selectedUnitId);
+            const selected = units.find(unit => String(unit.id) === String(unitEl.value));
+            const qty = Number(row.querySelector('[data-name="qty_input"]')?.value || 0);
+            row.querySelector('.adjustment-unit-label').textContent = isBulkWarehouse() ? 'Satuan Koli' : 'Satuan';
+            row.querySelector('.adjustment-qty-label').textContent = isBulkWarehouse() ? `Jumlah Koli (${selected?.name || 'KOLI'})` : `Qty (${selected?.name || baseUnit?.name || 'PCS'})`;
+            row.querySelector('.adjustment-qty-info').textContent = selected
+                ? `1 ${selected.name} = ${selected.conversion_qty} ${baseUnit?.name || 'dasar'}; total ${qty * selected.conversion_qty} ${baseUnit?.name || 'dasar'}`
+                : '';
+        };
+
         const createItemRow = (data = {}) => {
             const row = document.createElement('div');
             row.className = 'row g-3 align-items-end mb-4 adjustment-item-row';
             row.innerHTML = `
-                <div class="col-md-5">
+                <div class="col-md-4">
                     <label class="required fs-6 fw-bold form-label mb-2">Item</label>
                     <select class="form-select form-select-solid adjustment-item-select" data-name="item_id" required>
                         <option value=""></option>
@@ -307,11 +345,17 @@
                     <div class="invalid-feedback" data-error-for="direction"></div>
                 </div>
                 <div class="col-md-2">
-                    <label class="required fs-6 fw-bold form-label mb-2">Qty</label>
-                    <input type="number" min="1" class="form-control form-control-solid" data-name="qty" required />
-                    <div class="invalid-feedback" data-error-for="qty"></div>
+                    <label class="required fs-6 fw-bold form-label mb-2 adjustment-unit-label">Satuan</label>
+                    <select class="form-select form-select-solid" data-name="unit_id" required></select>
+                    <div class="invalid-feedback" data-error-for="unit_id"></div>
                 </div>
                 <div class="col-md-2">
+                    <label class="required fs-6 fw-bold form-label mb-2 adjustment-qty-label">Qty</label>
+                    <input type="number" min="1" step="1" class="form-control form-control-solid" data-name="qty_input" required />
+                    <div class="form-text fs-8 adjustment-qty-info"></div>
+                    <div class="invalid-feedback" data-error-for="qty_input"></div>
+                </div>
+                <div class="col-md-1">
                     <label class="fs-6 fw-bold form-label mb-2">Catatan Item</label>
                     <input type="text" class="form-control form-control-solid" data-name="note" />
                 </div>
@@ -327,15 +371,29 @@
             }
             const dirEl = row.querySelector('[data-name="direction"]');
             if (dirEl && data.direction) dirEl.value = data.direction;
-            const qtyEl = row.querySelector('input[data-name="qty"]');
-            if (qtyEl) qtyEl.value = data.qty ?? '';
+            const qtyEl = row.querySelector('input[data-name="qty_input"]');
+            if (qtyEl) qtyEl.value = data.qty_input ?? data.qty ?? '';
             const noteEl = row.querySelector('input[data-name="note"]');
             if (noteEl) noteEl.value = data.note ?? '';
 
             initSelect2(selectEl);
+            syncRowUnit(row, data.unit_id);
             renumberRows();
             validateUniqueItems();
         };
+
+        warehouseEl?.addEventListener('change', () => {
+            updateWarehouseInfo();
+            itemsContainer.querySelectorAll('.adjustment-item-row').forEach(row => syncRowUnit(row));
+        });
+        itemsContainer?.addEventListener('change', event => {
+            if (event.target.matches('.adjustment-item-select')) syncRowUnit(event.target.closest('.adjustment-item-row'));
+            if (event.target.matches('[data-name="unit_id"]')) syncRowUnit(event.target.closest('.adjustment-item-row'), event.target.value);
+        });
+        itemsContainer?.addEventListener('input', event => {
+            if (event.target.matches('[data-name="qty_input"]')) syncRowUnit(event.target.closest('.adjustment-item-row'), event.target.closest('.adjustment-item-row').querySelector('[data-name="unit_id"]').value);
+        });
+        updateWarehouseInfo();
 
         const resetForm = () => {
             form?.reset();
@@ -461,6 +519,7 @@
             }
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('warehouse_id', document.getElementById('import_adjustment_warehouse_id')?.value || '');
             try {
                 const res = await fetch(importUrl, {
                     method: 'POST',

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Exports\StockOpnameDetailExport;
 use App\Models\Item;
+use App\Models\ItemUnit;
 use App\Models\ItemStock;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
@@ -24,6 +25,7 @@ class StockOpnameController extends Controller
     {
         $warehouseId = $request->integer('warehouse_id') ?: Warehouse::defaultId();
         $items = Item::query()
+            ->with(['units' => fn ($query) => $query->orderByDesc('is_base')->orderBy('conversion_qty')])
             ->leftJoin('item_stocks', function ($join) use ($warehouseId) {
                 $join->on('item_stocks.item_id', '=', 'items.id')
                     ->where('item_stocks.warehouse_id', '=', $warehouseId);
@@ -42,7 +44,8 @@ class StockOpnameController extends Controller
     public function index()
     {
         $defaultWarehouseId = Warehouse::defaultId();
-        $items = Item::leftJoin('item_stocks', function ($join) use ($defaultWarehouseId) {
+        $items = Item::with(['units' => fn ($query) => $query->orderByDesc('is_base')->orderBy('conversion_qty')])
+            ->leftJoin('item_stocks', function ($join) use ($defaultWarehouseId) {
                 $join->on('item_stocks.item_id', '=', 'items.id')
                     ->where('item_stocks.warehouse_id', '=', $defaultWarehouseId);
             })
@@ -58,7 +61,7 @@ class StockOpnameController extends Controller
             'items' => $items,
             'dataUrl' => route('admin.inventory.stock-opname.data'),
             'storeUrl' => route('admin.inventory.stock-opname.store'),
-            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']),
+            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'type', 'is_default']),
         ]);
     }
 
@@ -263,6 +266,9 @@ class StockOpnameController extends Controller
                 StockOpnameItem::create([
                     'stock_opname_id' => $opname->id,
                     'item_id' => $row['item_id'],
+                    'unit_id' => $row['unit_id'],
+                    'counted_qty_input' => $row['counted_qty_input'],
+                    'conversion_qty' => $row['conversion_qty'],
                     'system_qty' => $systemQty,
                     'counted_qty' => $countedQty,
                     'adjustment' => $adjustment,
@@ -291,10 +297,13 @@ class StockOpnameController extends Controller
 
     private function validatePayload(Request $request): array
     {
+        $rawItems = $request->input('items', []);
         $validated = $request->validate([
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_id' => ['required', 'integer', 'exists:items,id'],
-            'items.*.counted_qty' => ['required', 'integer', 'min:0'],
+            'items.*.unit_id' => ['nullable', 'integer', 'exists:item_units,id'],
+            'items.*.counted_qty_input' => ['nullable', 'integer', 'min:0'],
+            'items.*.counted_qty' => ['nullable', 'integer', 'min:0'],
             'items.*.note' => ['nullable', 'string'],
             'note' => ['nullable', 'string'],
             'transacted_at' => ['required', 'date'],
@@ -304,10 +313,22 @@ class StockOpnameController extends Controller
 
         $items = collect($validated['items'] ?? [])
             ->filter(fn ($row) => (int) ($row['item_id'] ?? 0) > 0)
-            ->map(function ($row) {
+            ->map(function ($row, $index) use ($validated, $rawItems) {
+                $itemId = (int) $row['item_id'];
+                $unit = $this->resolveInputUnit(
+                    $validated['warehouse_id'],
+                    $itemId,
+                    (int) ($row['unit_id'] ?? 0),
+                    !isset($rawItems[$index]['counted_qty_input'])
+                );
+                $qtyInput = (int) ($row['counted_qty_input'] ?? $row['counted_qty'] ?? 0);
+                $conversionQty = (int) ($unit?->conversion_qty ?? 1);
                 return [
-                    'item_id' => (int) $row['item_id'],
-                    'counted_qty' => (int) $row['counted_qty'],
+                    'item_id' => $itemId,
+                    'unit_id' => $unit?->id,
+                    'counted_qty_input' => $qtyInput,
+                    'conversion_qty' => $conversionQty,
+                    'counted_qty' => $qtyInput * $conversionQty,
                     'note' => $row['note'] ?? null,
                 ];
             })->values();
@@ -317,7 +338,8 @@ class StockOpnameController extends Controller
                 StockService::assertWarehouseQuantity(
                     $validated['warehouse_id'],
                     (int) $row['item_id'],
-                    (int) $row['counted_qty']
+                    (int) $row['counted_qty'],
+                    $row['unit_id'] ? (int) $row['unit_id'] : null
                 );
             }
         }
@@ -339,6 +361,31 @@ class StockOpnameController extends Controller
         return $validated;
     }
 
+    private function resolveInputUnit(int $warehouseId, int $itemId, int $unitId, bool $legacyBaseInput = false): ?ItemUnit
+    {
+        $warehouse = Warehouse::findOrFail($warehouseId);
+        $query = ItemUnit::where('item_id', $itemId);
+        if ($unitId > 0) {
+            $query->whereKey($unitId);
+        } elseif ($legacyBaseInput) {
+            $query->where('is_base', true);
+        } elseif ($warehouse->type === Warehouse::TYPE_BULK) {
+            $query->where('is_base', false)->orderBy('conversion_qty');
+        } else {
+            $query->where('is_base', true);
+        }
+        $unit = $query->first();
+        if (!$unit && $legacyBaseInput) {
+            return null;
+        }
+
+        if (!$unit || ($warehouse->type === Warehouse::TYPE_BULK && $unit->is_base)) {
+            throw ValidationException::withMessages(['items' => 'Gudang Besar wajib dihitung dalam satuan koli/kemasan.']);
+        }
+
+        return $unit;
+    }
+
     private function postStockMovements(StockOpname $opname): void
     {
         $opname->loadMissing('items');
@@ -351,8 +398,13 @@ class StockOpnameController extends Controller
             StockService::mutate([
                 'warehouse_id' => $opname->warehouse_id ?: Warehouse::defaultId(),
                 'item_id' => $row->item_id,
+                'unit_id' => $row->unit_id,
                 'direction' => $adjustment > 0 ? 'in' : 'out',
                 'qty' => abs($adjustment),
+                'qty_input' => $row->conversion_qty > 0
+                    ? (int) (abs($adjustment) / $row->conversion_qty)
+                    : abs($adjustment),
+                'conversion_qty' => $row->conversion_qty ?: 1,
                 'source_type' => 'opname',
                 'source_subtype' => null,
                 'source_id' => $opname->id,

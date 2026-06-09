@@ -12,6 +12,9 @@ class StockOpnameItem extends Model
     protected $fillable = [
         'stock_opname_id',
         'item_id',
+        'unit_id',
+        'counted_qty_input',
+        'conversion_qty',
         'system_qty',
         'counted_qty',
         'adjustment',
@@ -27,6 +30,11 @@ class StockOpnameItem extends Model
     public function item()
     {
         return $this->belongsTo(Item::class, 'item_id');
+    }
+
+    public function unit()
+    {
+        return $this->belongsTo(ItemUnit::class, 'unit_id');
     }
 
     public function creator()

@@ -66,9 +66,10 @@
                             <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
                             <select class="form-select form-select-solid" name="warehouse_id" id="allocation_warehouse_id" required>
                                 @foreach($warehouses as $warehouse)
-                                    <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                                    <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
                                 @endforeach
                             </select>
+                            <div class="form-text" id="allocation_warehouse_unit_info"></div>
                         </div>
                         <div class="col-md-6">
                             <label class="required fs-6 fw-bold form-label mb-2">Jenis Alokasi</label>
@@ -138,6 +139,7 @@
         const titleEl = document.getElementById('allocation_modal_title');
         const dateEl = document.getElementById('allocation_transacted_at');
         const warehouseEl = document.getElementById('allocation_warehouse_id');
+        const warehouseUnitInfo = document.getElementById('allocation_warehouse_unit_info');
         let fpDate = null;
 
         const pad = n => String(n).padStart(2, '0');
@@ -181,11 +183,31 @@
                 });
             });
         };
+        const isBulkWarehouse = () => warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
+        const updateWarehouseInfo = () => {
+            if (!warehouseUnitInfo) return;
+            warehouseUnitInfo.innerHTML = isBulkWarehouse()
+                ? '<span class="text-primary fw-bold">Gudang Besar:</span> alokasi barang rusak menggunakan koli/kemasan.'
+                : '<span class="text-success fw-bold">Gudang Kecil:</span> alokasi barang rusak menggunakan PCS/SET.';
+        };
+        const syncRowUnit = (row, selectedUnitId = null) => {
+            const item = damagedItems.find(value => String(value.id) === String(row.querySelector('.allocation-item-select')?.value));
+            const units = (item?.units || []).filter(unit => isBulkWarehouse() ? !unit.is_base : unit.is_base);
+            const baseUnit = (item?.units || []).find(unit => unit.is_base);
+            const unitEl = row.querySelector('[data-name="unit_id"]');
+            unitEl.innerHTML = units.length ? units.map(unit => `<option value="${unit.id}">${unit.name}</option>`).join('') : '<option value="">Satuan belum dikonfigurasi</option>';
+            if (selectedUnitId && units.some(unit => String(unit.id) === String(selectedUnitId))) unitEl.value = String(selectedUnitId);
+            const selected = units.find(unit => String(unit.id) === String(unitEl.value));
+            const qty = Number(row.querySelector('[data-name="qty_input"]')?.value || 0);
+            row.querySelector('.allocation-unit-label').textContent = isBulkWarehouse() ? 'Satuan Koli' : 'Satuan';
+            row.querySelector('.allocation-qty-label').textContent = isBulkWarehouse() ? `Jumlah Koli (${selected?.name || 'KOLI'})` : `Qty (${selected?.name || baseUnit?.name || 'PCS'})`;
+            row.querySelector('.allocation-qty-info').textContent = selected ? `1 ${selected.name} = ${selected.conversion_qty} ${baseUnit?.name || 'dasar'}; total ${qty * selected.conversion_qty} ${baseUnit?.name || 'dasar'}` : '';
+        };
         const createRow = (data = {}) => {
             const row = document.createElement('div');
             row.className = 'row g-3 align-items-end mb-4 allocation-item-row';
             row.innerHTML = `
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label class="required fs-6 fw-bold form-label mb-2">Item</label>
                     <select class="form-select form-select-solid allocation-item-select" data-name="item_id" required>
                         <option value=""></option>${itemOptionsHtml(warehouseEl?.value || '')}
@@ -193,9 +215,14 @@
                     <div class="invalid-feedback" data-error-for="item_id"></div>
                 </div>
                 <div class="col-md-2">
-                    <label class="required fs-6 fw-bold form-label mb-2">Qty</label>
-                    <input type="number" min="1" class="form-control form-control-solid" data-name="qty" required />
-                    <div class="invalid-feedback" data-error-for="qty"></div>
+                    <label class="required fs-6 fw-bold form-label mb-2 allocation-unit-label">Satuan</label>
+                    <select class="form-select form-select-solid" data-name="unit_id" required></select>
+                </div>
+                <div class="col-md-2">
+                    <label class="required fs-6 fw-bold form-label mb-2 allocation-qty-label">Qty</label>
+                    <input type="number" min="1" step="1" class="form-control form-control-solid" data-name="qty_input" required />
+                    <div class="form-text fs-8 allocation-qty-info"></div>
+                    <div class="invalid-feedback" data-error-for="qty_input"></div>
                 </div>
                 <div class="col-md-3">
                     <label class="fs-6 fw-bold form-label mb-2">Catatan Item</label>
@@ -206,12 +233,13 @@
                 </div>`;
             itemsContainer.appendChild(row);
             const selectEl = row.querySelector('select');
-            const qtyEl = row.querySelector('[data-name="qty"]');
+            const qtyEl = row.querySelector('[data-name="qty_input"]');
             const noteEl = row.querySelector('[data-name="note"]');
             if (data.item_id) selectEl.value = String(data.item_id);
-            if (qtyEl) qtyEl.value = data.qty ?? '';
+            if (qtyEl) qtyEl.value = data.qty_input ?? data.qty ?? '';
             if (noteEl) noteEl.value = data.note ?? '';
             initSelect2(selectEl);
+            syncRowUnit(row, data.unit_id);
             renumberRows();
         };
         const resetForm = () => {
@@ -227,7 +255,22 @@
 
         document.getElementById('btn_open_allocation')?.addEventListener('click', resetForm);
         document.getElementById('btn_add_allocation_item')?.addEventListener('click', () => createRow());
-        warehouseEl?.addEventListener('change', refreshItemOptions);
+        warehouseEl?.addEventListener('change', () => {
+            refreshItemOptions();
+            updateWarehouseInfo();
+            itemsContainer.querySelectorAll('.allocation-item-row').forEach(row => syncRowUnit(row));
+        });
+        itemsContainer.addEventListener('change', event => {
+            if (event.target.matches('.allocation-item-select')) syncRowUnit(event.target.closest('.allocation-item-row'));
+            if (event.target.matches('[data-name="unit_id"]')) syncRowUnit(event.target.closest('.allocation-item-row'), event.target.value);
+        });
+        itemsContainer.addEventListener('input', event => {
+            if (event.target.matches('[data-name="qty_input"]')) {
+                const row = event.target.closest('.allocation-item-row');
+                syncRowUnit(row, row.querySelector('[data-name="unit_id"]').value);
+            }
+        });
+        updateWarehouseInfo();
         itemsContainer.addEventListener('click', e => {
             const btn = e.target.closest('.btn-remove-item');
             if (!btn) return;

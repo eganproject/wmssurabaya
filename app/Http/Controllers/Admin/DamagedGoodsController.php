@@ -11,6 +11,7 @@ use App\Models\DamagedStockMutation;
 use App\Models\InboundItem;
 use App\Models\InboundTransaction;
 use App\Models\Item;
+use App\Models\ItemUnit;
 use App\Models\StockMutation;
 use App\Models\Warehouse;
 use App\Support\DamagedStockService;
@@ -27,8 +28,9 @@ class DamagedGoodsController extends Controller
 {
     public function index()
     {
-        $items = Item::orderBy('name')->get(['id', 'sku', 'name']);
-        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']);
+        $items = Item::with(['units' => fn ($query) => $query->orderByDesc('is_base')->orderBy('conversion_qty')])
+            ->orderBy('name')->get(['id', 'sku', 'name']);
+        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'type', 'is_default']);
 
         return view('admin.inventory.damaged-goods.index', [
             'items' => $items,
@@ -95,10 +97,16 @@ class DamagedGoodsController extends Controller
                 $createdTx++;
 
                 foreach ($group['items'] as $row) {
+                    $unit = $this->resolveInputUnit($warehouseId, (int) $row['item_id'], 0);
+                    $conversionQty = (int) $unit->conversion_qty;
+                    $qtyInput = (int) $row['qty'];
                     DamagedGoodItem::create([
                         'damaged_good_id' => $damage->id,
                         'item_id' => $row['item_id'],
-                        'qty' => $row['qty'],
+                        'unit_id' => $unit->id,
+                        'qty_input' => $qtyInput,
+                        'conversion_qty' => $conversionQty,
+                        'qty' => $qtyInput * $conversionQty,
                         'note' => $row['note'] ?? null,
                     ]);
                     $createdItems++;
@@ -178,7 +186,7 @@ class DamagedGoodsController extends Controller
     public function data(Request $request)
     {
         $query = DamagedGood::query()
-            ->with(['items.item', 'creator', 'warehouse'])
+            ->with(['items.item', 'items.unit', 'creator', 'warehouse'])
             ->orderBy('transacted_at', 'desc');
 
         $search = trim((string) $request->input('q', ''));
@@ -210,8 +218,9 @@ class DamagedGoodsController extends Controller
                 if ($sku === '') {
                     return '';
                 }
-                $qty = (int) ($it->qty ?? 0);
-                return sprintf('%s (%d)', $sku, $qty);
+                $qty = (int) ($it->qty_input ?: $it->qty);
+                $unit = $it->unit?->name ?: 'satuan dasar';
+                return sprintf('%s (%d %s)', $sku, $qty, $unit);
             })->filter()->values();
             $itemLabel = $labels->implode(', ');
             $ts = $row->transacted_at ? Carbon::parse($row->transacted_at)->format('Y-m-d H:i') : '';
@@ -264,6 +273,9 @@ class DamagedGoodsController extends Controller
                 DamagedGoodItem::create([
                     'damaged_good_id' => $damage->id,
                     'item_id' => $row['item_id'],
+                    'unit_id' => $row['unit_id'],
+                    'qty_input' => $row['qty_input'],
+                    'conversion_qty' => $row['conversion_qty'],
                     'qty' => $row['qty'],
                     'note' => $row['note'] ?? null,
                 ]);
@@ -304,6 +316,9 @@ class DamagedGoodsController extends Controller
             'items' => $damage->items->map(function ($row) {
                 return [
                     'item_id' => $row->item_id,
+                    'unit_id' => $row->unit_id,
+                    'qty_input' => (int) ($row->qty_input ?: $row->qty),
+                    'conversion_qty' => (int) ($row->conversion_qty ?: 1),
                     'qty' => (int) $row->qty,
                     'note' => $row->note,
                 ];
@@ -345,6 +360,9 @@ class DamagedGoodsController extends Controller
                 DamagedGoodItem::create([
                     'damaged_good_id' => $damage->id,
                     'item_id' => $row['item_id'],
+                    'unit_id' => $row['unit_id'],
+                    'qty_input' => $row['qty_input'],
+                    'conversion_qty' => $row['conversion_qty'],
                     'qty' => $row['qty'],
                     'note' => $row['note'] ?? null,
                 ]);
@@ -565,8 +583,11 @@ class DamagedGoodsController extends Controller
                 StockService::mutate([
                     'warehouse_id' => $damage->warehouse_id ?: Warehouse::defaultId(),
                     'item_id' => $row->item_id,
+                    'unit_id' => $row->unit_id,
                     'direction' => 'out',
                     'qty' => $row->qty,
+                    'qty_input' => $row->qty_input ?: $row->qty,
+                    'conversion_qty' => $row->conversion_qty ?: 1,
                     'source_type' => 'damaged',
                     'source_subtype' => $damage->source_type,
                     'source_id' => $damage->id,
@@ -597,24 +618,40 @@ class DamagedGoodsController extends Controller
 
     private function validatePayload(Request $request): array
     {
+        $rawItems = $request->input('items', []);
         $validated = $request->validate([
             'source_type' => ['required', 'string', Rule::in(['display', 'inbound_return'])],
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'source_ref' => ['nullable', 'string', 'max:100'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_id' => ['required', 'integer', 'exists:items,id'],
-            'items.*.qty' => ['required', 'integer', 'min:1'],
+            'items.*.unit_id' => ['nullable', 'integer', 'exists:item_units,id'],
+            'items.*.qty_input' => ['nullable', 'integer', 'min:1'],
+            'items.*.qty' => ['nullable', 'integer', 'min:1'],
             'items.*.note' => ['nullable', 'string'],
             'note' => ['nullable', 'string'],
             'transacted_at' => ['required', 'date'],
         ]);
 
+        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
         $items = collect($validated['items'] ?? [])
-            ->filter(fn ($row) => (int) ($row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)
-            ->map(function ($row) {
+            ->filter(fn ($row) => (int) ($row['qty_input'] ?? $row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)
+            ->map(function ($row, $index) use ($validated, $rawItems) {
+                $itemId = (int) $row['item_id'];
+                $unit = $this->resolveInputUnit(
+                    $validated['warehouse_id'],
+                    $itemId,
+                    (int) ($row['unit_id'] ?? 0),
+                    !isset($rawItems[$index]['qty_input'])
+                );
+                $qtyInput = (int) ($row['qty_input'] ?? $row['qty'] ?? 0);
+                $conversionQty = (int) ($unit?->conversion_qty ?? 1);
                 return [
-                    'item_id' => (int) $row['item_id'],
-                    'qty' => (int) $row['qty'],
+                    'item_id' => $itemId,
+                    'unit_id' => $unit?->id,
+                    'qty_input' => $qtyInput,
+                    'conversion_qty' => $conversionQty,
+                    'qty' => $qtyInput * $conversionQty,
                     'note' => $row['note'] ?? null,
                 ];
             })->values();
@@ -633,7 +670,6 @@ class DamagedGoodsController extends Controller
         }
 
         $validated['items'] = $items->all();
-        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
         if (!empty($validated['transacted_at'])) {
             $validated['transacted_at'] = Carbon::parse($validated['transacted_at']);
         } else {
@@ -641,6 +677,31 @@ class DamagedGoodsController extends Controller
         }
 
         return $validated;
+    }
+
+    private function resolveInputUnit(int $warehouseId, int $itemId, int $unitId, bool $legacyBaseInput = false): ?ItemUnit
+    {
+        $warehouse = Warehouse::findOrFail($warehouseId);
+        $query = ItemUnit::where('item_id', $itemId);
+        if ($unitId > 0) {
+            $query->whereKey($unitId);
+        } elseif ($legacyBaseInput) {
+            $query->where('is_base', true);
+        } elseif ($warehouse->type === Warehouse::TYPE_BULK) {
+            $query->where('is_base', false)->orderBy('conversion_qty');
+        } else {
+            $query->where('is_base', true);
+        }
+        $unit = $query->first();
+        if (!$unit && $legacyBaseInput) {
+            return null;
+        }
+
+        if (!$unit || ($warehouse->type === Warehouse::TYPE_BULK && $unit->is_base)) {
+            throw ValidationException::withMessages(['items' => 'Gudang Besar wajib menggunakan satuan koli/kemasan.']);
+        }
+
+        return $unit;
     }
 
     private function generateCode(string $prefix): string

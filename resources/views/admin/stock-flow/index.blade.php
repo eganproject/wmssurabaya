@@ -124,6 +124,7 @@
                                 <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
                             @endforeach
                         </select>
+                        <div class="form-text" id="flow_warehouse_unit_info"></div>
                     </div>
                     <div id="flow_items_container"></div>
                     <div class="mb-7">
@@ -253,6 +254,7 @@
         const dateToEl = document.getElementById('filter_date_to');
         const transactedAtEl = document.getElementById('flow_transacted_at');
         const warehouseEl = document.getElementById('flow_warehouse_id');
+        const warehouseUnitInfo = document.getElementById('flow_warehouse_unit_info');
         const filterApplyBtn = document.getElementById('filter_apply');
         const filterResetBtn = document.getElementById('filter_reset');
         const importBtn = document.getElementById('btn_import_flow');
@@ -372,6 +374,36 @@
             }
         };
 
+        const updateWarehouseUnitInfo = () => {
+            if (!warehouseUnitInfo) return;
+            const isBulkWarehouse = warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
+            warehouseUnitInfo.innerHTML = isBulkWarehouse
+                ? '<span class="text-primary fw-bold">Gudang Besar:</span> qty wajib diinput dalam satuan koli/kemasan (DUS, BOX, KOLI), bukan PCS.'
+                : '<span class="text-success fw-bold">Gudang Kecil:</span> qty diinput dalam satuan dasar seperti PCS atau SET.';
+        };
+
+        const updateQtyUnitInfo = (row) => {
+            if (!row || isInboundReturnFlow) return;
+            const unitEl = row.querySelector('.flow-unit-select');
+            const qtyEl = row.querySelector('input[data-name="qty"]');
+            const selected = unitEl?.selectedOptions?.[0];
+            const conversion = Number(selected?.dataset?.conversion || 0);
+            const unitName = selected?.dataset?.name || 'UNIT';
+            const baseName = selected?.dataset?.baseName || 'satuan dasar';
+            const isBulkWarehouse = warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
+            const unitLabel = row.querySelector('.flow-unit-label');
+            const qtyLabel = row.querySelector('.flow-qty-label');
+            const infoEl = row.querySelector('.flow-qty-info');
+            if (unitLabel) unitLabel.textContent = isBulkWarehouse ? 'Satuan Koli' : 'Satuan';
+            if (qtyLabel) qtyLabel.textContent = isBulkWarehouse ? `Jumlah Koli (${unitName})` : `Qty (${unitName})`;
+            if (infoEl) {
+                const qty = Number(qtyEl?.value || 0);
+                infoEl.textContent = conversion > 0
+                    ? `1 ${unitName} = ${conversion.toLocaleString('id-ID')} ${baseName}; total ${Math.round(qty * conversion).toLocaleString('id-ID')} ${baseName}`
+                    : '';
+            }
+        };
+
         const syncUnitOptions = (row, selectedUnitId = null) => {
             const itemId = row?.querySelector('.flow-item-select')?.value || '';
             const unitEl = row?.querySelector('.flow-unit-select');
@@ -379,18 +411,22 @@
             const isBulkWarehouse = warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
             const allUnits = itemUnits[String(itemId)] || [];
             const units = isBulkWarehouse ? allUnits.filter(unit => !unit.is_base) : allUnits;
+            const baseUnit = allUnits.find(unit => unit.is_base);
             unitEl.innerHTML = units.length ? units.map(unit => {
-                const suffix = unit.conversion_qty > 1 ? ` (1 = ${unit.conversion_qty})` : '';
-                return `<option value="${unit.id}">${unit.name}${suffix}</option>`;
+                const suffix = unit.conversion_qty > 1 ? ` - 1 ${unit.name} = ${unit.conversion_qty} ${baseUnit?.name || 'dasar'}` : '';
+                return `<option value="${unit.id}" data-name="${unit.name}" data-conversion="${unit.conversion_qty}" data-base-name="${baseUnit?.name || 'dasar'}">${unit.name}${suffix}</option>`;
             }).join('') : `<option value="">${isBulkWarehouse ? 'Atur satuan koli pada master item' : 'Satuan dasar (1)'}</option>`;
             if (selectedUnitId && units.some(unit => String(unit.id) === String(selectedUnitId))) {
                 unitEl.value = String(selectedUnitId);
             }
+            updateQtyUnitInfo(row);
         };
 
         warehouseEl?.addEventListener('change', () => {
             itemsContainer?.querySelectorAll('.flow-item-row').forEach(row => syncUnitOptions(row));
+            updateWarehouseUnitInfo();
         });
+        updateWarehouseUnitInfo();
 
         if (typeof flatpickr !== 'undefined') {
             if (dateFromEl) {
@@ -466,13 +502,14 @@
                     <div class="invalid-feedback" data-error-for="stock_source"></div>
                 </div>
                 <div class="col-md-2">
-                    <label class="required fs-6 fw-bold form-label mb-2">Satuan</label>
+                    <label class="required fs-6 fw-bold form-label mb-2 flow-unit-label">Satuan</label>
                     <select class="form-select form-select-solid flow-unit-select" data-name="unit_id"></select>
                     <div class="invalid-feedback" data-error-for="unit_id"></div>
                 </div>
                 <div class="col-md-1">
-                    <label class="required fs-6 fw-bold form-label mb-2">Qty</label>
+                    <label class="required fs-6 fw-bold form-label mb-2 flow-qty-label">Qty</label>
                     <input type="number" min="1" class="form-control form-control-solid" data-name="qty" required />
+                    <div class="form-text fs-8 flow-qty-info"></div>
                     <div class="invalid-feedback" data-error-for="qty"></div>
                 </div>
                 <div class="col-md-3">
@@ -492,13 +529,14 @@
                     <div class="invalid-feedback" data-error-for="item_id"></div>
                 </div>
                 <div class="col-md-2">
-                    <label class="required fs-6 fw-bold form-label mb-2">Satuan</label>
+                    <label class="required fs-6 fw-bold form-label mb-2 flow-unit-label">Satuan</label>
                     <select class="form-select form-select-solid flow-unit-select" data-name="unit_id"></select>
                     <div class="invalid-feedback" data-error-for="unit_id"></div>
                 </div>
                 <div class="col-md-2">
-                    <label class="required fs-6 fw-bold form-label mb-2">Qty</label>
+                    <label class="required fs-6 fw-bold form-label mb-2 flow-qty-label">Qty</label>
                     <input type="number" min="1" class="form-control form-control-solid" data-name="qty" required />
+                    <div class="form-text fs-8 flow-qty-info"></div>
                     <div class="invalid-feedback" data-error-for="qty"></div>
                 </div>
                 <div class="col-md-3">
@@ -562,16 +600,21 @@
             if (e.target.matches('.flow-item-select')) {
                 syncUnitOptions(e.target.closest('.flow-item-row'));
             }
+            if (e.target.matches('.flow-unit-select')) {
+                updateQtyUnitInfo(e.target.closest('.flow-item-row'));
+            }
             if (e.target.matches('.flow-item-select') || e.target.matches('select[data-name="stock_source"]')) {
                 validateUniqueItems();
             }
         });
 
         itemsContainer?.addEventListener('input', (e) => {
-            if (!e.target.matches('input[data-name="qty_received"], input[data-name="qty_good"], input[data-name="qty_damaged"]')) {
-                return;
+            if (e.target.matches('input[data-name="qty"]')) {
+                updateQtyUnitInfo(e.target.closest('.flow-item-row'));
             }
-            syncReturnQtyRow(e.target.closest('.flow-item-row'), e.target.getAttribute('data-name'));
+            if (e.target.matches('input[data-name="qty_received"], input[data-name="qty_good"], input[data-name="qty_damaged"]')) {
+                syncReturnQtyRow(e.target.closest('.flow-item-row'), e.target.getAttribute('data-name'));
+            }
         });
 
         itemsContainer?.addEventListener('click', (e) => {

@@ -28,13 +28,13 @@ class DamagedGoodsImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
         $headers = array_keys($first?->toArray() ?? []);
         if (!in_array('sku', $headers, true)) {
             throw ValidationException::withMessages([
-                'file' => 'Header wajib: sku, qty (opsional: source_type, source_ref, note, item_note, transacted_at)',
+                'file' => 'Header wajib: sku, qty_input (opsional: source_type, source_ref, note, item_note, transacted_at)',
             ]);
         }
-        $qtyKey = $this->detectFirstKey($headers, ['qty', 'quantity', 'jumlah', 'qty_rusak', 'rusak']);
+        $qtyKey = $this->detectFirstKey($headers, ['qty_input', 'qty', 'quantity', 'jumlah', 'qty_rusak', 'rusak']);
         if ($qtyKey === null) {
             throw ValidationException::withMessages([
-                'file' => 'Header qty wajib (gunakan: qty/quantity/jumlah/qty_rusak/rusak)',
+                'file' => 'Header qty_input wajib (qty lama tetap didukung)',
             ]);
         }
 

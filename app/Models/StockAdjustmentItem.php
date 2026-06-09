@@ -12,6 +12,9 @@ class StockAdjustmentItem extends Model
     protected $fillable = [
         'stock_adjustment_id',
         'item_id',
+        'unit_id',
+        'qty_input',
+        'conversion_qty',
         'direction',
         'qty',
         'note',
@@ -25,5 +28,10 @@ class StockAdjustmentItem extends Model
     public function item()
     {
         return $this->belongsTo(Item::class, 'item_id');
+    }
+
+    public function unit()
+    {
+        return $this->belongsTo(ItemUnit::class, 'unit_id');
     }
 }

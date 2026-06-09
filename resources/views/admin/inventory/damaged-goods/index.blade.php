@@ -115,9 +115,10 @@
                             <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
                             <select class="form-select form-select-solid" name="warehouse_id" id="damage_warehouse_id" required>
                                 @foreach($warehouses as $warehouse)
-                                    <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                                    <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
                                 @endforeach
                             </select>
+                            <div class="form-text" id="damage_warehouse_unit_info"></div>
                         </div>
                         <div class="col-md-6">
                             <label class="required fs-6 fw-bold form-label mb-2">Sumber</label>
@@ -181,7 +182,8 @@
             <div class="modal-body scroll-y mx-5 mx-xl-15 my-7">
                 <div class="mb-6">
                     <div class="text-muted fs-7">
-                        Header minimal: <strong>sku</strong>, <strong>qty</strong>.<br>
+                        Header minimal: <strong>sku</strong>, <strong>qty_input</strong>.<br>
+                        Pada Gudang Besar, <strong>qty_input</strong> adalah jumlah koli. Pada Gudang Kecil, nilainya adalah PCS/SET. Header lama <strong>qty</strong> tetap didukung.<br>
                         Opsional: <strong>source_type</strong> (display / inbound_return, default display), <strong>source_ref</strong>, <strong>note</strong>, <strong>item_note</strong>, <strong>transacted_at</strong>.<br>
                         Baris dengan <strong>source_ref</strong> sama akan digabung menjadi satu transaksi. Data hasil import berstatus Menunggu dan perlu disetujui.
                     </div>
@@ -225,6 +227,7 @@
     const canUpdate = {{ $canUpdate ? 'true' : 'false' }};
     const canDelete = {{ $canDelete ? 'true' : 'false' }};
     const itemOptionsHtml = `@foreach($items as $item)<option value="{{ $item->id }}">{{ $item->sku }} - {{ $item->name }}</option>@endforeach`;
+    const damagedGoodsItems = @json($items);
 
     document.addEventListener('DOMContentLoaded', () => {
         // --- Stock Summary Table ---
@@ -282,6 +285,8 @@
         const openBtn = document.getElementById('btn_open_damage');
         const modalTitle = document.getElementById('damage_modal_title');
         const transactedAtEl = document.getElementById('damage_transacted_at');
+        const warehouseEl = document.getElementById('damage_warehouse_id');
+        const warehouseUnitInfo = document.getElementById('damage_warehouse_unit_info');
         let fpTransacted = null;
 
         const formatDateTime = (date) => {
@@ -359,12 +364,32 @@
                 });
             });
         };
+        const isBulkWarehouse = () => warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
+        const updateWarehouseInfo = () => {
+            if (!warehouseUnitInfo) return;
+            warehouseUnitInfo.innerHTML = isBulkWarehouse()
+                ? '<span class="text-primary fw-bold">Gudang Besar:</span> qty barang rusak diinput dalam koli/kemasan.'
+                : '<span class="text-success fw-bold">Gudang Kecil:</span> qty barang rusak diinput dalam PCS/SET.';
+        };
+        const syncRowUnit = (row, selectedUnitId = null) => {
+            const item = damagedGoodsItems.find(value => String(value.id) === String(row.querySelector('.damage-item-select')?.value));
+            const units = (item?.units || []).filter(unit => isBulkWarehouse() ? !unit.is_base : unit.is_base);
+            const baseUnit = (item?.units || []).find(unit => unit.is_base);
+            const unitEl = row.querySelector('[data-name="unit_id"]');
+            unitEl.innerHTML = units.length ? units.map(unit => `<option value="${unit.id}">${unit.name}</option>`).join('') : '<option value="">Satuan belum dikonfigurasi</option>';
+            if (selectedUnitId && units.some(unit => String(unit.id) === String(selectedUnitId))) unitEl.value = String(selectedUnitId);
+            const selected = units.find(unit => String(unit.id) === String(unitEl.value));
+            const qty = Number(row.querySelector('[data-name="qty_input"]')?.value || 0);
+            row.querySelector('.damage-unit-label').textContent = isBulkWarehouse() ? 'Satuan Koli' : 'Satuan';
+            row.querySelector('.damage-qty-label').textContent = isBulkWarehouse() ? `Jumlah Koli (${selected?.name || 'KOLI'})` : `Qty (${selected?.name || baseUnit?.name || 'PCS'})`;
+            row.querySelector('.damage-qty-info').textContent = selected ? `1 ${selected.name} = ${selected.conversion_qty} ${baseUnit?.name || 'dasar'}; total ${qty * selected.conversion_qty} ${baseUnit?.name || 'dasar'}` : '';
+        };
 
         const createItemRow = (data = {}) => {
             const row = document.createElement('div');
             row.className = 'row g-3 align-items-end mb-4 damage-item-row';
             row.innerHTML = `
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label class="required fs-6 fw-bold form-label mb-2">Item</label>
                     <select class="form-select form-select-solid damage-item-select" data-name="item_id" required>
                         <option value=""></option>
@@ -373,9 +398,14 @@
                     <div class="invalid-feedback" data-error-for="item_id"></div>
                 </div>
                 <div class="col-md-2">
-                    <label class="required fs-6 fw-bold form-label mb-2">Qty</label>
-                    <input type="number" min="1" class="form-control form-control-solid" data-name="qty" required />
-                    <div class="invalid-feedback" data-error-for="qty"></div>
+                    <label class="required fs-6 fw-bold form-label mb-2 damage-unit-label">Satuan</label>
+                    <select class="form-select form-select-solid" data-name="unit_id" required></select>
+                </div>
+                <div class="col-md-2">
+                    <label class="required fs-6 fw-bold form-label mb-2 damage-qty-label">Qty</label>
+                    <input type="number" min="1" step="1" class="form-control form-control-solid" data-name="qty_input" required />
+                    <div class="form-text fs-8 damage-qty-info"></div>
+                    <div class="invalid-feedback" data-error-for="qty_input"></div>
                 </div>
                 <div class="col-md-3">
                     <label class="fs-6 fw-bold form-label mb-2">Catatan Item</label>
@@ -391,12 +421,13 @@
             if (data.item_id) {
                 selectEl.value = String(data.item_id);
             }
-            const qtyEl = row.querySelector('input[data-name="qty"]');
-            if (qtyEl) qtyEl.value = data.qty ?? '';
+            const qtyEl = row.querySelector('input[data-name="qty_input"]');
+            if (qtyEl) qtyEl.value = data.qty_input ?? data.qty ?? '';
             const noteEl = row.querySelector('input[data-name="note"]');
             if (noteEl) noteEl.value = data.note ?? '';
 
             initSelect2(selectEl);
+            syncRowUnit(row, data.unit_id);
             renumberRows();
             validateUniqueItems();
         };
@@ -419,9 +450,22 @@
 
         itemsContainer?.addEventListener('change', (e) => {
             if (e.target.matches('.damage-item-select')) {
+                syncRowUnit(e.target.closest('.damage-item-row'));
                 validateUniqueItems();
             }
+            if (e.target.matches('[data-name="unit_id"]')) syncRowUnit(e.target.closest('.damage-item-row'), e.target.value);
         });
+        itemsContainer?.addEventListener('input', event => {
+            if (event.target.matches('[data-name="qty_input"]')) {
+                const row = event.target.closest('.damage-item-row');
+                syncRowUnit(row, row.querySelector('[data-name="unit_id"]').value);
+            }
+        });
+        warehouseEl?.addEventListener('change', () => {
+            updateWarehouseInfo();
+            itemsContainer.querySelectorAll('.damage-item-row').forEach(row => syncRowUnit(row));
+        });
+        updateWarehouseInfo();
 
         itemsContainer?.addEventListener('click', (e) => {
             const btn = e.target.closest('.btn-remove-item');

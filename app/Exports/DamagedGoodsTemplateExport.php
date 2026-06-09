@@ -14,7 +14,7 @@ class DamagedGoodsTemplateExport implements FromArray, WithHeadings, ShouldAutoS
     {
         return [
             'sku',
-            'qty',
+            'qty_input',
             'source_type',
             'source_ref',
             'note',

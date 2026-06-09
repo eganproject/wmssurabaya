@@ -14,6 +14,10 @@ use App\Models\User;
 use App\Support\StockService;
 use App\Support\DamagedStockService;
 use App\Models\DamagedItemStock;
+use App\Models\DamagedAllocationItem;
+use App\Models\DamagedGoodItem;
+use App\Models\StockAdjustmentItem;
+use App\Models\StockOpnameItem;
 use App\Support\Permission;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
@@ -434,5 +438,91 @@ class MultiWarehouseStockTest extends TestCase
         $this->assertSame(12, (int) $transferItem->qty_received_base);
         $this->assertSame(12, (int) $transferItem->qty_discrepancy_base);
         $this->assertSame(12, (int) ItemStock::where('warehouse_id', $bulk->id)->where('item_id', $item->id)->value('stock'));
+    }
+
+    public function test_remaining_inventory_forms_store_bulk_input_as_packages(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $item = Item::create(['sku' => 'FORM-KOLI', 'name' => 'Form Koli', 'category_id' => null]);
+        ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'PCS',
+            'conversion_qty' => 1,
+            'is_base' => true,
+        ]);
+        $package = ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'KOLI',
+            'conversion_qty' => 12,
+            'is_base' => false,
+        ]);
+        $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
+
+        $payload = [
+            'warehouse_id' => $bulk->id,
+            'transacted_at' => now()->format('Y-m-d H:i:s'),
+        ];
+
+        $this->actingAs($user)->postJson(route('admin.inventory.stock-adjustments.store'), $payload + [
+            'items' => [[
+                'item_id' => $item->id,
+                'unit_id' => $package->id,
+                'qty_input' => 2,
+                'direction' => 'in',
+            ]],
+        ])->assertOk();
+
+        $this->actingAs($user)->postJson(route('admin.inventory.stock-opname.store'), $payload + [
+            'items' => [[
+                'item_id' => $item->id,
+                'unit_id' => $package->id,
+                'counted_qty_input' => 3,
+            ]],
+        ])->assertOk();
+
+        $this->actingAs($user)->postJson(route('admin.inventory.damaged-goods.store'), $payload + [
+            'source_type' => 'inbound_return',
+            'items' => [[
+                'item_id' => $item->id,
+                'unit_id' => $package->id,
+                'qty_input' => 2,
+            ]],
+        ])->assertOk();
+
+        DamagedStockService::mutate([
+            'warehouse_id' => $bulk->id,
+            'item_id' => $item->id,
+            'direction' => 'in',
+            'qty' => 24,
+            'source_type' => 'test',
+            'source_id' => 400,
+        ]);
+        $this->actingAs($user)->postJson(route('admin.inventory.damaged-allocations.store'), $payload + [
+            'allocation_type' => 'dispose',
+            'items' => [[
+                'item_id' => $item->id,
+                'unit_id' => $package->id,
+                'qty_input' => 1,
+            ]],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('stock_adjustment_items', [
+            'item_id' => $item->id,
+            'unit_id' => $package->id,
+            'qty_input' => 2,
+            'conversion_qty' => 12,
+            'qty' => 24,
+        ]);
+        $this->assertDatabaseHas('stock_opname_items', [
+            'item_id' => $item->id,
+            'unit_id' => $package->id,
+            'counted_qty_input' => 3,
+            'conversion_qty' => 12,
+            'counted_qty' => 36,
+        ]);
+        $this->assertSame(24, (int) DamagedGoodItem::latest('id')->value('qty'));
+        $this->assertSame(1, (int) DamagedAllocationItem::latest('id')->value('qty_input'));
+        $this->assertSame(24, (int) StockAdjustmentItem::latest('id')->value('qty'));
+        $this->assertSame(36, (int) StockOpnameItem::latest('id')->value('counted_qty'));
     }
 }

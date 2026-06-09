@@ -29,13 +29,13 @@ class StockAdjustmentsImport implements ToCollection, WithHeadingRow, SkipsEmpty
         $headers = array_keys($first?->toArray() ?? []);
         if (!in_array('sku', $headers, true)) {
             throw ValidationException::withMessages([
-                'file' => 'Header wajib: sku, qty, direction (opsional: note, item_note, transacted_at)',
+                'file' => 'Header wajib: sku, qty_input, direction (opsional: note, item_note, transacted_at)',
             ]);
         }
         $qtyKey = $this->detectQtyKey($headers);
         if ($qtyKey === null) {
             throw ValidationException::withMessages([
-                'file' => 'Header qty wajib (gunakan: qty/quantity/jumlah/stok/stock)',
+                'file' => 'Header qty_input wajib (qty lama tetap didukung)',
             ]);
         }
         $directionKey = null;
@@ -140,7 +140,7 @@ class StockAdjustmentsImport implements ToCollection, WithHeadingRow, SkipsEmpty
 
     private function detectQtyKey(array $headers): ?string
     {
-        foreach (['qty', 'quantity', 'jumlah', 'stok', 'stock'] as $key) {
+        foreach (['qty_input', 'qty', 'quantity', 'jumlah', 'stok', 'stock'] as $key) {
             if (in_array($key, $headers, true)) {
                 return $key;
             }

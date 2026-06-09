@@ -12,6 +12,9 @@ class DamagedGoodItem extends Model
     protected $fillable = [
         'damaged_good_id',
         'item_id',
+        'unit_id',
+        'qty_input',
+        'conversion_qty',
         'qty',
         'note',
     ];
@@ -24,5 +27,10 @@ class DamagedGoodItem extends Model
     public function item()
     {
         return $this->belongsTo(Item::class, 'item_id');
+    }
+
+    public function unit()
+    {
+        return $this->belongsTo(ItemUnit::class, 'unit_id');
     }
 }

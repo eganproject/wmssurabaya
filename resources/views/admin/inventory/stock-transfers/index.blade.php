@@ -109,6 +109,7 @@
                         <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Gudang Tujuan</label><select class="form-select form-select-solid" id="transfer_destination" required>@foreach($warehouses as $w)<option value="{{ $w->id }}">{{ $w->name }}</option>@endforeach</select></div>
                         <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Tanggal Transfer</label><input type="text" class="form-control form-control-solid" id="transfer_date" required></div>
                     </div>
+                    <div class="notice d-flex bg-light-info rounded border-info border border-dashed p-4 mb-7" id="transfer_unit_info"></div>
                     <div class="fv-row mb-7"><label class="fs-6 fw-bold form-label mb-2">Catatan Transfer</label><textarea class="form-control form-control-solid" id="transfer_note" rows="3"></textarea></div>
                     <div class="separator mb-7"></div>
                     <div class="d-flex justify-content-between align-items-center mb-5"><div><h5 class="fw-bolder mb-1">Item Transfer</h5><span class="text-muted fs-7">Qty mengikuti satuan kirim dan dikonversi otomatis ke satuan dasar.</span></div><button type="button" class="btn btn-sm btn-light-primary" id="transfer_add_item"><i class="fa-solid fa-plus"></i> Tambah Item</button></div>
@@ -182,6 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const transferSubmit = document.getElementById('transfer_submit');
     const receiveSubmit = document.getElementById('receive_submit');
     const transferDate = document.getElementById('transfer_date');
+    const transferUnitInfo = document.getElementById('transfer_unit_info');
     let editId = null;
     let receiveId = null;
     let transferDatePicker = null;
@@ -300,6 +302,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const itemOptions = items.map(item => `<option value="${item.id}">${escapeHtml(item.sku)} - ${escapeHtml(item.name)}</option>`).join('');
     const currentWarehouseType = select => warehouses.find(warehouse => String(warehouse.id) === String(select.value))?.type;
+    function updateTransferUnitInfo() {
+        const sourceBulk = currentWarehouseType(transfer_source) === 'bulk';
+        const destinationBulk = currentWarehouseType(transfer_destination) === 'bulk';
+        if (!transferUnitInfo) return;
+        transferUnitInfo.innerHTML = sourceBulk || destinationBulk
+            ? '<i class="fa-solid fa-boxes-stacked fs-2 text-info me-4"></i><div><div class="fw-bold text-gray-800">Input menggunakan satuan koli</div><div class="text-gray-700 fs-7">Karena transfer melibatkan Gudang Besar, jumlah kirim wajib berupa koli/kemasan utuh seperti DUS, BOX, atau KOLI. Input bukan dalam PCS.</div></div>'
+            : '<i class="fa-solid fa-box fs-2 text-info me-4"></i><div><div class="fw-bold text-gray-800">Input menggunakan satuan dasar</div><div class="text-gray-700 fs-7">Transfer antar Gudang Kecil dapat menggunakan PCS atau SET.</div></div>';
+    }
     function refreshTransferRow(row, selectedUnitId = null) {
         const item = items.find(value => String(value.id) === String(row.querySelector('.item').value));
         const requiresPackage = currentWarehouseType(transfer_source) === 'bulk' || currentWarehouseType(transfer_destination) === 'bulk';
@@ -311,7 +321,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (selectedUnitId && units.some(unit => String(unit.id) === String(selectedUnitId))) unitSelect.value = String(selectedUnitId);
         const selected = units.find(unit => String(unit.id) === String(unitSelect.value));
         const qty = Number(row.querySelector('.qty').value || 0);
-        row.querySelector('.base-preview').textContent = `${qty * Number(selected?.conversion_qty || 0)} satuan dasar`;
+        const baseUnit = (item?.units || []).find(unit => unit.is_base);
+        const unitName = selected?.name || 'KOLI';
+        const conversion = Number(selected?.conversion_qty || 0);
+        const qtyLabel = row.querySelector('.qty-label');
+        const unitLabel = row.querySelector('.unit-label');
+        if (unitLabel) unitLabel.textContent = requiresPackage ? 'Satuan Koli' : 'Satuan Kirim';
+        if (qtyLabel) qtyLabel.textContent = requiresPackage ? `Jumlah Koli (${unitName})` : `Qty Kirim (${unitName})`;
+        row.querySelector('.base-preview').textContent = conversion > 0
+            ? `1 ${unitName} = ${conversion.toLocaleString('id-ID')} ${baseUnit?.name || 'dasar'}; total ${(qty * conversion).toLocaleString('id-ID')} ${baseUnit?.name || 'dasar'}`
+            : 'Satuan koli belum dikonfigurasi pada master item';
         if ($(unitSelect).hasClass('select2-hidden-accessible')) $(unitSelect).trigger('change.select2');
     }
     function addRow(data = {}) {
@@ -319,8 +338,8 @@ document.addEventListener('DOMContentLoaded', () => {
         row.className = 'border border-gray-300 border-dashed rounded p-5 mb-5 transfer-row';
         row.innerHTML = `<div class="row g-3 align-items-end">
             <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Item</label><select class="form-select form-select-solid item">${itemOptions}</select></div>
-            <div class="col-md-2"><label class="required fs-6 fw-bold form-label mb-2">Satuan Kirim</label><select class="form-select form-select-solid unit"></select></div>
-            <div class="col-md-2"><label class="required fs-6 fw-bold form-label mb-2">Qty Kirim</label><input type="number" min="1" value="1" class="form-control form-control-solid qty"><div class="text-muted fs-8 mt-1 base-preview"></div></div>
+            <div class="col-md-2"><label class="required fs-6 fw-bold form-label mb-2 unit-label">Satuan Kirim</label><select class="form-select form-select-solid unit"></select></div>
+            <div class="col-md-2"><label class="required fs-6 fw-bold form-label mb-2 qty-label">Qty Kirim</label><input type="number" min="1" step="1" value="1" class="form-control form-control-solid qty"><div class="text-primary fs-8 fw-semibold mt-1 base-preview"></div></div>
             <div class="col-md-3"><label class="fs-6 fw-bold form-label mb-2">Catatan Item</label><input class="form-control form-control-solid item-note" value="${escapeHtml(data.note || '')}"></div>
             <div class="col-md-1 text-end"><button type="button" class="btn btn-icon btn-light-danger remove" title="Hapus item"><i class="fa-solid fa-trash"></i></button></div>
         </div>`;
@@ -337,7 +356,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     [transfer_source, transfer_destination].forEach(select => select.addEventListener('change', () => {
         document.querySelectorAll('.transfer-row').forEach(row => refreshTransferRow(row));
+        updateTransferUnitInfo();
     }));
+    updateTransferUnitInfo();
     transfer_add_item.addEventListener('click', () => addRow());
     document.getElementById('transfer_add')?.addEventListener('click', () => {
         editId = null;

@@ -7,6 +7,7 @@ use App\Models\DamagedAllocation;
 use App\Models\DamagedAllocationItem;
 use App\Models\DamagedItemStock;
 use App\Models\Item;
+use App\Models\ItemUnit;
 use App\Models\OutboundItem;
 use App\Models\OutboundTransaction;
 use App\Models\Warehouse;
@@ -22,7 +23,8 @@ class DamagedAllocationController extends Controller
 {
     public function index()
     {
-        $items = Item::orderBy('name')->get(['id', 'sku', 'name']);
+        $items = Item::with(['units' => fn ($query) => $query->orderByDesc('is_base')->orderBy('conversion_qty')])
+            ->orderBy('name')->get(['id', 'sku', 'name']);
         $damagedStocks = DamagedItemStock::query()
             ->get(['warehouse_id', 'item_id', 'stock', 'reserved_stock'])
             ->groupBy('warehouse_id')
@@ -33,7 +35,7 @@ class DamagedAllocationController extends Controller
         return view('admin.inventory.damaged-allocations.index', [
             'items' => $items,
             'damagedStocks' => $damagedStocks,
-            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'is_default']),
+            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'type', 'is_default']),
             'dataUrl' => route('admin.inventory.damaged-allocations.data'),
             'storeUrl' => route('admin.inventory.damaged-allocations.store'),
         ]);
@@ -42,7 +44,7 @@ class DamagedAllocationController extends Controller
     public function data(Request $request)
     {
         $query = DamagedAllocation::query()
-            ->with(['items.item', 'creator', 'warehouse'])
+            ->with(['items.item', 'items.unit', 'creator', 'warehouse'])
             ->orderByDesc('transacted_at');
 
         $search = trim((string) $request->input('q', ''));
@@ -71,7 +73,9 @@ class DamagedAllocationController extends Controller
             $items = $row->items ?? collect();
             $labels = $items->map(function ($it) {
                 $sku = trim((string) ($it->item?->sku ?? ''));
-                return $sku === '' ? '' : sprintf('%s (%d)', $sku, (int) $it->qty);
+                $qty = (int) ($it->qty_input ?: $it->qty);
+                $unit = $it->unit?->name ?: 'satuan dasar';
+                return $sku === '' ? '' : sprintf('%s (%d %s)', $sku, $qty, $unit);
             })->filter()->values();
 
             return [
@@ -119,6 +123,9 @@ class DamagedAllocationController extends Controller
                 DamagedAllocationItem::create([
                     'damaged_allocation_id' => $allocation->id,
                     'item_id' => $row['item_id'],
+                    'unit_id' => $row['unit_id'],
+                    'qty_input' => $row['qty_input'],
+                    'conversion_qty' => $row['conversion_qty'],
                     'qty' => $row['qty'],
                     'note' => $row['note'] ?? null,
                 ]);
@@ -159,6 +166,9 @@ class DamagedAllocationController extends Controller
             'transacted_at' => $allocation->transacted_at?->format('Y-m-d H:i'),
             'items' => $allocation->items->map(fn ($row) => [
                 'item_id' => $row->item_id,
+                'unit_id' => $row->unit_id,
+                'qty_input' => (int) ($row->qty_input ?: $row->qty),
+                'conversion_qty' => (int) ($row->conversion_qty ?: 1),
                 'qty' => (int) $row->qty,
                 'note' => $row->note ?? '',
             ])->values(),
@@ -195,6 +205,9 @@ class DamagedAllocationController extends Controller
                 DamagedAllocationItem::create([
                     'damaged_allocation_id' => $allocation->id,
                     'item_id' => $row['item_id'],
+                    'unit_id' => $row['unit_id'],
+                    'qty_input' => $row['qty_input'],
+                    'conversion_qty' => $row['conversion_qty'],
                     'qty' => $row['qty'],
                     'note' => $row['note'] ?? null,
                 ]);
@@ -383,25 +396,43 @@ class DamagedAllocationController extends Controller
 
     private function validatePayload(Request $request): array
     {
+        $rawItems = $request->input('items', []);
         $validated = $request->validate([
             'allocation_type' => ['required', 'string', Rule::in(array_keys($this->allocationTypeLabels()))],
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'ref_no' => ['nullable', 'string', 'max:100'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_id' => ['required', 'integer', 'exists:items,id'],
-            'items.*.qty' => ['required', 'integer', 'min:1'],
+            'items.*.unit_id' => ['nullable', 'integer', 'exists:item_units,id'],
+            'items.*.qty_input' => ['nullable', 'integer', 'min:1'],
+            'items.*.qty' => ['nullable', 'integer', 'min:1'],
             'items.*.note' => ['nullable', 'string'],
             'note' => ['nullable', 'string'],
             'transacted_at' => ['required', 'date'],
         ]);
 
+        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
         $items = collect($validated['items'] ?? [])
-            ->filter(fn ($row) => (int) ($row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)
-            ->map(fn ($row) => [
-                'item_id' => (int) $row['item_id'],
-                'qty' => (int) $row['qty'],
-                'note' => $row['note'] ?? null,
-            ])->values();
+            ->filter(fn ($row) => (int) ($row['qty_input'] ?? $row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)
+            ->map(function ($row, $index) use ($validated, $rawItems) {
+                $itemId = (int) $row['item_id'];
+                $unit = $this->resolveInputUnit(
+                    $validated['warehouse_id'],
+                    $itemId,
+                    (int) ($row['unit_id'] ?? 0),
+                    !isset($rawItems[$index]['qty_input'])
+                );
+                $qtyInput = (int) ($row['qty_input'] ?? $row['qty'] ?? 0);
+                $conversionQty = (int) ($unit?->conversion_qty ?? 1);
+                return [
+                    'item_id' => $itemId,
+                    'unit_id' => $unit?->id,
+                    'qty_input' => $qtyInput,
+                    'conversion_qty' => $conversionQty,
+                    'qty' => $qtyInput * $conversionQty,
+                    'note' => $row['note'] ?? null,
+                ];
+            })->values();
 
         if ($items->isEmpty()) {
             throw ValidationException::withMessages(['items' => 'Minimal 1 item diperlukan']);
@@ -412,10 +443,34 @@ class DamagedAllocationController extends Controller
         }
 
         $validated['items'] = $items->all();
-        $validated['warehouse_id'] = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
         $validated['transacted_at'] = Carbon::parse($validated['transacted_at']);
 
         return $validated;
+    }
+
+    private function resolveInputUnit(int $warehouseId, int $itemId, int $unitId, bool $legacyBaseInput = false): ?ItemUnit
+    {
+        $warehouse = Warehouse::findOrFail($warehouseId);
+        $query = ItemUnit::where('item_id', $itemId);
+        if ($unitId > 0) {
+            $query->whereKey($unitId);
+        } elseif ($legacyBaseInput) {
+            $query->where('is_base', true);
+        } elseif ($warehouse->type === Warehouse::TYPE_BULK) {
+            $query->where('is_base', false)->orderBy('conversion_qty');
+        } else {
+            $query->where('is_base', true);
+        }
+        $unit = $query->first();
+        if (!$unit && $legacyBaseInput) {
+            return null;
+        }
+
+        if (!$unit || ($warehouse->type === Warehouse::TYPE_BULK && $unit->is_base)) {
+            throw ValidationException::withMessages(['items' => 'Gudang Besar wajib menggunakan satuan koli/kemasan.']);
+        }
+
+        return $unit;
     }
 
     private function allocationTypeLabels(): array
