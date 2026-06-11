@@ -203,7 +203,9 @@
             itemsContainer.querySelectorAll('.allocation-item-select').forEach(select => {
                 const selected = select.value;
                 select.innerHTML = `<option value=""></option>${itemOptionsHtml()}`;
-                if ([...select.options].some(option => option.value === selected)) select.value = selected;
+                if (Array.from(select.options || []).some(option => option.value === selected)) {
+                    select.value = selected;
+                }
                 $(select).trigger('change.select2');
                 syncRowUnit(select.closest('.allocation-item-row'));
             });
