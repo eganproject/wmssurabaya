@@ -21,7 +21,7 @@
         </div>
         <div class="card-toolbar">
             @if($canCreate)
-                <button type="button" class="btn btn-primary" id="btn_open_allocation" data-bs-toggle="modal" data-bs-target="#modal_damaged_allocation">Tambah</button>
+                <button type="button" class="btn btn-primary" id="btn_open_allocation">Tambah</button>
             @endif
         </div>
     </div>
@@ -190,23 +190,30 @@
                 ? `<option value="${item.id}" data-stock="${stock}">${escapeHtml(item.sku)} - ${escapeHtml(item.name)} (tersedia: ${stock})</option>`
                 : '';
         }).join('');
-        const loadStocks = async (allocationId = null) => {
+        const loadStocks = async (allocationId = null, refreshRows = true) => {
             const url = new URL(stocksUrl, window.location.origin);
             if (allocationId) url.searchParams.set('allocation_id', allocationId);
             const response = await fetch(url, {headers: {Accept: 'application/json'}});
             const json = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(json.message || 'Gagal memuat saldo stok rusak');
             damagedStocks = json.stocks || {};
-            refreshItemOptions();
+            if (refreshRows) refreshItemOptions();
         };
         const refreshItemOptions = () => {
             itemsContainer.querySelectorAll('.allocation-item-select').forEach(select => {
                 const selected = select.value;
-                select.innerHTML = `<option value=""></option>${itemOptionsHtml()}`;
-                if (Array.from(select.options || []).some(option => option.value === selected)) {
-                    select.value = selected;
+                if (typeof $ !== 'undefined' && $.fn.select2 && $(select).hasClass('select2-hidden-accessible')) {
+                    $(select).select2('destroy');
                 }
-                $(select).trigger('change.select2');
+                select.innerHTML = `<option value=""></option>${itemOptionsHtml()}`;
+                const options = select.options || [];
+                for (let index = 0; index < options.length; index += 1) {
+                    if (options[index].value === selected) {
+                        select.value = selected;
+                        break;
+                    }
+                }
+                initSelect2(select);
                 syncRowUnit(select.closest('.allocation-item-row'));
             });
         };
@@ -216,6 +223,16 @@
                     el.name = `items[${idx}][${el.getAttribute('data-name')}]`;
                 });
             });
+        };
+        const clearItemRows = () => {
+            if (typeof $ !== 'undefined' && $.fn.select2) {
+                itemsContainer.querySelectorAll('.allocation-item-select').forEach(select => {
+                    if ($(select).hasClass('select2-hidden-accessible')) {
+                        $(select).select2('destroy');
+                    }
+                });
+            }
+            itemsContainer.innerHTML = '';
         };
         const updateWarehouseInfo = () => {
             if (!warehouseUnitInfo) return;
@@ -237,20 +254,27 @@
                 : 'Nomor dokumen atau referensi terkait';
         };
         const syncRowUnit = (row, selectedUnitId = null) => {
-            const item = damagedItems.find(value => String(value.id) === String(row.querySelector('.allocation-item-select')?.value));
+            if (!row) return;
+            const itemSelect = row.querySelector('.allocation-item-select');
+            const unitEl = row.querySelector('[data-name="unit_id"]');
+            const qtyEl = row.querySelector('[data-name="qty_input"]');
+            const unitLabel = row.querySelector('.allocation-unit-label');
+            const qtyLabel = row.querySelector('.allocation-qty-label');
+            const qtyInfo = row.querySelector('.allocation-qty-info');
+            if (!itemSelect || !unitEl || !qtyEl || !unitLabel || !qtyLabel || !qtyInfo) return;
+
+            const item = damagedItems.find(value => String(value.id) === String(itemSelect.value));
             const units = (item?.units || []).filter(unit => unit.is_base);
             const baseUnit = (item?.units || []).find(unit => unit.is_base);
-            const unitEl = row.querySelector('[data-name="unit_id"]');
             unitEl.innerHTML = units.length ? units.map(unit => `<option value="${unit.id}">${unit.name}</option>`).join('') : '<option value="">Satuan belum dikonfigurasi</option>';
             if (selectedUnitId && units.some(unit => String(unit.id) === String(selectedUnitId))) unitEl.value = String(selectedUnitId);
             const selected = units.find(unit => String(unit.id) === String(unitEl.value));
-            const qty = Number(row.querySelector('[data-name="qty_input"]')?.value || 0);
+            const qty = Number(qtyEl.value || 0);
             const available = availableFor(item?.id);
-            const qtyEl = row.querySelector('[data-name="qty_input"]');
-            if (qtyEl) qtyEl.max = String(available);
-            row.querySelector('.allocation-unit-label').textContent = 'Satuan';
-            row.querySelector('.allocation-qty-label').textContent = `Qty (${selected?.name || baseUnit?.name || 'PCS'})`;
-            row.querySelector('.allocation-qty-info').innerHTML = selected
+            qtyEl.max = String(available);
+            unitLabel.textContent = 'Satuan';
+            qtyLabel.textContent = `Qty (${selected?.name || baseUnit?.name || 'PCS'})`;
+            qtyInfo.innerHTML = selected
                 ? `Tersedia <strong>${available}</strong> ${escapeHtml(baseUnit?.name || 'satuan')}; dialokasikan ${qty * selected.conversion_qty}`
                 : 'Satuan dasar item belum dikonfigurasi';
         };
@@ -294,10 +318,10 @@
             renumberRows();
         };
         const resetForm = () => {
+            clearItemRows();
             form.reset();
             form.dataset.editId = '';
             if (titleEl) titleEl.textContent = 'Tambah Alokasi Barang Rusak';
-            itemsContainer.innerHTML = '';
             createRow();
             if (fpDate) fpDate.setDate(nowString(), true, 'Y-m-d H:i');
             else if (dateEl) dateEl.value = nowString();
@@ -306,11 +330,16 @@
         };
 
         document.getElementById('btn_open_allocation')?.addEventListener('click', async () => {
-            resetForm();
+            const button = document.getElementById('btn_open_allocation');
+            button.disabled = true;
             try {
-                await loadStocks();
+                await loadStocks(null, false);
+                resetForm();
+                modal?.show();
             } catch (error) {
                 window.AppSwal?.error(error.message);
+            } finally {
+                button.disabled = false;
             }
         });
         document.getElementById('btn_add_allocation_item')?.addEventListener('click', () => createRow());
@@ -383,9 +412,9 @@
             document.getElementById('allocation_note').value = json.note || '';
             if (fpDate) fpDate.setDate(json.transacted_at || null, true, 'Y-m-d H:i');
             else dateEl.value = json.transacted_at || '';
-            itemsContainer.innerHTML = '';
+            clearItemRows();
             try {
-                await loadStocks(id);
+                await loadStocks(id, false);
             } catch (error) {
                 return window.AppSwal?.error(error.message);
             }
@@ -425,13 +454,13 @@
             if (!res.ok) return Swal.fire('Error', json.message || 'Gagal memproses data', 'error');
             Swal.fire('Berhasil', json.message || 'Berhasil', 'success');
             dt.ajax.reload();
-            loadStocks().catch(() => {});
+            loadStocks(null, false).catch(() => {});
         });
 
         form?.addEventListener('submit', async e => {
             e.preventDefault();
             clearErrors();
-            const rows = [...itemsContainer.querySelectorAll('.allocation-item-row')];
+            const rows = Array.from(itemsContainer.querySelectorAll('.allocation-item-row'));
             const selectedIds = rows.map(row => row.querySelector('.allocation-item-select')?.value).filter(Boolean);
             if (new Set(selectedIds).size !== selectedIds.length) {
                 return window.AppSwal?.error('Item tidak boleh dipilih lebih dari satu kali.');
@@ -467,7 +496,7 @@
             modal?.hide();
             Swal?.fire('Berhasil', json.message || 'Berhasil', 'success');
             dt.ajax.reload();
-            loadStocks().catch(() => {});
+            loadStocks(null, false).catch(() => {});
         });
     });
 </script>
