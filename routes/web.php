@@ -27,6 +27,8 @@ use App\Http\Controllers\Admin\PickerReportController;
 use App\Http\Controllers\Admin\LowStockReportController;
 use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\StockOpnameReportController;
+use App\Http\Controllers\Admin\StockPlanningReportController;
+use App\Http\Controllers\Admin\TransferAnalyticsReportController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\MenuController;
 use App\Http\Controllers\Admin\PermissionController;
@@ -222,6 +224,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::post('/damaged-goods/{id}/approve', [DamagedGoodsController::class, 'approve'])->name('damaged-goods.approve');
         Route::get('/damaged-allocations', [DamagedAllocationController::class, 'index'])->name('damaged-allocations.index');
         Route::get('/damaged-allocations/data', [DamagedAllocationController::class, 'data'])->name('damaged-allocations.data');
+        Route::get('/damaged-allocations/stocks', [DamagedAllocationController::class, 'stocks'])->name('damaged-allocations.stocks');
         Route::post('/damaged-allocations', [DamagedAllocationController::class, 'store'])->name('damaged-allocations.store');
         Route::get('/damaged-allocations/{id}', [DamagedAllocationController::class, 'show'])->name('damaged-allocations.show');
         Route::put('/damaged-allocations/{id}', [DamagedAllocationController::class, 'update'])->name('damaged-allocations.update');
@@ -358,5 +361,9 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::get('/stock-opname/data', [StockOpnameReportController::class, 'data'])->name('stock-opname.data');
         Route::get('/stock-opname/sku-diff', [StockOpnameReportController::class, 'diffSku'])->name('stock-opname.diff-sku');
         Route::get('/stock-opname/export', [StockOpnameReportController::class, 'export'])->name('stock-opname.export');
+        Route::get('/transfer-analytics', [TransferAnalyticsReportController::class, 'index'])->name('transfer-analytics.index');
+        Route::get('/transfer-analytics/data', [TransferAnalyticsReportController::class, 'data'])->name('transfer-analytics.data');
+        Route::get('/stock-planning', [StockPlanningReportController::class, 'index'])->name('stock-planning.index');
+        Route::get('/stock-planning/data', [StockPlanningReportController::class, 'data'])->name('stock-planning.data');
     });
 });

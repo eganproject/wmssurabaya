@@ -16,7 +16,7 @@
         <div class="card-title">
             <div class="d-flex align-items-center position-relative my-1">
                 <i class="fa-solid fa-magnifying-glass position-absolute ms-5 text-gray-500"></i>
-                <input type="text" class="form-control form-control-solid w-250px ps-14" placeholder="Search" data-kt-filter="search" />
+                <input type="text" class="form-control form-control-solid w-250px ps-14" placeholder="Cari kode, SKU, atau referensi" data-kt-filter="search" />
             </div>
         </div>
         <div class="card-toolbar">
@@ -77,14 +77,20 @@
                                 <option value="">Pilih alokasi</option>
                                 <option value="dispose">Dimusnahkan</option>
                                 <option value="repair">Diperbaiki</option>
-                                <option value="return_vendor">Retur ke Gudang Besar (dari Gudang Kecil)</option>
+                                <option value="return_vendor">Retur ke Gudang Besar / Vendor</option>
                                 <option value="other">Lainnya</option>
                             </select>
                             <div class="invalid-feedback" id="error_allocation_type"></div>
                         </div>
                         <div class="col-md-12">
-                            <label class="fs-6 fw-bold form-label mb-2">Ref</label>
-                            <input type="text" class="form-control form-control-solid" name="ref_no" id="allocation_ref_no" />
+                            <div class="notice d-flex bg-light-info rounded border-info border border-dashed p-4" id="allocation_type_info">
+                                <i class="fa-solid fa-circle-info fs-2 text-info me-4"></i>
+                                <div class="text-gray-700">Pilih jenis alokasi untuk melihat dampaknya terhadap stok.</div>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="fs-6 fw-bold form-label mb-2" id="allocation_ref_label">Referensi</label>
+                            <input type="text" class="form-control form-control-solid" name="ref_no" id="allocation_ref_no" placeholder="Nomor dokumen atau referensi terkait" />
                             <div class="invalid-feedback" id="error_ref_no"></div>
                         </div>
                     </div>
@@ -118,6 +124,7 @@
 @push('scripts')
 <script>
     const dataUrl = '{{ $dataUrl }}';
+    const stocksUrl = '{{ $stocksUrl }}';
     const storeUrl = '{{ $storeUrl }}';
     const showUrlTpl = '{{ route('admin.inventory.damaged-allocations.show', ':id') }}';
     const updateUrlTpl = '{{ route('admin.inventory.damaged-allocations.update', ':id') }}';
@@ -127,7 +134,7 @@
     const canUpdate = {{ $canUpdate ? 'true' : 'false' }};
     const canDelete = {{ $canDelete ? 'true' : 'false' }};
     const damagedItems = @json($items);
-    const damagedStocks = @json($damagedStocks);
+    const initialDamagedStocks = @json($damagedStocks);
 
     document.addEventListener('DOMContentLoaded', () => {
         const tableEl = $('#damaged_allocations_table');
@@ -140,6 +147,11 @@
         const dateEl = document.getElementById('allocation_transacted_at');
         const warehouseEl = document.getElementById('allocation_warehouse_id');
         const warehouseUnitInfo = document.getElementById('allocation_warehouse_unit_info');
+        const allocationTypeEl = document.getElementById('allocation_type');
+        const allocationTypeInfo = document.getElementById('allocation_type_info');
+        const allocationRefLabel = document.getElementById('allocation_ref_label');
+        const allocationRefEl = document.getElementById('allocation_ref_no');
+        let damagedStocks = initialDamagedStocks?.[String(warehouseEl?.value || '')] || {};
         let fpDate = null;
 
         const pad = n => String(n).padStart(2, '0');
@@ -155,25 +167,45 @@
                 const el = document.getElementById(id);
                 if (el) el.textContent = '';
             });
+            form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
             itemsContainer.querySelectorAll('[data-error-for]').forEach(el => el.textContent = '');
         };
         const initSelect2 = el => {
             if (el && typeof $ !== 'undefined' && $.fn.select2) {
-                $(el).select2({ placeholder: 'Pilih item', allowClear: true, width: '100%' });
+                $(el).select2({
+                    placeholder: 'Pilih item',
+                    allowClear: true,
+                    width: '100%',
+                    dropdownParent: $(modalEl),
+                });
             }
         };
-        const itemOptionsHtml = (warehouseId) => damagedItems.map(item => {
-            const stock = Number(damagedStocks?.[String(warehouseId)]?.[String(item.id)] || 0);
+        const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+        }[char]));
+        const availableFor = itemId => Number(damagedStocks?.[String(itemId)]?.available ?? damagedStocks?.[String(itemId)] ?? 0);
+        const itemOptionsHtml = () => damagedItems.map(item => {
+            const stock = availableFor(item.id);
             return stock > 0
-                ? `<option value="${item.id}" data-stock="${stock}">${item.sku} - ${item.name} (tersedia: ${stock})</option>`
+                ? `<option value="${item.id}" data-stock="${stock}">${escapeHtml(item.sku)} - ${escapeHtml(item.name)} (tersedia: ${stock})</option>`
                 : '';
         }).join('');
+        const loadStocks = async (allocationId = null) => {
+            const url = new URL(stocksUrl, window.location.origin);
+            if (allocationId) url.searchParams.set('allocation_id', allocationId);
+            const response = await fetch(url, {headers: {Accept: 'application/json'}});
+            const json = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(json.message || 'Gagal memuat saldo stok rusak');
+            damagedStocks = json.stocks || {};
+            refreshItemOptions();
+        };
         const refreshItemOptions = () => {
             itemsContainer.querySelectorAll('.allocation-item-select').forEach(select => {
                 const selected = select.value;
-                select.innerHTML = `<option value=""></option>${itemOptionsHtml(warehouseEl?.value || '')}`;
+                select.innerHTML = `<option value=""></option>${itemOptionsHtml()}`;
                 if ([...select.options].some(option => option.value === selected)) select.value = selected;
                 $(select).trigger('change.select2');
+                syncRowUnit(select.closest('.allocation-item-row'));
             });
         };
         const renumberRows = () => {
@@ -183,25 +215,42 @@
                 });
             });
         };
-        const isBulkWarehouse = () => warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
         const updateWarehouseInfo = () => {
             if (!warehouseUnitInfo) return;
-            warehouseUnitInfo.innerHTML = isBulkWarehouse()
-                ? '<span class="text-primary fw-bold">Gudang Besar:</span> alokasi barang rusak menggunakan koli/kemasan.'
-                : '<span class="text-success fw-bold">Gudang Kecil:</span> alokasi barang rusak menggunakan PCS/SET.';
+            warehouseUnitInfo.innerHTML = '<span class="text-success fw-bold">Gudang Kecil:</span> alokasi barang rusak menggunakan PCS/SET.';
+        };
+        const updateAllocationTypeInfo = () => {
+            const info = {
+                dispose: ['danger', 'fa-trash-can', 'Stok rusak akan berkurang permanen setelah disetujui.'],
+                repair: ['success', 'fa-screwdriver-wrench', 'Setelah disetujui, stok rusak berkurang dan jumlah yang sama kembali ke stok display Gudang Kecil.'],
+                return_vendor: ['warning', 'fa-truck-arrow-right', 'Setelah disetujui, sistem membuat transaksi retur outbound dari stok rusak.'],
+                other: ['info', 'fa-ellipsis', 'Stok rusak akan berkurang. Catatan wajib diisi untuk menjelaskan tujuan alokasi.'],
+            };
+            const [color, icon, text] = info[allocationTypeEl.value] || ['info', 'fa-circle-info', 'Pilih jenis alokasi untuk melihat dampaknya terhadap stok.'];
+            allocationTypeInfo.className = `notice d-flex bg-light-${color} rounded border-${color} border border-dashed p-4`;
+            allocationTypeInfo.innerHTML = `<i class="fa-solid ${icon} fs-2 text-${color} me-4"></i><div class="text-gray-700">${text}</div>`;
+            allocationRefLabel.textContent = allocationTypeEl.value === 'return_vendor' ? 'Referensi Retur' : 'Referensi';
+            allocationRefEl.placeholder = allocationTypeEl.value === 'return_vendor'
+                ? 'Contoh: nomor surat jalan / referensi vendor'
+                : 'Nomor dokumen atau referensi terkait';
         };
         const syncRowUnit = (row, selectedUnitId = null) => {
             const item = damagedItems.find(value => String(value.id) === String(row.querySelector('.allocation-item-select')?.value));
-            const units = (item?.units || []).filter(unit => isBulkWarehouse() ? !unit.is_base : unit.is_base);
+            const units = (item?.units || []).filter(unit => unit.is_base);
             const baseUnit = (item?.units || []).find(unit => unit.is_base);
             const unitEl = row.querySelector('[data-name="unit_id"]');
             unitEl.innerHTML = units.length ? units.map(unit => `<option value="${unit.id}">${unit.name}</option>`).join('') : '<option value="">Satuan belum dikonfigurasi</option>';
             if (selectedUnitId && units.some(unit => String(unit.id) === String(selectedUnitId))) unitEl.value = String(selectedUnitId);
             const selected = units.find(unit => String(unit.id) === String(unitEl.value));
             const qty = Number(row.querySelector('[data-name="qty_input"]')?.value || 0);
-            row.querySelector('.allocation-unit-label').textContent = isBulkWarehouse() ? 'Satuan Koli' : 'Satuan';
-            row.querySelector('.allocation-qty-label').textContent = isBulkWarehouse() ? `Jumlah Koli (${selected?.name || 'KOLI'})` : `Qty (${selected?.name || baseUnit?.name || 'PCS'})`;
-            row.querySelector('.allocation-qty-info').textContent = selected ? `1 ${selected.name} = ${selected.conversion_qty} ${baseUnit?.name || 'dasar'}; total ${qty * selected.conversion_qty} ${baseUnit?.name || 'dasar'}` : '';
+            const available = availableFor(item?.id);
+            const qtyEl = row.querySelector('[data-name="qty_input"]');
+            if (qtyEl) qtyEl.max = String(available);
+            row.querySelector('.allocation-unit-label').textContent = 'Satuan';
+            row.querySelector('.allocation-qty-label').textContent = `Qty (${selected?.name || baseUnit?.name || 'PCS'})`;
+            row.querySelector('.allocation-qty-info').innerHTML = selected
+                ? `Tersedia <strong>${available}</strong> ${escapeHtml(baseUnit?.name || 'satuan')}; dialokasikan ${qty * selected.conversion_qty}`
+                : 'Satuan dasar item belum dikonfigurasi';
         };
         const createRow = (data = {}) => {
             const row = document.createElement('div');
@@ -210,7 +259,7 @@
                 <div class="col-md-4">
                     <label class="required fs-6 fw-bold form-label mb-2">Item</label>
                     <select class="form-select form-select-solid allocation-item-select" data-name="item_id" required>
-                        <option value=""></option>${itemOptionsHtml(warehouseEl?.value || '')}
+                        <option value=""></option>${itemOptionsHtml()}
                     </select>
                     <div class="invalid-feedback" data-error-for="item_id"></div>
                 </div>
@@ -251,15 +300,19 @@
             if (fpDate) fpDate.setDate(nowString(), true, 'Y-m-d H:i');
             else if (dateEl) dateEl.value = nowString();
             clearErrors();
+            updateAllocationTypeInfo();
         };
 
-        document.getElementById('btn_open_allocation')?.addEventListener('click', resetForm);
-        document.getElementById('btn_add_allocation_item')?.addEventListener('click', () => createRow());
-        warehouseEl?.addEventListener('change', () => {
-            refreshItemOptions();
-            updateWarehouseInfo();
-            itemsContainer.querySelectorAll('.allocation-item-row').forEach(row => syncRowUnit(row));
+        document.getElementById('btn_open_allocation')?.addEventListener('click', async () => {
+            resetForm();
+            try {
+                await loadStocks();
+            } catch (error) {
+                window.AppSwal?.error(error.message);
+            }
         });
+        document.getElementById('btn_add_allocation_item')?.addEventListener('click', () => createRow());
+        allocationTypeEl?.addEventListener('change', updateAllocationTypeInfo);
         itemsContainer.addEventListener('change', event => {
             if (event.target.matches('.allocation-item-select')) syncRowUnit(event.target.closest('.allocation-item-row'));
             if (event.target.matches('[data-name="unit_id"]')) syncRowUnit(event.target.closest('.allocation-item-row'), event.target.value);
@@ -271,6 +324,7 @@
             }
         });
         updateWarehouseInfo();
+        updateAllocationTypeInfo();
         itemsContainer.addEventListener('click', e => {
             const btn = e.target.closest('.btn-remove-item');
             if (!btn) return;
@@ -301,7 +355,7 @@
                 { data: 'note' },
                 { data: 'id', orderable: false, searchable: false, className: 'text-end', render: (id, type, row) => {
                     const approved = row.status === 'approved';
-                    const approve = !approved && canUpdate ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-success btn-approve" data-id="${id}">Approve</a></div>` : '';
+                    const approve = !approved && canUpdate ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-success btn-approve" data-id="${id}" data-type="${row.allocation_type_code || ''}">Setujui</a></div>` : '';
                     const edit = !approved && canUpdate ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${id}">Edit</a></div>` : '';
                     const del = !approved && canDelete ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-danger btn-delete" data-id="${id}">Hapus</a></div>` : '';
                     const actions = approve + edit + del;
@@ -328,9 +382,15 @@
             if (fpDate) fpDate.setDate(json.transacted_at || null, true, 'Y-m-d H:i');
             else dateEl.value = json.transacted_at || '';
             itemsContainer.innerHTML = '';
+            try {
+                await loadStocks(id);
+            } catch (error) {
+                return window.AppSwal?.error(error.message);
+            }
             (json.items || []).forEach(item => createRow(item));
             if (!(json.items || []).length) createRow();
             clearErrors();
+            updateAllocationTypeInfo();
             modal?.show();
         });
 
@@ -338,11 +398,19 @@
             e.preventDefault();
             const id = this.dataset.id;
             const isApprove = this.classList.contains('btn-approve');
+            const allocationType = this.dataset.type || '';
+            const approveEffects = {
+                repair: 'Stok rusak akan berkurang dan stok display akan bertambah.',
+                dispose: 'Stok rusak akan berkurang permanen.',
+                return_vendor: 'Stok rusak akan berkurang dan retur outbound akan dibuat.',
+                other: 'Stok rusak akan berkurang sesuai alokasi.',
+            };
             const confirm = await Swal.fire({
-                title: isApprove ? 'Approve alokasi?' : 'Hapus alokasi?',
+                title: isApprove ? 'Setujui alokasi?' : 'Hapus alokasi?',
+                text: isApprove ? (approveEffects[allocationType] || 'Stok rusak akan diproses sesuai jenis alokasi.') : 'Reservasi stok pada dokumen ini akan dilepas.',
                 icon: isApprove ? 'question' : 'warning',
                 showCancelButton: true,
-                confirmButtonText: isApprove ? 'Approve' : 'Hapus',
+                confirmButtonText: isApprove ? 'Ya, Setujui' : 'Hapus',
                 cancelButtonText: 'Batal',
                 buttonsStyling: false,
                 customClass: { confirmButton: isApprove ? 'btn btn-success' : 'btn btn-danger', cancelButton: 'btn btn-light' },
@@ -355,11 +423,34 @@
             if (!res.ok) return Swal.fire('Error', json.message || 'Gagal memproses data', 'error');
             Swal.fire('Berhasil', json.message || 'Berhasil', 'success');
             dt.ajax.reload();
+            loadStocks().catch(() => {});
         });
 
         form?.addEventListener('submit', async e => {
             e.preventDefault();
             clearErrors();
+            const rows = [...itemsContainer.querySelectorAll('.allocation-item-row')];
+            const selectedIds = rows.map(row => row.querySelector('.allocation-item-select')?.value).filter(Boolean);
+            if (new Set(selectedIds).size !== selectedIds.length) {
+                return window.AppSwal?.error('Item tidak boleh dipilih lebih dari satu kali.');
+            }
+            for (const row of rows) {
+                const itemId = row.querySelector('.allocation-item-select')?.value;
+                const qtyEl = row.querySelector('[data-name="qty_input"]');
+                const available = availableFor(itemId);
+                if (!itemId || Number(qtyEl?.value || 0) <= 0) {
+                    return window.AppSwal?.error('Item dan qty wajib diisi.');
+                }
+                if (Number(qtyEl.value) > available) {
+                    qtyEl.classList.add('is-invalid');
+                    return window.AppSwal?.error(`Qty melebihi stok rusak tersedia (${available}).`);
+                }
+            }
+            if (allocationTypeEl.value === 'other' && !document.getElementById('allocation_note').value.trim()
+                && !rows.some(row => row.querySelector('[data-name="note"]')?.value.trim())) {
+                document.getElementById('allocation_note').classList.add('is-invalid');
+                return window.AppSwal?.error('Catatan wajib diisi untuk jenis alokasi Lainnya.');
+            }
             const id = form.dataset.editId;
             const url = id ? updateUrlTpl.replace(':id', id) : storeUrl;
             const fd = new FormData(form);
@@ -367,12 +458,14 @@
             const res = await fetch(url, { method: 'POST', headers: { 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' }, body: fd });
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
-                Swal?.fire('Error', json.message || 'Gagal menyimpan data', 'error');
+                const messages = Object.values(json.errors || {}).flat();
+                window.AppSwal?.error(messages.join('\n') || json.message || 'Gagal menyimpan data');
                 return;
             }
             modal?.hide();
             Swal?.fire('Berhasil', json.message || 'Berhasil', 'success');
             dt.ajax.reload();
+            loadStocks().catch(() => {});
         });
     });
 </script>
