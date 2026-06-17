@@ -372,26 +372,6 @@
             return !hasDuplicate;
         };
 
-        const validateBulkUnits = () => {
-            if (!itemsContainer) return true;
-            const isBulkWarehouse = warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
-            if (!isBulkWarehouse) return true;
-
-            let valid = true;
-            itemsContainer.querySelectorAll('.flow-item-row').forEach((row) => {
-                const itemId = row.querySelector('.flow-item-select')?.value || '';
-                const unitEl = row.querySelector('.flow-unit-select');
-                const errEl = row.querySelector('[data-error-for="unit_id"]');
-                if (!itemId || !unitEl || unitEl.value) return;
-
-                valid = false;
-                if (errEl) errEl.textContent = 'Item ini belum memiliki satuan koli/kemasan.';
-                unitEl.classList.add('is-invalid');
-            });
-
-            return valid;
-        };
-
         const toQty = (value) => {
             const qty = parseInt(value, 10);
             return Number.isFinite(qty) && qty > 0 ? qty : 0;
@@ -1046,11 +1026,6 @@
                 if (typeof Swal !== 'undefined') Swal.fire('Error', 'Item tidak boleh duplikat', 'error');
                 return;
             }
-            if (!validateBulkUnits()) {
-                if (typeof Swal !== 'undefined') Swal.fire('Error', 'Gudang Besar wajib memakai item yang punya satuan koli/kemasan.', 'error');
-                return;
-            }
-
             const isEdit = !!form.dataset.editId;
             const flowType = form.dataset.flowType || defaultTypeFilter || '';
             const url = isEdit

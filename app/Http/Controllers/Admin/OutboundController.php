@@ -937,12 +937,13 @@ class OutboundController extends Controller
                 $conversionQty = 1;
                 if ($isBulkWarehouse && $unitId <= 0) {
                     $item = Item::with('packageUnit')->find((int) $row['item_id']);
-                    $message = $item?->packageUnit
-                        ? 'Gudang Besar wajib memilih satuan koli/kemasan untuk item ini.'
-                        : 'Item '.($item?->sku ?? '').' belum memiliki satuan koli/kemasan di master item.';
-                    throw ValidationException::withMessages([
-                        "items.{$index}.unit_id" => $message,
-                    ]);
+                    if ($item?->packageUnit && (int) $item->packageUnit->conversion_qty >= 2) {
+                        $unitId = (int) $item->packageUnit->id;
+                    } else {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.unit_id" => 'Item '.($item?->sku ?? '').' belum memiliki isi per kemasan yang valid di master item.',
+                        ]);
+                    }
                 }
                 if ($unitId > 0) {
                     $unit = ItemUnit::whereKey($unitId)

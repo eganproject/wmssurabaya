@@ -315,9 +315,16 @@ class MultiWarehouseStockTest extends TestCase
         $this->assertSame(1, (int) $outbound->items()->firstOrFail()->qty_input);
     }
 
-    public function test_outbound_manual_bulk_warehouse_requires_package_unit(): void
+    public function test_outbound_manual_bulk_warehouse_uses_package_unit_when_unit_id_is_missing(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);
+        $itemWithoutPackage = Item::create(['sku' => 'OUT-BULK-NOPACK', 'name' => 'Outbound Bulk No Package', 'category_id' => null]);
+        ItemUnit::create([
+            'item_id' => $itemWithoutPackage->id,
+            'name' => 'PCS',
+            'conversion_qty' => 1,
+            'is_base' => true,
+        ]);
         $item = Item::create(['sku' => 'OUT-BULK-UNIT', 'name' => 'Outbound Bulk Unit', 'category_id' => null]);
         $base = ItemUnit::create([
             'item_id' => $item->id,
@@ -337,7 +344,7 @@ class MultiWarehouseStockTest extends TestCase
             'warehouse_id' => $bulk->id,
             'transacted_at' => now()->format('Y-m-d H:i:s'),
             'items' => [[
-                'item_id' => $item->id,
+                'item_id' => $itemWithoutPackage->id,
                 'qty' => 2,
             ]],
         ];
@@ -346,6 +353,18 @@ class MultiWarehouseStockTest extends TestCase
             ->postJson(route('admin.outbound.manuals.store'), $payload)
             ->assertStatus(422)
             ->assertJsonValidationErrors(['items.0.unit_id']);
+
+        $payload['items'][0]['item_id'] = $item->id;
+        $this->actingAs($user)
+            ->postJson(route('admin.outbound.manuals.store'), $payload)
+            ->assertOk();
+
+        $outbound = OutboundTransaction::latest('id')->firstOrFail();
+        $row = $outbound->items()->firstOrFail();
+        $this->assertSame($package->id, (int) $row->unit_id);
+        $this->assertSame(2, (int) $row->qty_input);
+        $this->assertSame(24, (int) $row->conversion_qty);
+        $this->assertSame(48, (int) $row->qty);
 
         $payload['items'][0]['unit_id'] = $base->id;
         $this->actingAs($user)
