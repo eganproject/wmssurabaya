@@ -927,13 +927,19 @@ class OutboundController extends Controller
         $validated['warehouse_id'] = $type === 'return'
             ? Warehouse::smallId()
             : (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
+        $isBulkWarehouse = Warehouse::whereKey($validated['warehouse_id'])->value('type') === Warehouse::TYPE_BULK;
 
         $items = collect($validated['items'] ?? [])
             ->filter(fn ($row) => (int) ($row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)
-            ->map(function ($row) {
+            ->map(function ($row) use ($isBulkWarehouse) {
                 $qtyInput = (int) ($row['qty'] ?? 0);
                 $unitId = (int) ($row['unit_id'] ?? 0);
                 $conversionQty = 1;
+                if ($isBulkWarehouse && $unitId <= 0) {
+                    throw ValidationException::withMessages([
+                        'items' => 'Gudang Besar wajib memilih satuan koli/kemasan untuk setiap item outbound.',
+                    ]);
+                }
                 if ($unitId > 0) {
                     $unit = ItemUnit::whereKey($unitId)
                         ->where('item_id', (int) $row['item_id'])
@@ -941,6 +947,11 @@ class OutboundController extends Controller
                     if (!$unit) {
                         throw ValidationException::withMessages([
                             'items' => 'Satuan item outbound tidak valid.',
+                        ]);
+                    }
+                    if ($isBulkWarehouse && $unit->is_base) {
+                        throw ValidationException::withMessages([
+                            'items' => 'Gudang Besar wajib menggunakan satuan koli/kemasan, bukan satuan dasar.',
                         ]);
                     }
                     $conversionQty = (int) $unit->conversion_qty;

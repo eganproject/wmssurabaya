@@ -169,18 +169,31 @@ class StockService
             return;
         }
 
+        if ($unitId !== null) {
+            $unit = ItemUnit::where('id', $unitId)
+                ->where('item_id', $itemId)
+                ->first();
+            if (!$unit || $unit->is_base || (int) $unit->conversion_qty < 2) {
+                throw ValidationException::withMessages([
+                    'unit_id' => 'Gudang Besar wajib menggunakan satuan koli, bukan satuan dasar.',
+                ]);
+            }
+
+            if ($qtyBase <= 0 || $qtyBase % (int) $unit->conversion_qty !== 0) {
+                throw ValidationException::withMessages([
+                    'qty' => "Qty Gudang Besar wajib kelipatan 1 {$unit->name} ({$unit->conversion_qty} satuan dasar).",
+                ]);
+            }
+
+            return;
+        }
+
         $packageUnit = ItemUnit::where('item_id', $itemId)
             ->where('is_base', false)
             ->first();
         if (!$packageUnit || (int) $packageUnit->conversion_qty < 2) {
             throw ValidationException::withMessages([
                 'qty' => 'Item belum memiliki satuan koli untuk transaksi Gudang Besar.',
-            ]);
-        }
-
-        if ($unitId !== null && (int) $packageUnit->id !== $unitId) {
-            throw ValidationException::withMessages([
-                'unit_id' => 'Gudang Besar wajib menggunakan satuan koli, bukan satuan dasar.',
             ]);
         }
 

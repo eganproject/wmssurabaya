@@ -300,11 +300,70 @@ class MultiWarehouseStockTest extends TestCase
         ])->assertOk();
         $outbound = OutboundTransaction::latest('id')->firstOrFail();
         $this->actingAs($user)
+            ->postJson(route('admin.outbound.manuals.scan.store', $outbound->id), [
+                'sku' => $item->sku,
+            ])
+            ->assertOk();
+        $this->actingAs($user)
+            ->postJson(route('admin.outbound.manuals.scan.finish', $outbound->id))
+            ->assertOk();
+        $this->actingAs($user)
             ->postJson(route('admin.outbound.manuals.approve', $outbound->id))
             ->assertOk();
 
         $this->assertSame(12, (int) ItemStock::where('warehouse_id', $bulk->id)->where('item_id', $item->id)->value('stock'));
         $this->assertSame(1, (int) $outbound->items()->firstOrFail()->qty_input);
+    }
+
+    public function test_outbound_manual_bulk_warehouse_requires_package_unit(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $item = Item::create(['sku' => 'OUT-BULK-UNIT', 'name' => 'Outbound Bulk Unit', 'category_id' => null]);
+        $base = ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'PCS',
+            'conversion_qty' => 1,
+            'is_base' => true,
+        ]);
+        $package = ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'DUS',
+            'conversion_qty' => 24,
+            'is_base' => false,
+        ]);
+        $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
+
+        $payload = [
+            'warehouse_id' => $bulk->id,
+            'transacted_at' => now()->format('Y-m-d H:i:s'),
+            'items' => [[
+                'item_id' => $item->id,
+                'qty' => 2,
+            ]],
+        ];
+
+        $this->actingAs($user)
+            ->postJson(route('admin.outbound.manuals.store'), $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['items']);
+
+        $payload['items'][0]['unit_id'] = $base->id;
+        $this->actingAs($user)
+            ->postJson(route('admin.outbound.manuals.store'), $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['items']);
+
+        $payload['items'][0]['unit_id'] = $package->id;
+        $this->actingAs($user)
+            ->postJson(route('admin.outbound.manuals.store'), $payload)
+            ->assertOk();
+
+        $outbound = OutboundTransaction::latest('id')->firstOrFail();
+        $row = $outbound->items()->firstOrFail();
+        $this->assertSame($package->id, (int) $row->unit_id);
+        $this->assertSame(2, (int) $row->qty_input);
+        $this->assertSame(24, (int) $row->conversion_qty);
+        $this->assertSame(48, (int) $row->qty);
     }
 
     public function test_damaged_stock_is_separated_by_warehouse(): void
