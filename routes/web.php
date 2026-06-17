@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Admin\ItemStockController;
 use App\Http\Controllers\Admin\InboundController;
 use App\Http\Controllers\Admin\OutboundController;
+use App\Http\Controllers\Admin\OutboundManualScanController;
 use App\Http\Controllers\Admin\StockMutationController;
 use App\Http\Controllers\Admin\StockOpnameController;
 use App\Http\Controllers\Admin\StockAdjustmentController;
@@ -307,6 +308,9 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::delete('/manuals/{id}', [OutboundController::class, 'manualsDestroy'])->name('manuals.destroy');
         Route::get('/manuals/{id}/detail', [OutboundController::class, 'manualsDetail'])->name('manuals.detail');
         Route::post('/manuals/{id}/approve', [OutboundController::class, 'manualsApprove'])->name('manuals.approve');
+        Route::get('/manuals/{id}/scan', [OutboundManualScanController::class, 'index'])->name('manuals.scan');
+        Route::post('/manuals/{id}/scan', [OutboundManualScanController::class, 'scan'])->name('manuals.scan.store');
+        Route::post('/manuals/{id}/scan/finish', [OutboundManualScanController::class, 'finish'])->name('manuals.scan.finish');
         Route::post('/manuals/{id}/surat-jalan', [OutboundController::class, 'manualsGenerateSuratJalan'])->name('manuals.surat-jalan.generate');
         Route::get('/manuals/{id}/surat-jalan', [OutboundController::class, 'manualsViewSuratJalan'])->name('manuals.surat-jalan');
 

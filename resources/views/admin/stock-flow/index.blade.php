@@ -318,6 +318,14 @@
                 return '<span class="badge badge-light-primary">Area Retur Gudang Kecil</span>';
             }
             if (status === 'approved') return '<span class="badge badge-light-success">Disetujui</span>';
+            if (row?.type === 'manual') {
+                if (row?.scan_status === 'complete') {
+                    return '<span class="badge badge-light-info">Scan Complete</span>';
+                }
+                if (row?.scan_status === 'in_progress') {
+                    return '<span class="badge badge-light-primary">Scan Progress</span>';
+                }
+            }
             return '<span class="badge badge-light-warning">Menunggu</span>';
         };
 
@@ -721,6 +729,10 @@
                     const canFinalizeReturn = isInboundReturnFlow && rowType === 'return' && isApproved && perms.update;
                     const canApprove = !(isInboundReturnFlow && rowType === 'return') && !isApproved && !isFinalized && perms.update;
                     const detailItem = `<div class="menu-item px-3"><a href="${resolveRoute(rowType, 'detail').replace(':id', data)}" class="menu-link px-3">Detail</a></div>`;
+                    const scanUrl = resolveRoute(rowType, 'scan');
+                    const scanItem = rowType === 'manual' && perms.update && !isApproved && !isFinalized && scanUrl
+                        ? `<div class="menu-item px-3"><a href="${scanUrl.replace(':id', data)}" class="menu-link px-3 text-primary">Scan</a></div>`
+                        : '';
                     const approveItem = canApprove
                         ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-success btn-approve" data-id="${data}" data-type="${rowType}">Approve</a></div>`
                         : '';
@@ -736,7 +748,7 @@
                     const delItem = (!isApproved && !isFinalized && perms.delete)
                         ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-danger btn-delete" data-id="${data}" data-type="${rowType}">Hapus</a></div>`
                         : '';
-                    const actions = `${detailItem}${approveItem}${finalizeItem}${editItem}${delItem}`;
+                    const actions = `${detailItem}${scanItem}${approveItem}${finalizeItem}${editItem}${delItem}`;
                     if (!actions) return '';
                     return `
                         <div class="text-end">
@@ -946,7 +958,8 @@
                 });
                 const json = await res.json();
                 if (!res.ok) {
-                    if (typeof Swal !== 'undefined') Swal.fire('Error', json.message || 'Gagal menyetujui', 'error');
+                    const msg = json?.errors?.scan?.[0] || json.message || 'Gagal menyetujui';
+                    if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error');
                     return;
                 }
                 if (typeof Swal !== 'undefined') Swal.fire('Berhasil', json.message || 'Berhasil', 'success');

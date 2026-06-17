@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ItemBundle;
 use App\Models\DamagedItemStock;
 use App\Models\OutboundItem;
+use App\Models\OutboundManualScanLog;
 use App\Models\OutboundTransaction;
 use App\Models\Item;
 use App\Models\ItemUnit;
@@ -384,6 +385,7 @@ class OutboundController extends Controller
                 'delete' => route('admin.outbound.manuals.destroy', ':id'),
                 'detail' => route('admin.outbound.manuals.detail', ':id'),
                 'approve' => route('admin.outbound.manuals.approve', ':id'),
+                'scan' => route('admin.outbound.manuals.scan', ':id'),
             ],
             'return' => [
                 'store' => route('admin.outbound.returns.store'),
@@ -450,6 +452,7 @@ class OutboundController extends Controller
                 'outbound_transactions.ref_no',
                 'outbound_transactions.note',
                 'outbound_transactions.status',
+                'outbound_transactions.scan_status',
                 'outbound_transactions.created_by',
                 'outbound_transactions.warehouse_id',
             ])
@@ -509,6 +512,7 @@ class OutboundController extends Controller
                 'note' => $row->note ?? '',
                 'type' => $row->type,
                 'status' => $row->status ?? 'pending',
+                'scan_status' => $row->scan_status ?? 'not_started',
             ];
         });
 
@@ -548,7 +552,7 @@ class OutboundController extends Controller
 
     private function detail(string $type, string $pageTitle, string $routeBase, int $id)
     {
-        $tx = OutboundTransaction::with(['items.item', 'creator', 'approver', 'suratJalan.creator'])
+        $tx = OutboundTransaction::with(['items.item', 'creator', 'approver', 'scanCompleter', 'suratJalan.creator', 'manualScanLogs'])
             ->where('type', $type)
             ->findOrFail($id);
 
@@ -641,6 +645,7 @@ class OutboundController extends Controller
             StockMutation::where('source_type', 'outbound')->where('source_id', $tx->id)->delete();
             DamagedStockService::rollbackBySource('outbound', $tx->id);
             DamagedStockMutation::where('source_type', 'outbound')->where('source_id', $tx->id)->delete();
+            OutboundManualScanLog::where('outbound_transaction_id', $tx->id)->delete();
             OutboundItem::where('outbound_transaction_id', $tx->id)->delete();
 
             $tx->update([
@@ -648,6 +653,9 @@ class OutboundController extends Controller
                 'ref_no' => $validated['ref_no'] ?? null,
                 'note' => $validated['note'] ?? null,
                 'transacted_at' => $validated['transacted_at'] ?? $tx->transacted_at,
+                'scan_status' => 'not_started',
+                'scan_completed_at' => null,
+                'scan_completed_by' => null,
             ]);
 
             foreach ($validated['items'] as $row) {
@@ -738,6 +746,12 @@ class OutboundController extends Controller
                         'stock_source' => $row->stock_source ?? 'regular',
                     ])->all()
                 );
+            }
+
+            if ($type === 'manual' && ($tx->scan_status ?? 'not_started') !== 'complete') {
+                throw ValidationException::withMessages([
+                    'scan' => 'Outbound manual harus scan complete sebelum approve.',
+                ]);
             }
             $this->postStockMovements($tx, $type);
 

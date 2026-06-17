@@ -10,6 +10,10 @@
 @php($isApproved = ($transaction->status ?? '') === 'approved')
 @php($isFinalized = ($transaction->status ?? '') === 'finalized')
 @php($suratJalan = $isManualOutbound ? ($transaction->suratJalan ?? null) : null)
+@php($scanPlannedQty = $isManualOutbound ? (int) $transaction->items->sum('qty') : 0)
+@php($scanScannedQty = $isManualOutbound ? (int) ($transaction->manualScanLogs ?? collect())->sum('qty') : 0)
+@php($scanRemainingQty = max(0, $scanPlannedQty - $scanScannedQty))
+@php($canScanManual = $isManualOutbound && \App\Support\Permission::can(auth()->user(), 'admin.outbound.manuals.scan'))
 
 @if($isManualOutbound)
 <style>
@@ -55,6 +59,12 @@
         <div class="text-muted fs-7">Detail dokumen outbound manual</div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        @if(!$isApproved && $canScanManual)
+            <a href="{{ route('admin.outbound.manuals.scan', $transaction->id) }}" class="btn btn-primary">
+                <i class="fas fa-barcode me-1"></i>
+                {{ ($transaction->scan_status ?? 'not_started') === 'in_progress' ? 'Lanjut Scan' : 'Mulai Scan' }}
+            </a>
+        @endif
         @if($isApproved)
             @if($suratJalan)
                 <a href="{{ route('admin.outbound.manuals.surat-jalan', $transaction->id) }}" target="_blank" class="btn btn-light-success">
@@ -144,6 +154,27 @@
         </div>
     </div>
     @endif
+
+    <div class="doc-note" style="background:#eff6ff;border-color:#93c5fd;">
+        <div class="label" style="color:#1d4ed8;">Status Scan</div>
+        <div>
+            @if(($transaction->scan_status ?? 'not_started') === 'complete')
+                <strong>Complete</strong>
+                @if($transaction->scan_completed_at)
+                    - {{ $transaction->scan_completed_at->format('d/m/Y H:i') }}
+                    oleh {{ $transaction->scanCompleter?->name ?? '-' }}
+                @endif
+            @elseif(($transaction->scan_status ?? 'not_started') === 'in_progress')
+                <strong>In Progress</strong>
+            @else
+                <strong>Belum mulai</strong>
+            @endif
+            <div style="margin-top:4px;">
+                Scan {{ number_format($scanScannedQty) }} dari {{ number_format($scanPlannedQty) }} qty.
+                Sisa {{ number_format($scanRemainingQty) }} qty.
+            </div>
+        </div>
+    </div>
 
     <div class="doc-section-title">Rincian Item</div>
     <table class="doc-table">

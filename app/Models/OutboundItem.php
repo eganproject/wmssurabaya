@@ -34,4 +34,9 @@ class OutboundItem extends Model
     {
         return $this->belongsTo(ItemUnit::class, 'unit_id');
     }
+
+    public function manualScanLogs()
+    {
+        return $this->hasMany(OutboundManualScanLog::class, 'outbound_item_id');
+    }
 }
