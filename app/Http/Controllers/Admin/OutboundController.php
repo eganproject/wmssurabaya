@@ -931,13 +931,17 @@ class OutboundController extends Controller
 
         $items = collect($validated['items'] ?? [])
             ->filter(fn ($row) => (int) ($row['qty'] ?? 0) > 0 && (int) ($row['item_id'] ?? 0) > 0)
-            ->map(function ($row) use ($isBulkWarehouse) {
+            ->map(function ($row, $index) use ($isBulkWarehouse) {
                 $qtyInput = (int) ($row['qty'] ?? 0);
                 $unitId = (int) ($row['unit_id'] ?? 0);
                 $conversionQty = 1;
                 if ($isBulkWarehouse && $unitId <= 0) {
+                    $item = Item::with('packageUnit')->find((int) $row['item_id']);
+                    $message = $item?->packageUnit
+                        ? 'Gudang Besar wajib memilih satuan koli/kemasan untuk item ini.'
+                        : 'Item '.($item?->sku ?? '').' belum memiliki satuan koli/kemasan di master item.';
                     throw ValidationException::withMessages([
-                        'items' => 'Gudang Besar wajib memilih satuan koli/kemasan untuk setiap item outbound.',
+                        "items.{$index}.unit_id" => $message,
                     ]);
                 }
                 if ($unitId > 0) {
@@ -946,12 +950,12 @@ class OutboundController extends Controller
                         ->first();
                     if (!$unit) {
                         throw ValidationException::withMessages([
-                            'items' => 'Satuan item outbound tidak valid.',
+                            "items.{$index}.unit_id" => 'Satuan item outbound tidak valid.',
                         ]);
                     }
                     if ($isBulkWarehouse && $unit->is_base) {
                         throw ValidationException::withMessages([
-                            'items' => 'Gudang Besar wajib menggunakan satuan koli/kemasan, bukan satuan dasar.',
+                            "items.{$index}.unit_id" => 'Gudang Besar wajib menggunakan satuan koli/kemasan, bukan satuan dasar.',
                         ]);
                     }
                     $conversionQty = (int) $unit->conversion_qty;

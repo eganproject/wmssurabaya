@@ -336,6 +336,7 @@
             });
             itemsContainer?.querySelectorAll('[data-error-for]')?.forEach(el => { el.textContent = ''; });
             itemsContainer?.querySelectorAll('.flow-item-select.is-invalid')?.forEach(el => { el.classList.remove('is-invalid'); });
+            itemsContainer?.querySelectorAll('.flow-unit-select.is-invalid')?.forEach(el => { el.classList.remove('is-invalid'); });
         };
 
         const validateUniqueItems = () => {
@@ -369,6 +370,26 @@
                 }
             });
             return !hasDuplicate;
+        };
+
+        const validateBulkUnits = () => {
+            if (!itemsContainer) return true;
+            const isBulkWarehouse = warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
+            if (!isBulkWarehouse) return true;
+
+            let valid = true;
+            itemsContainer.querySelectorAll('.flow-item-row').forEach((row) => {
+                const itemId = row.querySelector('.flow-item-select')?.value || '';
+                const unitEl = row.querySelector('.flow-unit-select');
+                const errEl = row.querySelector('[data-error-for="unit_id"]');
+                if (!itemId || !unitEl || unitEl.value) return;
+
+                valid = false;
+                if (errEl) errEl.textContent = 'Item ini belum memiliki satuan koli/kemasan.';
+                unitEl.classList.add('is-invalid');
+            });
+
+            return valid;
         };
 
         const toQty = (value) => {
@@ -458,6 +479,10 @@
             if (selectedUnitId && units.some(unit => String(unit.id) === String(selectedUnitId))) {
                 unitEl.value = String(selectedUnitId);
             }
+            unitEl.disabled = !units.length;
+            unitEl.classList.remove('is-invalid');
+            const unitError = row?.querySelector('[data-error-for="unit_id"]');
+            if (unitError) unitError.textContent = '';
             updateQtyUnitInfo(row);
         };
 
@@ -1019,6 +1044,10 @@
             clearErrors();
             if (!validateUniqueItems()) {
                 if (typeof Swal !== 'undefined') Swal.fire('Error', 'Item tidak boleh duplikat', 'error');
+                return;
+            }
+            if (!validateBulkUnits()) {
+                if (typeof Swal !== 'undefined') Swal.fire('Error', 'Gudang Besar wajib memakai item yang punya satuan koli/kemasan.', 'error');
                 return;
             }
 

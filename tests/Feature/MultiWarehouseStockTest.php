@@ -345,13 +345,13 @@ class MultiWarehouseStockTest extends TestCase
         $this->actingAs($user)
             ->postJson(route('admin.outbound.manuals.store'), $payload)
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['items']);
+            ->assertJsonValidationErrors(['items.0.unit_id']);
 
         $payload['items'][0]['unit_id'] = $base->id;
         $this->actingAs($user)
             ->postJson(route('admin.outbound.manuals.store'), $payload)
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['items']);
+            ->assertJsonValidationErrors(['items.0.unit_id']);
 
         $payload['items'][0]['unit_id'] = $package->id;
         $this->actingAs($user)
