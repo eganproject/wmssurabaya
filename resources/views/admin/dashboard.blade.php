@@ -144,6 +144,7 @@
     }
     .stat-card--blue  { --accent: var(--dash-blue);  --accent-soft: rgba(37, 99, 235, 0.1); }
     .stat-card--green { --accent: var(--dash-green); --accent-soft: rgba(5, 150, 105, 0.1); }
+    .stat-card--amber { --accent: var(--dash-amber); --accent-soft: rgba(217, 119, 6, 0.12); }
     .stat-card--red   { --accent: var(--dash-red);   --accent-soft: rgba(220, 38, 38, 0.1); }
 
     .stat-value-row {
@@ -488,10 +489,12 @@
 
             @php
                 $totalResiVal = (int) ($totalResi ?? 0);
+                $totalQcScanVal = (int) ($totalQcScan ?? 0);
                 $totalScanVal = (int) ($totalScanOut ?? 0);
                 $totalCancelVal = (int) ($totalResiCanceled ?? 0);
                 $grandTotal = $totalResiVal + $totalCancelVal;
                 $activePercent = $grandTotal > 0 ? round($totalResiVal / $grandTotal * 100) : 0;
+                $qcScanPercent = $totalResiVal > 0 ? min(100, round($totalQcScanVal / $totalResiVal * 100)) : 0;
                 $scanPercent = $totalResiVal > 0 ? min(100, round($totalScanVal / $totalResiVal * 100)) : 0;
                 $cancelPercent = $grandTotal > 0 ? round($totalCancelVal / $grandTotal * 100) : 0;
             @endphp
@@ -514,6 +517,26 @@
                         </div>
                         <div class="stat-progress-text">{{ $activePercent }}% dari {{ number_format($grandTotal) }} total resi</div>
                         <div class="stat-meta"><i class="fa-regular fa-clock"></i> Update {{ $totalResiUpdated ?? '-' }}</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-card--amber">
+                    <div class="stat-icon"><i class="fa-solid fa-clipboard-check"></i></div>
+                    <div class="stat-body">
+                        <div class="stat-label">
+                            Total QC Scan
+                            <span class="info-tip" data-bs-toggle="tooltip" data-bs-placement="top" title="Jumlah resi pada tanggal upload ini yang sudah dilakukan QC scan.">
+                                <i class="fa-solid fa-info"></i>
+                            </span>
+                        </div>
+                        <div class="stat-value-row">
+                            <span class="stat-value">{{ number_format($totalQcScanVal) }}</span>
+                            <span class="stat-percent">{{ $qcScanPercent }}%</span>
+                        </div>
+                        <div class="stat-progress">
+                            <div class="stat-progress-bar" style="width: {{ $qcScanPercent }}%"></div>
+                        </div>
+                        <div class="stat-progress-text">{{ $qcScanPercent }}% resi aktif sudah QC scan</div>
+                        <div class="stat-meta"><i class="fa-regular fa-clock"></i> Update {{ $totalQcScanUpdated ?? '-' }}</div>
                     </div>
                 </div>
                 <div class="stat-card stat-card--green">

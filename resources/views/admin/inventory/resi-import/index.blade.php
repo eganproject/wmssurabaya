@@ -94,6 +94,13 @@
                 </tbody>
             </table>
         </div>
+        <div class="d-flex align-items-center justify-content-between mt-3 flex-wrap gap-3" id="batch_pagination" style="display:none;">
+            <div class="text-muted" id="batch_page_summary"></div>
+            <div class="btn-group">
+                <button type="button" class="btn btn-sm btn-light" id="batch_prev">&larr; Sebelumnya</button>
+                <button type="button" class="btn btn-sm btn-light" id="batch_next">Berikutnya &rarr;</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -380,6 +387,7 @@
     const batchesUrl = '{{ $batchesUrl ?? '' }}';
     const batchDetailUrl = '{{ $batchDetailUrl ?? '' }}';
     const batchDeleteUrl = '{{ $batchDeleteUrl ?? '' }}';
+    const resiDeleteUrl = '{{ $resiDeleteUrl ?? '' }}';
     const cancelUrl = '{{ route('admin.inventory.resi-import.cancel') }}';
     const uncancelUrl = '{{ route('admin.inventory.resi-import.uncancel') }}';
     const csrfToken = '{{ csrf_token() }}';
@@ -435,11 +443,20 @@
         const labelDateEl = document.getElementById('label_date');
         const batchBodyEl = document.getElementById('batch_body');
         const batchRefreshBtn = document.getElementById('btn_refresh_batches');
+        const batchPaginationEl = document.getElementById('batch_pagination');
+        const batchPageSummaryEl = document.getElementById('batch_page_summary');
+        const batchPrevBtn = document.getElementById('batch_prev');
+        const batchNextBtn = document.getElementById('batch_next');
         const batchDetailModalEl = document.getElementById('modal_batch_detail');
         const batchDetailModal = batchDetailModalEl ? new bootstrap.Modal(batchDetailModalEl) : null;
         const batchDetailCodeEl = document.getElementById('batch_detail_code');
         const batchDetailBodyEl = document.getElementById('batch_detail_body');
         const tableEl = $('#resi_table');
+        const batchState = {
+            page: 1,
+            perPage: 10,
+            lastPage: 1,
+        };
         let fpDate = null;
         let dt = null;
 
@@ -461,16 +478,28 @@
             if (!batchesUrl || !batchBodyEl) return;
             batchBodyEl.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-6">Memuat batch...</td></tr>';
             try {
-                const res = await fetch(batchesUrl, { headers: { 'Accept': 'application/json' } });
+                const params = new URLSearchParams();
+                params.set('page', batchState.page);
+                params.set('per_page', batchState.perPage);
+                const res = await fetch(`${batchesUrl}?${params.toString()}`, { headers: { 'Accept': 'application/json' } });
                 const json = await res.json();
                 if (!res.ok) throw new Error(json?.message || 'Gagal memuat batch.');
                 const rows = Array.isArray(json?.data) ? json.data : [];
+                const meta = json?.meta || {};
+                batchState.page = Number(meta.current_page || batchState.page || 1);
+                batchState.lastPage = Number(meta.last_page || 1);
                 if (!rows.length) {
+                    if (Number(meta.total || 0) > 0 && batchState.page > 1) {
+                        batchState.page = Math.max(1, batchState.page - 1);
+                        loadBatches();
+                        return;
+                    }
                     batchBodyEl.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-6">Belum ada batch import.</td></tr>';
+                    if (batchPaginationEl) batchPaginationEl.style.display = 'none';
                     return;
                 }
                 batchBodyEl.innerHTML = rows.map((row) => {
-                    const canDelete = row.status !== 'deleted';
+                    const canDelete = row.can_delete === true;
                     const deleteBtn = canDelete
                         ? `<button type="button" class="btn btn-sm btn-light-danger btn-delete-batch" data-id="${row.id}" data-code="${escapeHtml(row.batch_code)}">Hapus Batch</button>`
                         : '<span class="text-muted">-</span>';
@@ -489,8 +518,20 @@
                         </tr>
                     `;
                 }).join('');
+                if (batchPaginationEl) {
+                    batchPaginationEl.style.display = Number(meta.total || 0) > batchState.perPage ? 'flex' : 'none';
+                }
+                if (batchPageSummaryEl) {
+                    const from = meta.from || 0;
+                    const to = meta.to || 0;
+                    const total = meta.total || 0;
+                    batchPageSummaryEl.textContent = `Menampilkan ${from}-${to} dari ${total} batch hari ini`;
+                }
+                if (batchPrevBtn) batchPrevBtn.disabled = batchState.page <= 1;
+                if (batchNextBtn) batchNextBtn.disabled = batchState.page >= batchState.lastPage;
             } catch (err) {
                 batchBodyEl.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-6">Gagal memuat batch.</td></tr>';
+                if (batchPaginationEl) batchPaginationEl.style.display = 'none';
             }
         };
 
@@ -654,7 +695,20 @@
         setBuyerNotesCount(summaryBuyerNotesEl?.textContent || 0);
         loadBatches();
 
-        batchRefreshBtn?.addEventListener('click', loadBatches);
+        batchRefreshBtn?.addEventListener('click', () => {
+            batchState.page = 1;
+            loadBatches();
+        });
+        batchPrevBtn?.addEventListener('click', () => {
+            if (batchState.page <= 1) return;
+            batchState.page -= 1;
+            loadBatches();
+        });
+        batchNextBtn?.addEventListener('click', () => {
+            if (batchState.page >= batchState.lastPage) return;
+            batchState.page += 1;
+            loadBatches();
+        });
         batchBodyEl?.addEventListener('click', (e) => {
             const detailBtn = e.target.closest('.btn-detail-batch');
             if (detailBtn) {
@@ -705,14 +759,17 @@
                             const idPesanan = row.id_pesanan || '';
                             const noResi = row.no_resi || '';
                             const status = row.status || 'active';
-                            const hasScanOut = !!row.has_scan_out;
+                            const canDelete = row.can_delete === true;
+                            const deleteBtn = canDelete
+                                ? `<button type="button" class="btn btn-sm btn-light-danger btn-delete-resi ms-2" data-resi-id="${row.id}" data-id="${escapeHtml(idPesanan)}" data-resi="${escapeHtml(noResi)}">Hapus</button>`
+                                : '';
                             if (status === 'canceled') {
-                                return `<button type="button" class="btn btn-sm btn-light-warning btn-uncancel" data-id="${idPesanan}" data-resi="${noResi}">Batal Cancel</button>`;
+                                return `<button type="button" class="btn btn-sm btn-light-warning btn-uncancel" data-id="${escapeHtml(idPesanan)}" data-resi="${escapeHtml(noResi)}">Batal Cancel</button>${deleteBtn}`;
                             }
-                            if (hasScanOut) {
+                            if (!canDelete) {
                                 return '<span class="text-muted">-</span>';
                             }
-                            return `<button type="button" class="btn btn-sm btn-light-danger btn-cancel" data-id="${idPesanan}" data-resi="${noResi}">Cancel</button>`;
+                            return `<button type="button" class="btn btn-sm btn-light-warning btn-cancel" data-id="${escapeHtml(idPesanan)}" data-resi="${escapeHtml(noResi)}">Cancel</button>${deleteBtn}`;
                         }},
                     ],
                     language: {
@@ -965,6 +1022,68 @@
             }
         });
 
+        tableEl.on('click', '.btn-delete-resi', async function (e) {
+            e.preventDefault();
+            if (!resiDeleteUrl) return;
+
+            const resiId = this.getAttribute('data-resi-id');
+            const idPesanan = this.getAttribute('data-id') || '-';
+            const noResi = this.getAttribute('data-resi') || '-';
+            if (!resiId) return;
+
+            const runDelete = async () => {
+                const formData = new FormData();
+                formData.append('_method', 'DELETE');
+                const url = resiDeleteUrl.replace('__RESI__', encodeURIComponent(resiId));
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                    },
+                    body: formData,
+                });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    throw new Error(json?.message || 'Gagal menghapus resi.');
+                }
+                return json;
+            };
+
+            try {
+                if (typeof Swal !== 'undefined') {
+                    const result = await Swal.fire({
+                        title: 'Hapus resi ini?',
+                        html: `
+                            <div class="text-start">
+                                <div>Resi: <strong>${escapeHtml(noResi)}</strong></div>
+                                <div>ID Pesanan: <strong>${escapeHtml(idPesanan)}</strong></div>
+                                <div class="text-muted mt-2">Resi akan dihapus permanen jika belum masuk QC scan, scan packer, atau scan out.</div>
+                            </div>
+                        `,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Hapus',
+                        cancelButtonText: 'Batal',
+                    });
+                    if (!result.isConfirmed) return;
+                } else if (!confirm(`Hapus resi ${noResi || idPesanan}?`)) {
+                    return;
+                }
+
+                const json = await runDelete();
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire('Berhasil', json?.message || 'Resi berhasil dihapus.', 'success');
+                }
+                loadBatches();
+                reloadTable();
+            } catch (err) {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire('Error', err.message || 'Gagal menghapus resi.', 'error');
+                }
+            }
+        });
+
         tableEl.on('click', '.btn-uncancel', async function (e) {
             e.preventDefault();
             const id = this.getAttribute('data-id') || '';
@@ -1113,6 +1232,7 @@
 
                 if (importInput) importInput.value = '';
                 importModal?.hide();
+                batchState.page = 1;
                 loadBatches();
                 reloadTable();
             } catch (e) {

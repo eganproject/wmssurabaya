@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Kurir;
 use App\Models\PackerScanOut;
+use App\Models\QcScanResi;
 use App\Models\Resi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -34,6 +35,12 @@ class DashboardController extends Controller
         $totalResiActive = (clone $activeResiBase)->count();
         $totalResiCanceled = (clone $resiBase)->where('status', 'canceled')->count();
         $totalResiUpdatedAt = (clone $activeResiBase)->max('updated_at');
+        $totalQcScan = QcScanResi::query()
+            ->whereIn('resi_id', (clone $resiBase)->select('id'))
+            ->count();
+        $totalQcScanUpdatedAt = QcScanResi::query()
+            ->whereIn('resi_id', (clone $resiBase)->select('id'))
+            ->max('scanned_at');
         $totalScanOut = PackerScanOut::query()
             ->whereIn('resi_id', (clone $resiBase)->select('id'))
             ->count();
@@ -41,6 +48,7 @@ class DashboardController extends Controller
             ->whereIn('resi_id', (clone $resiBase)->select('id'))
             ->max('scanned_at');
         $totalResiUpdated = $totalResiUpdatedAt ? Carbon::parse($totalResiUpdatedAt)->format('H:i') : '-';
+        $totalQcScanUpdated = $totalQcScanUpdatedAt ? Carbon::parse($totalQcScanUpdatedAt)->format('H:i') : '-';
         $totalScanUpdated = $totalScanUpdatedAt ? Carbon::parse($totalScanUpdatedAt)->format('H:i') : '-';
 
         $resiCounts = Resi::select('kurir_id', DB::raw('count(*) as total'))
@@ -113,8 +121,10 @@ class DashboardController extends Controller
             'today' => $selectedDate,
             'totalResi' => $totalResiActive,
             'totalResiCanceled' => $totalResiCanceled,
+            'totalQcScan' => $totalQcScan,
             'totalScanOut' => $totalScanOut,
             'totalResiUpdated' => $totalResiUpdated,
+            'totalQcScanUpdated' => $totalQcScanUpdated,
             'totalScanUpdated' => $totalScanUpdated,
             'kurirs' => $kurirs,
         ]);

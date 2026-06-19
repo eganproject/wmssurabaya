@@ -54,6 +54,7 @@ class ResiImportController extends Controller
             'batchesUrl' => route('admin.inventory.resi-import.batches'),
             'batchDetailUrl' => route('admin.inventory.resi-import.batches.show', ['batch' => '__BATCH__']),
             'batchDeleteUrl' => route('admin.inventory.resi-import.batches.destroy', ['batch' => '__BATCH__']),
+            'resiDeleteUrl' => route('admin.inventory.resi-import.resis.destroy', ['resi' => '__RESI__']),
             'filterDate' => $filterDate,
             'filterSearch' => $search,
             'filterStatus' => $status,
@@ -93,6 +94,16 @@ class ResiImportController extends Controller
                     ->selectRaw('count(1)')
                     ->whereColumn('packer_scan_outs.resi_id', 'resis.id');
             }, 'scan_out_count')
+            ->selectSub(function ($sub) {
+                $sub->from('qc_scan_resis')
+                    ->selectRaw('count(1)')
+                    ->whereColumn('qc_scan_resis.resi_id', 'resis.id');
+            }, 'qc_scan_count')
+            ->selectSub(function ($sub) {
+                $sub->from('packer_resi_scans')
+                    ->selectRaw('count(1)')
+                    ->whereColumn('packer_resi_scans.resi_id', 'resis.id');
+            }, 'packer_scan_count')
             ->with(['details' => function ($q) {
                 $q->select(['id', 'resi_id', 'sku', 'qty']);
             }, 'kurir'])
@@ -118,6 +129,9 @@ class ResiImportController extends Controller
             $skuList = $skuItems !== '' ? $skuItems : '-';
             $tanggalOrder = $row->tanggal_pesanan?->format('Y-m-d') ?? $row->tanggal_pesanan ?? '-';
             $hasScanOut = (int) ($row->scan_out_count ?? 0) > 0;
+            $hasQcScan = (int) ($row->qc_scan_count ?? 0) > 0;
+            $hasPackerScan = (int) ($row->packer_scan_count ?? 0) > 0;
+            $canDelete = ! $hasScanOut && ! $hasQcScan && ! $hasPackerScan;
             return [
                 'id' => $row->id,
                 'no_resi' => $row->no_resi ?? '-',
@@ -129,6 +143,7 @@ class ResiImportController extends Controller
                 'has_catatan_pembeli' => trim((string) ($row->catatan_pembeli ?? '')) !== '',
                 'status' => $row->status ?? 'active',
                 'has_scan_out' => $hasScanOut,
+                'can_delete' => $canDelete,
             ];
         });
 
@@ -232,14 +247,30 @@ class ResiImportController extends Controller
 
     public function batches(Request $request)
     {
-        $rows = ResiImportBatch::query()
+        $today = now()->toDateString();
+        $page = max(1, (int) $request->input('page', 1));
+        $perPage = (int) $request->input('per_page', 10);
+        $perPage = min(max($perPage, 5), 50);
+
+        $paginator = ResiImportBatch::query()
             ->with('uploader:id,name')
+            ->with('items')
             ->withCount('items')
+            ->whereDate('uploaded_at', $today)
             ->orderByDesc('uploaded_at')
             ->orderByDesc('id')
-            ->limit((int) $request->input('limit', 25))
-            ->get()
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $rows = $paginator->getCollection()
             ->map(function ($batch) {
+                $resiIds = $batch->items
+                    ->pluck('resi_id')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+                $deleteBlockers = $this->batchDeleteBlockers($batch, $resiIds);
+
                 return [
                     'id' => $batch->id,
                     'batch_code' => $batch->batch_code,
@@ -252,11 +283,22 @@ class ResiImportController extends Controller
                     'status' => $batch->status,
                     'deleted_at' => $batch->deleted_at?->format('Y-m-d H:i'),
                     'delete_reason' => $batch->delete_reason,
+                    'can_delete' => ($batch->status ?? 'active') !== 'deleted' && empty($deleteBlockers),
+                    'delete_blocked_count' => count($deleteBlockers),
                 ];
             });
 
         return response()->json([
+            'date' => $today,
             'data' => $rows,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
         ]);
     }
 
@@ -510,6 +552,54 @@ class ResiImportController extends Controller
             'batch_code' => $batch->batch_code,
             'deleted_resis' => $deletedResis,
             'deleted_details' => $deletedDetails,
+        ]);
+    }
+
+    public function destroyResi(Request $request, Resi $resi)
+    {
+        $hasPackerScan = PackerResiScan::where('resi_id', $resi->id)->exists();
+        $hasScanOut = PackerScanOut::where('resi_id', $resi->id)->exists();
+        $hasQcScan = QcScanResi::where('resi_id', $resi->id)->exists();
+
+        if ($hasScanOut || $hasPackerScan || $hasQcScan) {
+            return response()->json([
+                'message' => 'Resi sudah diproses, tidak bisa dihapus.',
+                'detail' => 'Hapus resi hanya diizinkan untuk resi yang belum masuk QC scan, scan packer, atau scan out.',
+            ], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            $resi->load('details');
+            $details = $resi->details;
+            $deletedDetails = $details->count();
+
+            if (($resi->status ?? 'active') !== 'canceled' && $details->isNotEmpty()) {
+                $listDate = $resi->tanggal_upload?->format('Y-m-d') ?? now()->toDateString();
+                $this->adjustPickingList($listDate, $details, -1);
+            }
+
+            $payload = [
+                'id_pesanan' => $resi->id_pesanan,
+                'no_resi' => $resi->no_resi,
+                'deleted_details' => $deletedDetails,
+            ];
+
+            $resi->delete();
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Gagal menghapus resi.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => 'Resi berhasil dihapus.',
+            'detail' => 'Resi belum terproses sudah dihapus dari database, dan picking list sudah disesuaikan bila diperlukan.',
+            ...$payload,
         ]);
     }
 
