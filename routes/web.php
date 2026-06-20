@@ -124,6 +124,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
     Route::prefix('masterdata')->as('masterdata.')->group(function () {
         // Users DataTables
         Route::get('/users/data', [AdminUserController::class, 'data'])->name('users.data');
+        Route::get('/users/template', [AdminUserController::class, 'template'])->name('users.template');
         Route::post('/users/import', [AdminUserController::class, 'import'])->name('users.import');
         // Users CRUD
         Route::resource('users', AdminUserController::class)->except(['show'])->names('users');
@@ -206,6 +207,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::get('/stock-adjustments/data', [StockAdjustmentController::class, 'data'])->name('stock-adjustments.data');
         Route::post('/stock-adjustments', [StockAdjustmentController::class, 'store'])->name('stock-adjustments.store');
         Route::post('/stock-adjustments/import', [StockAdjustmentController::class, 'import'])->name('stock-adjustments.import');
+        Route::get('/stock-adjustments/template', [StockAdjustmentController::class, 'template'])->name('stock-adjustments.template');
         Route::get('/stock-adjustments/{id}/detail', [StockAdjustmentController::class, 'detail'])->name('stock-adjustments.detail');
         Route::get('/stock-adjustments/{id}', [StockAdjustmentController::class, 'show'])->name('stock-adjustments.show');
         Route::put('/stock-adjustments/{id}', [StockAdjustmentController::class, 'update'])->name('stock-adjustments.update');
@@ -242,6 +244,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::delete('/resi-import/batches/{batch}', [ResiImportController::class, 'destroyBatch'])->name('resi-import.batches.destroy');
         Route::delete('/resi-import/resis/{resi}', [ResiImportController::class, 'destroyResi'])->name('resi-import.resis.destroy');
         Route::post('/resi-import/import', [ResiImportController::class, 'import'])->name('resi-import.import');
+        Route::get('/resi-import/template', [ResiImportController::class, 'template'])->name('resi-import.template');
         Route::post('/resi-import/cancel', [ResiImportController::class, 'cancel'])->name('resi-import.cancel');
         Route::post('/resi-import/uncancel', [ResiImportController::class, 'uncancel'])->name('resi-import.uncancel');
 
@@ -270,6 +273,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::get('/receipts/data', [InboundController::class, 'receiptsData'])->name('receipts.data');
         Route::post('/receipts', [InboundController::class, 'receiptsStore'])->name('receipts.store');
         Route::post('/receipts/import', [InboundController::class, 'receiptsImport'])->name('receipts.import');
+        Route::get('/receipts/template', [InboundController::class, 'receiptsTemplate'])->name('receipts.template');
         Route::get('/receipts/{id}', [InboundController::class, 'receiptsShow'])->name('receipts.show');
         Route::put('/receipts/{id}', [InboundController::class, 'receiptsUpdate'])->name('receipts.update');
         Route::delete('/receipts/{id}', [InboundController::class, 'receiptsDestroy'])->name('receipts.destroy');
@@ -304,6 +308,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::get('/manuals/data', [OutboundController::class, 'manualsData'])->name('manuals.data');
         Route::post('/manuals', [OutboundController::class, 'manualsStore'])->name('manuals.store');
         Route::post('/manuals/import', [OutboundController::class, 'manualsImport'])->name('manuals.import');
+        Route::get('/manuals/template', [OutboundController::class, 'manualsTemplate'])->name('manuals.template');
         Route::get('/manuals/{id}', [OutboundController::class, 'manualsShow'])->name('manuals.show');
         Route::put('/manuals/{id}', [OutboundController::class, 'manualsUpdate'])->name('manuals.update');
         Route::delete('/manuals/{id}', [OutboundController::class, 'manualsDestroy'])->name('manuals.destroy');

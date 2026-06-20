@@ -9,6 +9,7 @@ use App\Models\StockAdjustment;
 use App\Models\StockAdjustmentItem;
 use App\Models\StockMutation;
 use App\Models\Warehouse;
+use App\Exports\StockAdjustmentsTemplateExport;
 use App\Imports\StockAdjustmentsImport;
 use App\Support\StockService;
 use Illuminate\Http\Request;
@@ -32,8 +33,17 @@ class StockAdjustmentController extends Controller
             'dataUrl' => route('admin.inventory.stock-adjustments.data'),
             'storeUrl' => route('admin.inventory.stock-adjustments.store'),
             'importUrl' => route('admin.inventory.stock-adjustments.import'),
+            'templateUrl' => route('admin.inventory.stock-adjustments.template'),
             'warehouses' => $warehouses,
         ]);
+    }
+
+    public function template()
+    {
+        return Excel::download(
+            new StockAdjustmentsTemplateExport(),
+            'template-import-penyesuaian-stok.xlsx'
+        );
     }
 
     public function data(Request $request)

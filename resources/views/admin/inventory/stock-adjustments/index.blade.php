@@ -143,6 +143,9 @@
                             Header lama <strong>qty</strong> tetap didukung.
                             Opsional: <strong>note</strong>, <strong>item_note</strong>, <strong>transacted_at</strong>.
                         </div>
+                        @if(!empty($templateUrl ?? null))
+                            <a href="{{ $templateUrl }}" class="btn btn-sm btn-light-success mt-3">Download Template Excel</a>
+                        @endif
                     </div>
                     <div class="fv-row mb-6">
                         <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>

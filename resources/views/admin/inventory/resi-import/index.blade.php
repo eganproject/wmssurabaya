@@ -188,6 +188,7 @@
                             <li><strong>Catatan Pembeli</strong> (opsional)</li>
                         </ul>
                         <p class="text-muted small mb-0">Header akan dibaca otomatis menjadi: <code>id_pesanan, awb_no_tracking, kurir, sku, jumlah, tanggal_pembuatan, catatan_pembeli</code></p>
+                        <a href="{{ $templateUrl }}" class="btn btn-sm btn-light-success mt-4">Download Template Excel</a>
                     </div>
                     <div class="mb-10">
                         <label class="required fs-6 fw-bold form-label mb-2">File Excel</label>

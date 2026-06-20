@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exports\ResiTemplateExport;
 use App\Http\Controllers\Controller;
 use App\Imports\ResiImport;
 use App\Models\Item;
@@ -49,6 +50,7 @@ class ResiImportController extends Controller
 
         return view('admin.inventory.resi-import.index', [
             'importUrl' => route('admin.inventory.resi-import.import'),
+            'templateUrl' => route('admin.inventory.resi-import.template'),
             'dataUrl' => route('admin.inventory.resi-import.data'),
             'buyerNotesUrl' => route('admin.inventory.resi-import.buyer-notes'),
             'batchesUrl' => route('admin.inventory.resi-import.batches'),
@@ -470,6 +472,14 @@ class ResiImportController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function template()
+    {
+        return Excel::download(
+            new ResiTemplateExport(),
+            'template-import-resi.xlsx'
+        );
     }
 
     public function destroyBatch(Request $request, ResiImportBatch $batch)

@@ -11,6 +11,7 @@ use App\Models\DamagedGood;
 use App\Models\DamagedGoodItem;
 use App\Models\StockMutation;
 use App\Models\Warehouse;
+use App\Exports\InboundReceiptsTemplateExport;
 use App\Exports\InboundReturnsTemplateExport;
 use App\Imports\InboundReceiptsImport;
 use App\Imports\InboundReturnsImport;
@@ -115,6 +116,14 @@ class InboundController extends Controller
         return Excel::download(
             new InboundReturnsTemplateExport(),
             'template-import-retur-inbound.xlsx'
+        );
+    }
+
+    public function receiptsTemplate()
+    {
+        return Excel::download(
+            new InboundReceiptsTemplateExport(),
+            'template-import-penerimaan-barang.xlsx'
         );
     }
 
@@ -337,6 +346,7 @@ class InboundController extends Controller
                 default => null,
             },
             'templateUrl' => match ($type) {
+                'receipt' => route('admin.inbound.receipts.template'),
                 'return' => route('admin.inbound.returns.template'),
                 default => null,
             },

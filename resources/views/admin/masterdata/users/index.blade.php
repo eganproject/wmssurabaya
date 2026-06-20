@@ -106,6 +106,7 @@
                     <p class="text-muted small mb-0">
                         Roles dapat diisi dengan <em>nama</em>, <em>slug</em>, atau <em>ID</em> role.
                     </p>
+                    <a href="{{ route('admin.masterdata.users.template') }}" class="btn btn-sm btn-light-success mt-4">Download Template Excel</a>
                 </div>
                 <div class="mb-10">
                     <label class="required fs-6 fw-bold form-label mb-2">File Excel</label>

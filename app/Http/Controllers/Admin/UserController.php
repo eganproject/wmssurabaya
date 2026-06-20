@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Divisi;
 use App\Models\Role;
 use App\Models\User;
+use App\Exports\UsersTemplateExport;
 use App\Imports\UsersImport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -309,5 +310,13 @@ class UserController extends Controller
             'message' => 'Import user berhasil',
             'created' => $created,
         ]);
+    }
+
+    public function template()
+    {
+        return Excel::download(
+            new UsersTemplateExport(),
+            'template-import-users.xlsx'
+        );
     }
 }

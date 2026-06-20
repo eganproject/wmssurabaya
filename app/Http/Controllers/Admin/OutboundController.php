@@ -14,6 +14,7 @@ use App\Models\ItemStock;
 use App\Models\StockMutation;
 use App\Models\SuratJalan;
 use App\Models\Warehouse;
+use App\Exports\OutboundManualsTemplateExport;
 use App\Exports\OutboundReturnsTemplateExport;
 use App\Imports\OutboundReturnsImport;
 use App\Models\DamagedStockMutation;
@@ -277,6 +278,14 @@ class OutboundController extends Controller
         }
     }
 
+    public function manualsTemplate()
+    {
+        return Excel::download(
+            new OutboundManualsTemplateExport(),
+            'template-import-outbound-manual.xlsx'
+        );
+    }
+
     public function returnsTemplate()
     {
         return Excel::download(
@@ -424,6 +433,7 @@ class OutboundController extends Controller
             },
             'templateUrl' => match ($type) {
                 'return' => route('admin.outbound.returns.template'),
+                'manual' => route('admin.outbound.manuals.template'),
                 default => null,
             },
         ]);
