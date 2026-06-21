@@ -7,6 +7,7 @@ use App\Models\Kurir;
 use App\Models\PackerScanOut;
 use App\Models\QcScanResi;
 use App\Models\Resi;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -120,14 +121,36 @@ class DashboardController extends Controller
         $lowStockLimit = 5;
         $stockWindowStart = Carbon::parse($selectedDate)->subDays(29)->startOfDay();
         $stockWindowEnd = Carbon::parse($selectedDate)->endOfDay();
+        $inventoryWarehouses = Warehouse::query()
+            ->where('is_active', true)
+            ->orderByRaw("CASE WHEN type = 'bulk' THEN 0 ELSE 1 END")
+            ->orderBy('name')
+            ->get(['id', 'name', 'type', 'code']);
+        $selectedInventoryWarehouseId = $request->integer('inventory_warehouse_id') ?: null;
+        if ($selectedInventoryWarehouseId && !$inventoryWarehouses->contains('id', $selectedInventoryWarehouseId)) {
+            $selectedInventoryWarehouseId = null;
+        }
+        $selectedInventoryWarehouse = $selectedInventoryWarehouseId
+            ? $inventoryWarehouses->firstWhere('id', $selectedInventoryWarehouseId)
+            : null;
 
         $stockRowBase = DB::table('items')
-            ->leftJoin('item_stocks', 'items.id', '=', 'item_stocks.item_id')
+            ->leftJoin('item_stocks', function ($join) use ($selectedInventoryWarehouseId) {
+                $join->on('items.id', '=', 'item_stocks.item_id');
+                if ($selectedInventoryWarehouseId) {
+                    $join->where('item_stocks.warehouse_id', '=', $selectedInventoryWarehouseId);
+                }
+            })
             ->leftJoin('warehouses', 'warehouses.id', '=', 'item_stocks.warehouse_id');
+
+        $stockTotalQuery = DB::table('item_stocks');
+        if ($selectedInventoryWarehouseId) {
+            $stockTotalQuery->where('warehouse_id', $selectedInventoryWarehouseId);
+        }
 
         $inventorySummary = [
             'total_sku' => (int) DB::table('items')->count(),
-            'total_stock' => (int) DB::table('item_stocks')->sum('stock'),
+            'total_stock' => (int) $stockTotalQuery->sum('stock'),
             'out_of_stock' => (clone $stockRowBase)
                 ->whereRaw('COALESCE(item_stocks.stock, 0) <= 0')
                 ->count(),
@@ -227,6 +250,9 @@ class DashboardController extends Controller
             'totalQcScanUpdated' => $totalQcScanUpdated,
             'totalScanUpdated' => $totalScanUpdated,
             'kurirs' => $kurirs,
+            'inventoryWarehouses' => $inventoryWarehouses,
+            'selectedInventoryWarehouseId' => $selectedInventoryWarehouseId,
+            'selectedInventoryWarehouse' => $selectedInventoryWarehouse,
             'lowStockLimit' => $lowStockLimit,
             'stockWindowStart' => $stockWindowStart->toDateString(),
             'stockWindowEnd' => $stockWindowEnd->toDateString(),

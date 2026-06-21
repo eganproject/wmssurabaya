@@ -554,17 +554,70 @@
         font-size: 11.5px;
         margin-top: 2px;
     }
+    .inventory-filter {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        max-width: 100%;
+    }
+    .inventory-filter-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 38px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 800;
+        white-space: nowrap;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+    .inventory-filter-link:hover {
+        border-color: #bfdbfe;
+        background: #eff6ff;
+        color: var(--dash-blue);
+    }
+    .inventory-filter-link.active {
+        border-color: var(--dash-blue);
+        background: rgba(37, 99, 235, 0.1);
+        color: var(--dash-blue);
+    }
+    @media (max-width: 575px) {
+        .dash-tabs .nav-link {
+            width: 100%;
+            justify-content: center;
+        }
+        .dash-tabs .nav-item {
+            flex: 1 1 100%;
+        }
+        .inventory-filter,
+        .inventory-filter-link {
+            width: 100%;
+        }
+        .inventory-filter-link {
+            justify-content: center;
+        }
+    }
 </style>
 
 <div class="dash-wrap">
+    @php
+        $activeDashboardTab = request('dashboard_tab') === 'inventori' || request()->has('inventory_warehouse_id')
+            ? 'inventori'
+            : 'operasional';
+    @endphp
     <ul class="nav dash-tabs" id="dashboard_tabs" role="tablist">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="tab-operasional" data-bs-toggle="tab" data-bs-target="#pane-operasional" type="button" role="tab" aria-controls="pane-operasional" aria-selected="true">
+            <button class="nav-link {{ $activeDashboardTab === 'operasional' ? 'active' : '' }}" id="tab-operasional" data-bs-toggle="tab" data-bs-target="#pane-operasional" type="button" role="tab" aria-controls="pane-operasional" aria-selected="{{ $activeDashboardTab === 'operasional' ? 'true' : 'false' }}">
                 <i class="fa-solid fa-truck-fast"></i> Operasional Resi
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-inventori" data-bs-toggle="tab" data-bs-target="#pane-inventori" type="button" role="tab" aria-controls="pane-inventori" aria-selected="false">
+            <button class="nav-link {{ $activeDashboardTab === 'inventori' ? 'active' : '' }}" id="tab-inventori" data-bs-toggle="tab" data-bs-target="#pane-inventori" type="button" role="tab" aria-controls="pane-inventori" aria-selected="{{ $activeDashboardTab === 'inventori' ? 'true' : 'false' }}">
                 <i class="fa-solid fa-warehouse"></i> Inventori
             </button>
         </li>
@@ -576,7 +629,7 @@
     </ul>
 
     <div class="tab-content" id="dashboard_tabs_content">
-        <div class="tab-pane fade show active" id="pane-operasional" role="tabpanel" aria-labelledby="tab-operasional">
+        <div class="tab-pane fade {{ $activeDashboardTab === 'operasional' ? 'show active' : '' }}" id="pane-operasional" role="tabpanel" aria-labelledby="tab-operasional">
     {{-- ============ Ringkasan Resi ============ --}}
     <div class="card mb-6">
         <div class="card-body">
@@ -767,13 +820,18 @@
     </div>
         </div>
 
-        <div class="tab-pane fade" id="pane-inventori" role="tabpanel" aria-labelledby="tab-inventori">
+        <div class="tab-pane fade {{ $activeDashboardTab === 'inventori' ? 'show active' : '' }}" id="pane-inventori" role="tabpanel" aria-labelledby="tab-inventori">
             @php
                 $inventory = $inventorySummary ?? [];
                 $totalSku = (int) ($inventory['total_sku'] ?? 0);
                 $totalStock = (int) ($inventory['total_stock'] ?? 0);
                 $outOfStockTotal = (int) ($inventory['out_of_stock'] ?? 0);
                 $lowStockTotal = (int) ($inventory['low_stock'] ?? 0);
+                $inventoryQueryBase = ['dashboard_tab' => 'inventori'];
+                if (request('date')) {
+                    $inventoryQueryBase['date'] = request('date');
+                }
+                $inventoryScopeLabel = $selectedInventoryWarehouse?->name ?? 'Semua gudang';
             @endphp
 
             <div class="card mb-6">
@@ -781,8 +839,30 @@
                     <div class="dash-section-head mb-5">
                         <div>
                             <div class="dash-section-title"><i class="fa-solid fa-warehouse"></i> Ringkasan Inventori</div>
-                            <div class="dash-section-sub">Kondisi stok saat ini di seluruh gudang</div>
+                            <div class="dash-section-sub">Kondisi stok saat ini pada {{ $inventoryScopeLabel }}</div>
                             <div class="dash-legend">Stok menipis = stok 1 sampai {{ number_format($lowStockLimit ?? 5) }} pcs.</div>
+                        </div>
+                        <div class="inventory-filter" aria-label="Filter gudang inventori">
+                            <a
+                                href="{{ url()->current() }}?{{ http_build_query($inventoryQueryBase) }}"
+                                class="inventory-filter-link {{ empty($selectedInventoryWarehouseId) ? 'active' : '' }}"
+                            >
+                                <i class="fa-solid fa-layer-group"></i> Semua Gudang
+                            </a>
+                            @foreach(($inventoryWarehouses ?? collect()) as $warehouse)
+                                @php
+                                    $warehouseQuery = array_merge($inventoryQueryBase, ['inventory_warehouse_id' => $warehouse->id]);
+                                    $warehouseIcon = $warehouse->type === 'bulk' ? 'fa-boxes-stacked' : 'fa-box';
+                                    $warehouseTypeLabel = $warehouse->type === 'bulk' ? 'Gudang Besar' : 'Gudang Kecil';
+                                @endphp
+                                <a
+                                    href="{{ url()->current() }}?{{ http_build_query($warehouseQuery) }}"
+                                    class="inventory-filter-link {{ (int) ($selectedInventoryWarehouseId ?? 0) === (int) $warehouse->id ? 'active' : '' }}"
+                                    title="{{ $warehouseTypeLabel }}"
+                                >
+                                    <i class="fa-solid {{ $warehouseIcon }}"></i> {{ $warehouseTypeLabel }} - {{ $warehouse->name }}
+                                </a>
+                            @endforeach
                         </div>
                     </div>
 
