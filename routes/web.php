@@ -29,6 +29,7 @@ use App\Http\Controllers\Admin\LowStockReportController;
 use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\StockOpnameReportController;
 use App\Http\Controllers\Admin\StockPlanningReportController;
+use App\Http\Controllers\Admin\StockReportController;
 use App\Http\Controllers\Admin\TransferAnalyticsReportController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\MenuController;
@@ -367,6 +368,8 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::get('/packer-packing-reports/search-resi', [PackerPackingReportController::class, 'searchResi'])->name('packer-packing-reports.search-resi');
         Route::get('/low-stock', [LowStockReportController::class, 'index'])->name('low-stock.index');
         Route::get('/low-stock/data', [LowStockReportController::class, 'data'])->name('low-stock.data');
+        Route::get('/stock', [StockReportController::class, 'index'])->name('stock.index');
+        Route::get('/stock/data', [StockReportController::class, 'data'])->name('stock.data');
         Route::get('/stock-opname', [StockOpnameReportController::class, 'index'])->name('stock-opname.index');
         Route::get('/stock-opname/data', [StockOpnameReportController::class, 'data'])->name('stock-opname.data');
         Route::get('/stock-opname/sku-diff', [StockOpnameReportController::class, 'diffSku'])->name('stock-opname.diff-sku');
