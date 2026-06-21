@@ -463,9 +463,120 @@
         margin-left: 6px;
     }
     .info-tip i { font-size: 8px; }
+
+    /* ---------- Dashboard tabs ---------- */
+    .dash-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        border-bottom: 1px solid #e2e8f0;
+        margin-bottom: 20px;
+    }
+    .dash-tabs .nav-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 0;
+        border-radius: 10px 10px 0 0;
+        color: #64748b;
+        font-weight: 800;
+        padding: 12px 16px;
+    }
+    .dash-tabs .nav-link.active {
+        color: var(--dash-blue);
+        background: rgba(37, 99, 235, 0.08);
+        box-shadow: inset 0 -3px 0 var(--dash-blue);
+    }
+
+    /* ---------- Inventory widgets ---------- */
+    .dash-table-card {
+        border: 1px solid #e9edf3;
+        border-radius: 16px;
+        background: #fff;
+        overflow: hidden;
+        height: 100%;
+    }
+    .dash-table-card-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 18px 18px 0;
+    }
+    .dash-table-title {
+        font-size: 14px;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .dash-table-sub {
+        font-size: 11.5px;
+        color: #94a3b8;
+        margin-top: 2px;
+    }
+    .dash-table-card .table {
+        margin-bottom: 0;
+    }
+    .dash-table-card thead th {
+        background: #f8fafc;
+        color: #64748b;
+        font-size: 10.5px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .dash-empty {
+        padding: 34px 18px;
+        color: #94a3b8;
+        text-align: center;
+        font-weight: 600;
+    }
+    .stock-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 11px;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+    .stock-badge--zero { background: rgba(220, 38, 38, 0.1); color: #b91c1c; }
+    .stock-badge--low { background: rgba(217, 119, 6, 0.12); color: #b45309; }
+    .stock-badge--in { background: rgba(5, 150, 105, 0.12); color: #047857; }
+    .stock-badge--out { background: rgba(220, 38, 38, 0.1); color: #b91c1c; }
+    .item-title {
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .item-sub {
+        color: #94a3b8;
+        font-size: 11.5px;
+        margin-top: 2px;
+    }
 </style>
 
 <div class="dash-wrap">
+    <ul class="nav dash-tabs" id="dashboard_tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="tab-operasional" data-bs-toggle="tab" data-bs-target="#pane-operasional" type="button" role="tab" aria-controls="pane-operasional" aria-selected="true">
+                <i class="fa-solid fa-truck-fast"></i> Operasional Resi
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-inventori" data-bs-toggle="tab" data-bs-target="#pane-inventori" type="button" role="tab" aria-controls="pane-inventori" aria-selected="false">
+                <i class="fa-solid fa-warehouse"></i> Inventori
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-aktivitas-stok" data-bs-toggle="tab" data-bs-target="#pane-aktivitas-stok" type="button" role="tab" aria-controls="pane-aktivitas-stok" aria-selected="false">
+                <i class="fa-solid fa-arrow-right-arrow-left"></i> Aktivitas Stok
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="dashboard_tabs_content">
+        <div class="tab-pane fade show active" id="pane-operasional" role="tabpanel" aria-labelledby="tab-operasional">
     {{-- ============ Ringkasan Resi ============ --}}
     <div class="card mb-6">
         <div class="card-body">
@@ -652,6 +763,273 @@
                     Belum ada data kurir.
                 </div>
             @endif
+        </div>
+    </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-inventori" role="tabpanel" aria-labelledby="tab-inventori">
+            @php
+                $inventory = $inventorySummary ?? [];
+                $totalSku = (int) ($inventory['total_sku'] ?? 0);
+                $totalStock = (int) ($inventory['total_stock'] ?? 0);
+                $outOfStockTotal = (int) ($inventory['out_of_stock'] ?? 0);
+                $lowStockTotal = (int) ($inventory['low_stock'] ?? 0);
+            @endphp
+
+            <div class="card mb-6">
+                <div class="card-body">
+                    <div class="dash-section-head mb-5">
+                        <div>
+                            <div class="dash-section-title"><i class="fa-solid fa-warehouse"></i> Ringkasan Inventori</div>
+                            <div class="dash-section-sub">Kondisi stok saat ini di seluruh gudang</div>
+                            <div class="dash-legend">Stok menipis = stok 1 sampai {{ number_format($lowStockLimit ?? 5) }} pcs.</div>
+                        </div>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card stat-card--blue">
+                            <div class="stat-icon"><i class="fa-solid fa-cubes"></i></div>
+                            <div class="stat-body">
+                                <div class="stat-label">Total SKU Master</div>
+                                <div class="stat-value">{{ number_format($totalSku) }}</div>
+                                <div class="stat-meta">Item terdaftar di master data</div>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card--green">
+                            <div class="stat-icon"><i class="fa-solid fa-box-open"></i></div>
+                            <div class="stat-body">
+                                <div class="stat-label">Total Stok Tersedia</div>
+                                <div class="stat-value">{{ number_format($totalStock) }}</div>
+                                <div class="stat-meta">Akumulasi semua stok gudang</div>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card--red">
+                            <div class="stat-icon"><i class="fa-solid fa-circle-exclamation"></i></div>
+                            <div class="stat-body">
+                                <div class="stat-label">Stok Habis</div>
+                                <div class="stat-value text-danger">{{ number_format($outOfStockTotal) }}</div>
+                                <div class="stat-meta">SKU/gudang dengan stok 0 atau belum punya stok</div>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card--amber">
+                            <div class="stat-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                            <div class="stat-body">
+                                <div class="stat-label">Stok Menipis</div>
+                                <div class="stat-value">{{ number_format($lowStockTotal) }}</div>
+                                <div class="stat-meta">Perlu dipantau untuk restock</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-6">
+                <div class="col-xl-6">
+                    <div class="dash-table-card">
+                        <div class="dash-table-card-head">
+                            <div>
+                                <div class="dash-table-title"><i class="fa-solid fa-circle-exclamation text-danger me-2"></i>Stok Habis</div>
+                                <div class="dash-table-sub">Maksimal 10 data pertama</div>
+                            </div>
+                        </div>
+                        @if(isset($outOfStockItems) && $outOfStockItems->count())
+                            <div class="table-responsive mt-4">
+                                <table class="table table-row-dashed align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>Item</th>
+                                            <th>Gudang</th>
+                                            <th class="text-end">Stok</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($outOfStockItems as $row)
+                                            <tr>
+                                                <td>
+                                                    <div class="item-title">{{ $row->sku ?: '-' }}</div>
+                                                    <div class="item-sub">{{ $row->name ?: '-' }}</div>
+                                                </td>
+                                                <td>{{ $row->warehouse_name ?: '-' }}</td>
+                                                <td class="text-end">
+                                                    <span class="stock-badge stock-badge--zero"><i class="fa-solid fa-ban"></i>{{ number_format((int) $row->stock) }}</span>
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        @else
+                            <div class="dash-empty">Tidak ada stok habis.</div>
+                        @endif
+                    </div>
+                </div>
+
+                <div class="col-xl-6">
+                    <div class="dash-table-card">
+                        <div class="dash-table-card-head">
+                            <div>
+                                <div class="dash-table-title"><i class="fa-solid fa-triangle-exclamation text-warning me-2"></i>Stok Menipis</div>
+                                <div class="dash-table-sub">Stok 1 sampai {{ number_format($lowStockLimit ?? 5) }} pcs</div>
+                            </div>
+                        </div>
+                        @if(isset($lowStockItems) && $lowStockItems->count())
+                            <div class="table-responsive mt-4">
+                                <table class="table table-row-dashed align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>Item</th>
+                                            <th>Gudang</th>
+                                            <th class="text-end">Stok</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($lowStockItems as $row)
+                                            <tr>
+                                                <td>
+                                                    <div class="item-title">{{ $row->sku ?: '-' }}</div>
+                                                    <div class="item-sub">{{ $row->name ?: '-' }}</div>
+                                                </td>
+                                                <td>{{ $row->warehouse_name ?: '-' }}</td>
+                                                <td class="text-end">
+                                                    <span class="stock-badge stock-badge--low"><i class="fa-solid fa-triangle-exclamation"></i>{{ number_format((int) $row->stock) }}</span>
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        @else
+                            <div class="dash-empty">Tidak ada stok menipis.</div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-aktivitas-stok" role="tabpanel" aria-labelledby="tab-aktivitas-stok">
+            @php
+                $todayStock = $stockMutationToday ?? [];
+                $stockInQty = (int) ($todayStock['in_qty'] ?? 0);
+                $stockOutQty = (int) ($todayStock['out_qty'] ?? 0);
+                $stockInCount = (int) ($todayStock['in_count'] ?? 0);
+                $stockOutCount = (int) ($todayStock['out_count'] ?? 0);
+            @endphp
+
+            <div class="card mb-6">
+                <div class="card-body">
+                    <div class="dash-section-head mb-5">
+                        <div>
+                            <div class="dash-section-title"><i class="fa-solid fa-arrow-right-arrow-left"></i> Aktivitas Stok</div>
+                            <div class="dash-section-sub">Mutasi stok pada tanggal {{ $today ?? '-' }} dan pergerakan keluar {{ $stockWindowStart ?? '-' }} s/d {{ $stockWindowEnd ?? '-' }}</div>
+                        </div>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card stat-card--green">
+                            <div class="stat-icon"><i class="fa-solid fa-arrow-down"></i></div>
+                            <div class="stat-body">
+                                <div class="stat-label">Stok Masuk Hari Ini</div>
+                                <div class="stat-value">{{ number_format($stockInQty) }}</div>
+                                <div class="stat-meta">{{ number_format($stockInCount) }} transaksi mutasi masuk</div>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card--red">
+                            <div class="stat-icon"><i class="fa-solid fa-arrow-up"></i></div>
+                            <div class="stat-body">
+                                <div class="stat-label">Stok Keluar Hari Ini</div>
+                                <div class="stat-value text-danger">{{ number_format($stockOutQty) }}</div>
+                                <div class="stat-meta">{{ number_format($stockOutCount) }} transaksi mutasi keluar</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-6">
+                <div class="col-xl-6">
+                    <div class="dash-table-card">
+                        <div class="dash-table-card-head">
+                            <div>
+                                <div class="dash-table-title"><i class="fa-solid fa-ranking-star text-primary me-2"></i>Stok Paling Sering Keluar</div>
+                                <div class="dash-table-sub">Berdasarkan frekuensi mutasi keluar 30 hari terakhir</div>
+                            </div>
+                        </div>
+                        @if(isset($fastMovingItems) && $fastMovingItems->count())
+                            <div class="table-responsive mt-4">
+                                <table class="table table-row-dashed align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>Item</th>
+                                            <th>Gudang</th>
+                                            <th class="text-end">Qty Keluar</th>
+                                            <th class="text-end">Mutasi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($fastMovingItems as $row)
+                                            <tr>
+                                                <td>
+                                                    <div class="item-title">{{ $row->sku ?: '-' }}</div>
+                                                    <div class="item-sub">{{ $row->name ?: '-' }}</div>
+                                                </td>
+                                                <td>{{ $row->warehouse_name ?: '-' }}</td>
+                                                <td class="text-end fw-bolder">{{ number_format((int) $row->total_qty) }}</td>
+                                                <td class="text-end text-muted">{{ number_format((int) $row->mutation_count) }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        @else
+                            <div class="dash-empty">Belum ada mutasi stok keluar pada periode ini.</div>
+                        @endif
+                    </div>
+                </div>
+
+                <div class="col-xl-6">
+                    <div class="dash-table-card">
+                        <div class="dash-table-card-head">
+                            <div>
+                                <div class="dash-table-title"><i class="fa-solid fa-clock-rotate-left text-info me-2"></i>Mutasi Stok Terbaru</div>
+                                <div class="dash-table-sub">10 aktivitas stok terakhir</div>
+                            </div>
+                        </div>
+                        @if(isset($recentMutations) && $recentMutations->count())
+                            <div class="table-responsive mt-4">
+                                <table class="table table-row-dashed align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>Waktu</th>
+                                            <th>Item</th>
+                                            <th>Arah</th>
+                                            <th class="text-end">Qty</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($recentMutations as $row)
+                                            @php
+                                                $direction = $row->direction === 'in' ? 'Masuk' : 'Keluar';
+                                                $badgeClass = $row->direction === 'in' ? 'stock-badge--in' : 'stock-badge--out';
+                                            @endphp
+                                            <tr>
+                                                <td class="mono text-muted">{{ $row->occurred_at ? \Illuminate\Support\Carbon::parse($row->occurred_at)->format('d/m H:i') : '-' }}</td>
+                                                <td>
+                                                    <div class="item-title">{{ $row->sku ?: '-' }}</div>
+                                                    <div class="item-sub">{{ $row->warehouse_name ?: '-' }} &middot; {{ $row->source_code ?: ($row->source_type ?: '-') }}</div>
+                                                </td>
+                                                <td><span class="stock-badge {{ $badgeClass }}">{{ $direction }}</span></td>
+                                                <td class="text-end fw-bolder">{{ number_format((int) $row->qty) }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        @else
+                            <div class="dash-empty">Belum ada mutasi stok.</div>
+                        @endif
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

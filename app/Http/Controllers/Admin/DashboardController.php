@@ -117,6 +117,106 @@ class DashboardController extends Controller
                 ];
             });
 
+        $lowStockLimit = 5;
+        $stockWindowStart = Carbon::parse($selectedDate)->subDays(29)->startOfDay();
+        $stockWindowEnd = Carbon::parse($selectedDate)->endOfDay();
+
+        $stockRowBase = DB::table('items')
+            ->leftJoin('item_stocks', 'items.id', '=', 'item_stocks.item_id')
+            ->leftJoin('warehouses', 'warehouses.id', '=', 'item_stocks.warehouse_id');
+
+        $inventorySummary = [
+            'total_sku' => (int) DB::table('items')->count(),
+            'total_stock' => (int) DB::table('item_stocks')->sum('stock'),
+            'out_of_stock' => (clone $stockRowBase)
+                ->whereRaw('COALESCE(item_stocks.stock, 0) <= 0')
+                ->count(),
+            'low_stock' => (clone $stockRowBase)
+                ->whereRaw('COALESCE(item_stocks.stock, 0) > 0')
+                ->whereRaw('COALESCE(item_stocks.stock, 0) <= ?', [$lowStockLimit])
+                ->count(),
+        ];
+
+        $stockSelect = [
+            'items.sku',
+            'items.name',
+            DB::raw("COALESCE(warehouses.name, '-') as warehouse_name"),
+            DB::raw('COALESCE(item_stocks.stock, 0) as stock'),
+        ];
+
+        $outOfStockItems = (clone $stockRowBase)
+            ->select($stockSelect)
+            ->whereRaw('COALESCE(item_stocks.stock, 0) <= 0')
+            ->orderBy('items.sku')
+            ->limit(10)
+            ->get();
+
+        $lowStockItems = (clone $stockRowBase)
+            ->select($stockSelect)
+            ->whereRaw('COALESCE(item_stocks.stock, 0) > 0')
+            ->whereRaw('COALESCE(item_stocks.stock, 0) <= ?', [$lowStockLimit])
+            ->orderBy('item_stocks.stock')
+            ->orderBy('items.sku')
+            ->limit(10)
+            ->get();
+
+        $stockMutationToday = [
+            'in_qty' => (int) DB::table('stock_mutations')
+                ->where('direction', 'in')
+                ->whereDate('occurred_at', $selectedDate)
+                ->sum('qty'),
+            'out_qty' => (int) DB::table('stock_mutations')
+                ->where('direction', 'out')
+                ->whereDate('occurred_at', $selectedDate)
+                ->sum('qty'),
+            'in_count' => (int) DB::table('stock_mutations')
+                ->where('direction', 'in')
+                ->whereDate('occurred_at', $selectedDate)
+                ->count(),
+            'out_count' => (int) DB::table('stock_mutations')
+                ->where('direction', 'out')
+                ->whereDate('occurred_at', $selectedDate)
+                ->count(),
+        ];
+
+        $fastMovingItems = DB::table('stock_mutations')
+            ->join('items', 'items.id', '=', 'stock_mutations.item_id')
+            ->leftJoin('warehouses', 'warehouses.id', '=', 'stock_mutations.warehouse_id')
+            ->select([
+                'items.sku',
+                'items.name',
+                DB::raw("COALESCE(warehouses.name, '-') as warehouse_name"),
+                DB::raw('SUM(stock_mutations.qty) as total_qty'),
+                DB::raw('COUNT(stock_mutations.id) as mutation_count'),
+                DB::raw('MAX(stock_mutations.occurred_at) as latest_at'),
+            ])
+            ->where('stock_mutations.direction', 'out')
+            ->whereBetween('stock_mutations.occurred_at', [$stockWindowStart, $stockWindowEnd])
+            ->groupBy('items.id', 'items.sku', 'items.name', 'warehouses.name')
+            ->orderByDesc('mutation_count')
+            ->orderByDesc('total_qty')
+            ->limit(10)
+            ->get();
+
+        $recentMutations = DB::table('stock_mutations')
+            ->join('items', 'items.id', '=', 'stock_mutations.item_id')
+            ->leftJoin('warehouses', 'warehouses.id', '=', 'stock_mutations.warehouse_id')
+            ->select([
+                'stock_mutations.direction',
+                'stock_mutations.qty',
+                'stock_mutations.source_type',
+                'stock_mutations.source_subtype',
+                'stock_mutations.source_code',
+                'stock_mutations.occurred_at',
+                'items.sku',
+                'items.name',
+                DB::raw("COALESCE(warehouses.name, '-') as warehouse_name"),
+            ])
+            ->orderByDesc('stock_mutations.occurred_at')
+            ->orderByDesc('stock_mutations.id')
+            ->limit(10)
+            ->get();
+
         return view('admin.dashboard', [
             'today' => $selectedDate,
             'totalResi' => $totalResiActive,
@@ -127,6 +227,15 @@ class DashboardController extends Controller
             'totalQcScanUpdated' => $totalQcScanUpdated,
             'totalScanUpdated' => $totalScanUpdated,
             'kurirs' => $kurirs,
+            'lowStockLimit' => $lowStockLimit,
+            'stockWindowStart' => $stockWindowStart->toDateString(),
+            'stockWindowEnd' => $stockWindowEnd->toDateString(),
+            'inventorySummary' => $inventorySummary,
+            'outOfStockItems' => $outOfStockItems,
+            'lowStockItems' => $lowStockItems,
+            'stockMutationToday' => $stockMutationToday,
+            'fastMovingItems' => $fastMovingItems,
+            'recentMutations' => $recentMutations,
         ]);
     }
 
