@@ -8,7 +8,43 @@
     $canCreate = Perm::can(auth()->user(), 'admin.inventory.stock-opname.index', 'create');
     $canUpdate = Perm::can(auth()->user(), 'admin.inventory.stock-opname.index', 'update');
     $canDelete = Perm::can(auth()->user(), 'admin.inventory.stock-opname.index', 'delete');
+    $canImport = $canCreate && !empty($importUrl ?? null);
 @endphp
+
+@push('styles')
+<style>
+    .stock-opname-toolbar { flex-wrap: wrap; gap: .75rem; }
+    .stock-opname-filter { flex-wrap: wrap; }
+    .opname-import-panel {
+        border: 1px dashed #cbd5e1;
+        background: #f8fafc;
+        border-radius: 8px;
+        padding: 1rem;
+    }
+    .opname-item-row {
+        border: 1px solid #eef0f6;
+        border-radius: 8px;
+        padding: 1rem;
+        background: #fff;
+    }
+    @media (max-width: 991.98px) {
+        .stock-opname-toolbar,
+        .stock-opname-filter,
+        .stock-opname-filter > *,
+        .stock-opname-toolbar > .btn {
+            width: 100% !important;
+            max-width: none !important;
+        }
+        .modal-stock-opname-dialog {
+            margin: .5rem;
+        }
+        .modal-stock-opname-body {
+            margin-left: 1rem !important;
+            margin-right: 1rem !important;
+        }
+    }
+</style>
+@endpush
 
 @section('content')
 <div class="card">
@@ -25,15 +61,17 @@
             </div>
         </div>
         <div class="card-toolbar">
-            <div class="d-flex align-items-center gap-2 me-4">
-                <input type="text" class="form-control form-control-solid w-150px" id="filter_date_from" placeholder="Dari" />
-                <input type="text" class="form-control form-control-solid w-150px" id="filter_date_to" placeholder="Sampai" />
-                <button type="button" class="btn btn-light" id="filter_apply">Filter</button>
-                <button type="button" class="btn btn-light" id="filter_reset">Reset</button>
+            <div class="d-flex align-items-center stock-opname-toolbar">
+                <div class="d-flex align-items-center gap-2 me-4 stock-opname-filter">
+                    <input type="text" class="form-control form-control-solid w-150px" id="filter_date_from" placeholder="Dari" />
+                    <input type="text" class="form-control form-control-solid w-150px" id="filter_date_to" placeholder="Sampai" />
+                    <button type="button" class="btn btn-light" id="filter_apply">Filter</button>
+                    <button type="button" class="btn btn-light" id="filter_reset">Reset</button>
+                </div>
+                @if($canCreate)
+                    <button type="button" class="btn btn-primary" id="btn_open_opname" data-bs-toggle="modal" data-bs-target="#modal_stock_opname">Tambah</button>
+                @endif
             </div>
-            @if($canCreate)
-                <button type="button" class="btn btn-primary" id="btn_open_opname" data-bs-toggle="modal" data-bs-target="#modal_stock_opname">Tambah</button>
-            @endif
         </div>
     </div>
     <div class="card-body py-6">
@@ -59,7 +97,7 @@
 </div>
 
 <div class="modal fade" id="modal_stock_opname" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered mw-900px">
+    <div class="modal-dialog modal-dialog-centered mw-1200px modal-stock-opname-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="fw-bolder">Tambah Stock Opname</h2>
@@ -72,17 +110,41 @@
                     </span>
                 </div>
             </div>
-            <div class="modal-body scroll-y mx-5 mx-xl-15 my-7">
+            <div class="modal-body scroll-y mx-5 mx-xl-10 my-7 modal-stock-opname-body">
                 <form class="form" id="stock_opname_form">
                     @csrf
-                    <div class="fv-row mb-7">
-                        <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
-                        <select class="form-select form-select-solid" name="warehouse_id" id="opname_warehouse_id" required>
-                            @foreach($warehouses as $warehouse)
-                                <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
-                            @endforeach
-                        </select>
-                        <div class="form-text" id="opname_warehouse_unit_info"></div>
+                    <div class="row g-5 mb-7">
+                        <div class="col-lg-5">
+                            <label class="required fs-6 fw-bold form-label mb-2">Gudang</label>
+                            <select class="form-select form-select-solid" name="warehouse_id" id="opname_warehouse_id" required>
+                                @foreach($warehouses as $warehouse)
+                                    <option value="{{ $warehouse->id }}" data-type="{{ $warehouse->type }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                                @endforeach
+                            </select>
+                            <div class="form-text" id="opname_warehouse_unit_info"></div>
+                        </div>
+                        <div class="col-lg-7">
+                            @if($canImport)
+                                <div class="opname-import-panel">
+                                    <div class="d-flex flex-column flex-md-row gap-3 align-items-md-end">
+                                        <div class="flex-grow-1">
+                                            <label class="fs-6 fw-bold form-label mb-2">Import Data Stock Opname</label>
+                                            <input type="file" class="form-control form-control-solid" id="opname_import_file" accept=".xlsx,.xls,.csv" />
+                                            <div class="invalid-feedback d-block" id="error_opname_import_file"></div>
+                                        </div>
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            @if(!empty($templateUrl ?? null))
+                                                <a href="{{ $templateUrl }}" class="btn btn-light-success">Template</a>
+                                            @endif
+                                            <button type="button" class="btn btn-light-primary" id="btn_import_opname_submit">Muat ke Form</button>
+                                        </div>
+                                    </div>
+                                    <div class="form-text mt-3">
+                                        Header minimal: <strong>sku</strong>, <strong>counted_qty_input</strong>. Opsional: <strong>unit/satuan</strong>, <strong>note</strong>, <strong>item_note</strong>, <strong>transacted_at</strong>.
+                                    </div>
+                                </div>
+                            @endif
+                        </div>
                     </div>
                     <div id="opname_items_container"></div>
                     <div class="mb-7">
@@ -117,6 +179,7 @@
 <script>
     const dataUrl = '{{ $dataUrl }}';
     const storeUrl = '{{ $storeUrl }}';
+    const importUrl = '{{ $importUrl ?? '' }}';
     const itemsUrl = '{{ route('admin.inventory.stock-opname.items') }}';
     const detailUrlTpl = '{{ route('admin.inventory.stock-opname.show', ':id') }}';
     const approveUrlTpl = '{{ route('admin.inventory.stock-opname.approve', ':id') }}';
@@ -143,6 +206,9 @@
         const dateToEl = document.getElementById('filter_date_to');
         const filterApplyBtn = document.getElementById('filter_apply');
         const filterResetBtn = document.getElementById('filter_reset');
+        const importInput = document.getElementById('opname_import_file');
+        const importError = document.getElementById('error_opname_import_file');
+        const importSubmit = document.getElementById('btn_import_opname_submit');
         let fpFrom = null;
         let fpTo = null;
         let fpTransacted = null;
@@ -275,7 +341,7 @@
             const row = document.createElement('div');
             row.className = 'row g-3 align-items-end mb-4 opname-item-row';
             row.innerHTML = `
-                <div class="col-md-4">
+                <div class="col-12 col-lg-4">
                     <label class="required fs-6 fw-bold form-label mb-2">Item</label>
                     <select class="form-select form-select-solid opname-item-select" data-name="item_id" required>
                         <option value=""></option>
@@ -283,27 +349,27 @@
                     </select>
                     <div class="invalid-feedback" data-error-for="item_id"></div>
                 </div>
-                <div class="col-md-2">
+                <div class="col-12 col-sm-6 col-lg-2">
                     <label class="required fs-6 fw-bold form-label mb-2 opname-unit-label">Satuan</label>
                     <select class="form-select form-select-solid" data-name="unit_id" required></select>
                     <div class="invalid-feedback" data-error-for="unit_id"></div>
                 </div>
-                <div class="col-md-2">
+                <div class="col-12 col-sm-6 col-lg-2">
                     <label class="fs-6 fw-bold form-label mb-2 opname-system-label">System</label>
                     <input type="number" class="form-control form-control-solid" data-name="system_qty" readonly />
                 </div>
-                <div class="col-md-2">
+                <div class="col-12 col-sm-6 col-lg-2">
                     <label class="required fs-6 fw-bold form-label mb-2 opname-counted-label">Counted</label>
                     <input type="number" min="0" step="1" class="form-control form-control-solid" data-name="counted_qty_input" required />
                     <div class="form-text fs-8 opname-count-info"></div>
                     <div class="invalid-feedback" data-error-for="counted_qty_input"></div>
                 </div>
-                <div class="col-md-1">
+                <div class="col-12 col-sm-6 col-lg-2">
                     <label class="fs-6 fw-bold form-label mb-2">Catatan Item</label>
                     <input type="text" class="form-control form-control-solid" data-name="note" />
                 </div>
-                <div class="col-md-1 text-end">
-                    <button type="button" class="btn btn-light btn-sm btn-remove-item">Hapus</button>
+                <div class="col-12 text-end">
+                    <button type="button" class="btn btn-light-danger btn-sm btn-remove-item">Hapus</button>
                 </div>
             `;
             itemsContainer.appendChild(row);
@@ -325,6 +391,8 @@
 
         const resetForm = () => {
             form?.reset();
+            if (importInput) importInput.value = '';
+            if (importError) importError.textContent = '';
             const nowJkt = getJakartaNow();
             if (fpTransacted) {
                 fpTransacted.setDate(nowJkt, true, 'Y-m-d H:i');
@@ -449,6 +517,71 @@
             if (fpFrom) fpFrom.clear(); else if (dateFromEl) dateFromEl.value = '';
             if (fpTo) fpTo.clear(); else if (dateToEl) dateToEl.value = '';
             reloadTable();
+        });
+
+        importInput?.addEventListener('change', () => {
+            if (importError) importError.textContent = '';
+        });
+
+        importSubmit?.addEventListener('click', async () => {
+            if (!importUrl) return;
+            if (importError) importError.textContent = '';
+            const file = importInput?.files?.[0];
+            if (!file) {
+                if (importError) importError.textContent = 'Pilih file Excel terlebih dahulu.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('warehouse_id', warehouseEl?.value || '');
+            importSubmit.disabled = true;
+
+            try {
+                const res = await fetch(importUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                    },
+                    body: formData,
+                });
+                const text = await res.text();
+                let json;
+                try { json = JSON.parse(text); } catch (err) {
+                    if (typeof Swal !== 'undefined') Swal.fire('Error', 'Respons server tidak valid', 'error');
+                    return;
+                }
+                if (!res.ok) {
+                    const firstError = json?.errors ? Object.values(json.errors).flat()[0] : null;
+                    const msg = firstError || json?.message || 'Gagal import';
+                    if (importError) importError.textContent = msg;
+                    if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error');
+                    return;
+                }
+
+                itemsContainer.innerHTML = '';
+                (json.items || []).forEach(item => createItemRow(item));
+                if (!itemsContainer.querySelector('.opname-item-row')) createItemRow();
+
+                if (json.transacted_at) {
+                    if (fpTransacted) fpTransacted.setDate(json.transacted_at, true, 'Y-m-d H:i');
+                    else if (transactedAtEl) transactedAtEl.value = json.transacted_at;
+                }
+                const noteEl = document.getElementById('opname_note');
+                if (json.note && noteEl && !noteEl.value) noteEl.value = json.note;
+                if (importInput) importInput.value = '';
+                validateUniqueItems();
+
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire('Berhasil', `${json.items?.length || 0} item dimuat ke form. Periksa kembali sebelum simpan.`, 'success');
+                }
+            } catch (err) {
+                if (typeof Swal !== 'undefined') Swal.fire('Error', 'Gagal import', 'error');
+                if (importError) importError.textContent = 'Gagal import';
+            } finally {
+                importSubmit.disabled = false;
+            }
         });
 
         tableEl.on('click', '.btn-approve', async function(e) {

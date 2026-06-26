@@ -198,6 +198,8 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::get('/stock-opname/data', [StockOpnameController::class, 'data'])->name('stock-opname.data');
         Route::get('/stock-opname/items', [StockOpnameController::class, 'items'])->name('stock-opname.items');
         Route::post('/stock-opname', [StockOpnameController::class, 'store'])->name('stock-opname.store');
+        Route::post('/stock-opname/import', [StockOpnameController::class, 'import'])->name('stock-opname.import');
+        Route::get('/stock-opname/template', [StockOpnameController::class, 'template'])->name('stock-opname.template');
         Route::get('/stock-opname/{id}', [StockOpnameController::class, 'show'])->name('stock-opname.show');
         Route::get('/stock-opname/{id}/export', [StockOpnameController::class, 'export'])->name('stock-opname.export');
         Route::post('/stock-opname/{id}/approve', [StockOpnameController::class, 'approve'])->name('stock-opname.approve');

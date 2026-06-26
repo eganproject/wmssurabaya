@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Exports\StockOpnameDetailExport;
+use App\Exports\StockOpnamesTemplateExport;
+use App\Imports\StockOpnamesImport;
 use App\Models\Item;
 use App\Models\ItemUnit;
 use App\Models\ItemStock;
@@ -61,8 +63,18 @@ class StockOpnameController extends Controller
             'items' => $items,
             'dataUrl' => route('admin.inventory.stock-opname.data'),
             'storeUrl' => route('admin.inventory.stock-opname.store'),
+            'importUrl' => route('admin.inventory.stock-opname.import'),
+            'templateUrl' => route('admin.inventory.stock-opname.template'),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'type', 'is_default']),
         ]);
+    }
+
+    public function template()
+    {
+        return Excel::download(
+            new StockOpnamesTemplateExport(),
+            'template-import-stock-opname.xlsx'
+        );
     }
 
     public function data(Request $request)
@@ -295,6 +307,94 @@ class StockOpnameController extends Controller
         ]);
     }
 
+    public function import(Request $request)
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:5120'],
+            'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
+        ]);
+
+        $warehouseId = $request->integer('warehouse_id');
+        $import = new StockOpnamesImport();
+
+        try {
+            Excel::import($import, $request->file('file'));
+            $items = $import->items ?? [];
+            if (empty($items)) {
+                throw ValidationException::withMessages([
+                    'file' => 'Tidak ada data valid untuk diimport',
+                ]);
+            }
+
+            $itemIds = collect($items)->pluck('item_id')->all();
+            $itemMap = Item::with(['units' => fn ($query) => $query->orderByDesc('is_base')->orderBy('conversion_qty')])
+                ->whereIn('id', $itemIds)
+                ->get(['id', 'sku', 'name'])
+                ->keyBy('id');
+
+            $payloadItems = [];
+            foreach ($items as $row) {
+                $itemId = (int) $row['item_id'];
+                $unitId = $this->resolveImportedUnitId($itemId, $row['unit'] ?? null);
+                if (!empty($row['unit']) && $unitId <= 0) {
+                    throw ValidationException::withMessages([
+                        'file' => "Satuan {$row['unit']} tidak ditemukan untuk SKU {$row['sku']}",
+                    ]);
+                }
+                $unit = $this->resolveInputUnit($warehouseId, $itemId, $unitId);
+                $qtyInput = (int) $row['counted_qty_input'];
+                $conversionQty = (int) ($unit?->conversion_qty ?? 1);
+                $countedQty = $qtyInput * $conversionQty;
+
+                if ($countedQty > 0) {
+                    StockService::assertWarehouseQuantity(
+                        $warehouseId,
+                        $itemId,
+                        $countedQty,
+                        $unit?->id ? (int) $unit->id : null
+                    );
+                }
+
+                $item = $itemMap->get($itemId);
+                $payloadItems[] = [
+                    'item_id' => $itemId,
+                    'sku' => $item?->sku ?? $row['sku'],
+                    'name' => $item?->name ?? '',
+                    'unit_id' => $unit?->id,
+                    'unit_name' => $unit?->name,
+                    'counted_qty_input' => $qtyInput,
+                    'counted_qty' => $countedQty,
+                    'note' => $row['note'] ?? null,
+                ];
+            }
+
+            $transactedAt = null;
+            if (!empty($import->transacted_at)) {
+                try {
+                    $transactedAt = Carbon::parse($import->transacted_at)->format('Y-m-d H:i');
+                } catch (\Throwable) {
+                    throw ValidationException::withMessages([
+                        'file' => 'Format transacted_at tidak valid: '.$import->transacted_at,
+                    ]);
+                }
+            }
+
+            return response()->json([
+                'message' => 'Data import berhasil dimuat ke form',
+                'note' => $import->note,
+                'transacted_at' => $transactedAt,
+                'items' => $payloadItems,
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Gagal membaca file import stock opname',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     private function validatePayload(Request $request): array
     {
         $rawItems = $request->input('items', []);
@@ -382,8 +482,23 @@ class StockOpnameController extends Controller
         if (!$unit || ($warehouse->type === Warehouse::TYPE_BULK && $unit->is_base)) {
             throw ValidationException::withMessages(['items' => 'Gudang Besar wajib dihitung dalam satuan koli/kemasan.']);
         }
+        if ($warehouse->type !== Warehouse::TYPE_BULK && !$unit->is_base) {
+            throw ValidationException::withMessages(['items' => 'Gudang Kecil wajib dihitung dalam satuan dasar PCS/SET.']);
+        }
 
         return $unit;
+    }
+
+    private function resolveImportedUnitId(int $itemId, ?string $unitName): int
+    {
+        $unitName = trim((string) $unitName);
+        if ($unitName === '') {
+            return 0;
+        }
+
+        return (int) ItemUnit::where('item_id', $itemId)
+            ->whereRaw('LOWER(name) = ?', [strtolower($unitName)])
+            ->value('id');
     }
 
     private function postStockMovements(StockOpname $opname): void
