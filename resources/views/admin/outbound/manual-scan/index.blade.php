@@ -17,6 +17,7 @@
 <style>
     .scan-shell { max-width: 1280px; margin: 0 auto; }
     .scan-input { height: 62px; font-size: 24px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; letter-spacing: .5px; }
+    .scan-qty-input { height: 54px; font-size: 22px; font-weight: 700; }
     .scan-status { border-radius: 8px; padding: 12px 14px; border: 1px solid #e5e7eb; background: #f8fafc; min-height: 48px; }
     .scan-status.ok { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
     .scan-status.err { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
@@ -73,10 +74,21 @@
                             placeholder="SCAN SKU"
                             @disabled($isComplete || $isApproved)
                         >
+                        <label class="fs-6 fw-bold form-label mt-4 mb-2">QTY Scan</label>
+                        <input
+                            type="number"
+                            id="scan_qty"
+                            class="form-control form-control-solid scan-qty-input"
+                            min="1"
+                            step="1"
+                            inputmode="numeric"
+                            placeholder="Default"
+                            @disabled($isComplete || $isApproved)
+                        >
                         <div class="form-text mt-2">
                             {{ ($transaction->warehouse?->type ?? '') === \App\Models\Warehouse::TYPE_BULK
-                                ? 'Gudang besar: 1 scan mengikuti conversion qty/unit item.'
-                                : 'Gudang kecil/display: 1 scan = 1 PCS/SET.' }}
+                                ? 'Kosongkan untuk scan normal per unit item, atau isi qty khusus yang akan ditambahkan ke progress scan.'
+                                : 'Kosongkan untuk scan normal 1 PCS/SET, atau isi qty khusus yang akan ditambahkan ke progress scan.' }}
                         </div>
                         <button type="submit" class="btn btn-primary w-100 mt-4" @disabled($isComplete || $isApproved)>
                             Scan
@@ -187,6 +199,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         const form = document.getElementById('scan_form');
         const input = document.getElementById('scan_sku');
+        const qtyInput = document.getElementById('scan_qty');
         const status = document.getElementById('scan_status');
         const finishBtn = document.getElementById('btn_finish_scan');
         const plannedEl = document.getElementById('summary_planned');
@@ -239,13 +252,21 @@
         form?.addEventListener('submit', async (event) => {
             event.preventDefault();
             const sku = (input?.value || '').trim();
+            const qtyRaw = (qtyInput?.value || '').trim();
+            const qty = qtyRaw === '' ? null : parseInt(qtyRaw, 10);
             if (!sku) {
                 setStatus('SKU wajib diisi.', 'warn');
                 input?.focus();
                 return;
             }
+            if (qtyRaw !== '' && (!Number.isInteger(qty) || qty < 1)) {
+                setStatus('QTY scan wajib lebih dari 0.', 'warn');
+                qtyInput?.focus();
+                return;
+            }
 
             input.disabled = true;
+            if (qtyInput) qtyInput.disabled = true;
             try {
                 const res = await fetch(scanUrl, {
                     method: 'POST',
@@ -254,11 +275,11 @@
                         'Accept': 'application/json',
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ sku }),
+                    body: JSON.stringify(qty === null ? { sku } : { sku, qty }),
                 });
                 const json = await readJson(res);
                 if (!res.ok) {
-                    const message = json?.errors?.sku?.[0] || json?.errors?.scan?.[0] || json?.message || 'Scan gagal';
+                    const message = json?.errors?.sku?.[0] || json?.errors?.qty?.[0] || json?.errors?.scan?.[0] || json?.message || 'Scan gagal';
                     setStatus(message, 'err');
                     return;
                 }
@@ -269,6 +290,7 @@
             } finally {
                 input.value = '';
                 input.disabled = false;
+                if (qtyInput) qtyInput.disabled = false;
                 input.focus();
             }
         });
@@ -293,6 +315,7 @@
                 applyPayload(json);
                 setStatus(json.message || 'Scan complete.', 'ok');
                 input.disabled = true;
+                if (qtyInput) qtyInput.disabled = true;
                 finishBtn.disabled = true;
                 if (typeof Swal !== 'undefined') {
                     Swal.fire('Berhasil', json.message || 'Scan complete.', 'success');

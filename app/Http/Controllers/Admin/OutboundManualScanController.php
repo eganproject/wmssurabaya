@@ -33,11 +33,13 @@ class OutboundManualScanController extends Controller
     {
         $validated = $request->validate([
             'sku' => ['required', 'string', 'max:100'],
+            'qty' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $sku = trim($validated['sku']);
+        $requestedQty = isset($validated['qty']) ? (int) $validated['qty'] : null;
 
-        return DB::transaction(function () use ($id, $sku) {
+        return DB::transaction(function () use ($id, $sku, $requestedQty) {
             $tx = $this->manualTransactionQuery()
                 ->with(['items.item', 'items.unit', 'warehouse'])
                 ->lockForUpdate()
@@ -59,14 +61,14 @@ class OutboundManualScanController extends Controller
                 ]);
             }
 
-            $scanQty = $this->scanQty($tx, $row);
+            $scanQty = $this->scanQty($tx, $row, $requestedQty);
             $scannedQty = (int) OutboundManualScanLog::where('outbound_item_id', $row->id)->sum('qty');
             $plannedQty = (int) $row->qty;
 
             if ($scannedQty + $scanQty > $plannedQty) {
                 $remaining = max(0, $plannedQty - $scannedQty);
                 throw ValidationException::withMessages([
-                    'sku' => "Scan {$sku} ditolak. Sisa qty {$remaining}, qty per scan {$scanQty}.",
+                    'qty' => "Scan {$sku} ditolak. Sisa qty {$remaining}, qty scan {$scanQty}.",
                 ]);
             }
 
@@ -181,8 +183,12 @@ class OutboundManualScanController extends Controller
         })->values()->all();
     }
 
-    private function scanQty(OutboundTransaction $tx, OutboundItem $row): int
+    private function scanQty(OutboundTransaction $tx, OutboundItem $row, ?int $requestedQty = null): int
     {
+        if ($requestedQty !== null) {
+            return max(1, $requestedQty);
+        }
+
         $isBulkWarehouse = ($tx->warehouse?->type ?? null) === Warehouse::TYPE_BULK;
         if (!$isBulkWarehouse) {
             return 1;
