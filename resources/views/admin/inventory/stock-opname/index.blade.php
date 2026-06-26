@@ -27,6 +27,19 @@
         padding: 1rem;
         background: #fff;
     }
+    .modal-stock-opname-dialog {
+        width: calc(100vw - 2rem);
+        max-width: 1320px !important;
+    }
+    .modal-stock-opname-body {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+    @media (min-width: 1400px) {
+        .modal-stock-opname-dialog {
+            max-width: 1440px !important;
+        }
+    }
     @media (max-width: 991.98px) {
         .stock-opname-toolbar,
         .stock-opname-filter,
@@ -36,11 +49,14 @@
             max-width: none !important;
         }
         .modal-stock-opname-dialog {
+            width: calc(100vw - 1rem);
             margin: .5rem;
         }
         .modal-stock-opname-body {
             margin-left: 1rem !important;
             margin-right: 1rem !important;
+            padding-left: .75rem;
+            padding-right: .75rem;
         }
     }
 </style>
@@ -97,7 +113,7 @@
 </div>
 
 <div class="modal fade" id="modal_stock_opname" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered mw-1200px modal-stock-opname-dialog">
+    <div class="modal-dialog modal-dialog-centered modal-stock-opname-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="fw-bolder">Tambah Stock Opname</h2>
@@ -110,7 +126,7 @@
                     </span>
                 </div>
             </div>
-            <div class="modal-body scroll-y mx-5 mx-xl-10 my-7 modal-stock-opname-body">
+            <div class="modal-body scroll-y mx-0 my-7 modal-stock-opname-body">
                 <form class="form" id="stock_opname_form">
                     @csrf
                     <div class="row g-5 mb-7">
