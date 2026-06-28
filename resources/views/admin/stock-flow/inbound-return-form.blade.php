@@ -120,6 +120,32 @@
                             </div>
                         </div>
                         <div class="card-body py-6">
+                            <div class="row g-3 mb-6" id="return_items_summary">
+                                <div class="col-6 col-md-3">
+                                    <div class="return-summary-tile">
+                                        <div class="return-summary-label">Diterima</div>
+                                        <div class="return-summary-value" data-summary="received">0</div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <div class="return-summary-tile">
+                                        <div class="return-summary-label">Bagus</div>
+                                        <div class="return-summary-value text-success" data-summary="good">0</div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <div class="return-summary-tile">
+                                        <div class="return-summary-label">Rusak</div>
+                                        <div class="return-summary-value text-warning" data-summary="damaged">0</div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <div class="return-summary-tile">
+                                        <div class="return-summary-label">Hilang</div>
+                                        <div class="return-summary-value text-danger" data-summary="missing">0</div>
+                                    </div>
+                                </div>
+                            </div>
                             <div id="return_items_container"></div>
                             <div class="invalid-feedback d-block" data-error="items"></div>
                             <div class="d-flex flex-column flex-sm-row justify-content-end gap-3 pt-6">
@@ -137,6 +163,106 @@
 </div>
 @endsection
 
+@push('styles')
+<style>
+    .return-summary-tile {
+        border: 1px dashed #d8dce6;
+        border-radius: 8px;
+        background: #f8f9fb;
+        padding: 12px 14px;
+        min-height: 74px;
+    }
+
+    .return-summary-label {
+        color: #7e8299;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .return-summary-value {
+        color: #181c32;
+        font-size: 22px;
+        font-weight: 800;
+        line-height: 1.25;
+    }
+
+    .return-item-row {
+        border: 1px solid #e4e6ef;
+        border-radius: 8px;
+        background: #fff;
+        padding: 18px;
+        margin-bottom: 18px;
+    }
+
+    .return-item-header {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        justify-content: space-between;
+        margin-bottom: 16px;
+    }
+
+    .return-item-number {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        background: #f1faff;
+        color: #009ef7;
+        font-weight: 800;
+    }
+
+    .return-item-header .flex-grow-1 {
+        min-width: 0;
+    }
+
+    .return-item-section {
+        border-top: 1px dashed #e4e6ef;
+        padding-top: 16px;
+        margin-top: 16px;
+    }
+
+    .return-balance-pill {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 800;
+        background: #f5f8fa;
+        color: #7e8299;
+        white-space: nowrap;
+    }
+
+    .return-balance-pill.is-balanced {
+        background: #e8fff3;
+        color: #50cd89;
+    }
+
+    .return-balance-pill.is-unbalanced {
+        background: #fff5f8;
+        color: #f1416c;
+    }
+
+    @media (max-width: 767.98px) {
+        .return-item-row {
+            padding: 14px;
+        }
+
+        .return-item-header {
+            flex-direction: column;
+        }
+
+        .return-item-header .btn {
+            width: 100%;
+        }
+    }
+</style>
+@endpush
+
 @push('scripts')
 <script>
     const itemOptionsHtml = `@foreach($items as $item)<option value="{{ $item->id }}">{{ $item->sku }} - {{ $item->name }}</option>@endforeach`;
@@ -153,6 +279,7 @@
         const form = document.getElementById('inbound_return_form');
         const container = document.getElementById('return_items_container');
         const addBtn = document.getElementById('btn_add_return_item');
+        const summaryEl = document.getElementById('return_items_summary');
         const lookupInput = document.getElementById('return_resi_lookup');
         const lookupSpinner = document.getElementById('return_resi_spinner');
         const lookupStatus = document.getElementById('return_resi_status');
@@ -201,13 +328,30 @@
             form.querySelectorAll('[data-error], [data-error-for]').forEach(el => { el.textContent = ''; });
         };
 
+        const updateSummary = () => {
+            const totals = { received: 0, good: 0, damaged: 0, missing: 0 };
+            container.querySelectorAll('.return-item-row').forEach(row => {
+                totals.received += toQty(row.querySelector('[data-name="qty_received"]')?.value);
+                totals.good += toQty(row.querySelector('[data-name="qty_good"]')?.value);
+                totals.damaged += toQty(row.querySelector('[data-name="qty_damaged"]')?.value);
+                totals.missing += toQty(row.querySelector('[data-name="qty_missing"]')?.value);
+            });
+            Object.entries(totals).forEach(([key, value]) => {
+                const el = summaryEl?.querySelector(`[data-summary="${key}"]`);
+                if (el) el.textContent = value.toLocaleString('id-ID');
+            });
+        };
+
         const renumberRows = () => {
             container.querySelectorAll('.return-item-row').forEach((row, idx) => {
+                const numberEl = row.querySelector('.return-item-number');
+                if (numberEl) numberEl.textContent = String(idx + 1);
                 row.querySelectorAll('[data-name]').forEach(el => {
                     el.name = `items[${idx}][${el.getAttribute('data-name')}]`;
                     el.disabled = isFinalized;
                 });
             });
+            updateSummary();
         };
 
         const syncBalance = (row, changedField = null) => {
@@ -236,7 +380,8 @@
             infoEl.textContent = balanced
                 ? `Balance: ${total.toLocaleString('id-ID')} / ${received.toLocaleString('id-ID')}`
                 : `Belum balance: ${total.toLocaleString('id-ID')} / ${received.toLocaleString('id-ID')}`;
-            infoEl.className = `form-text fs-8 return-balance-info ${balanced ? 'text-success' : 'text-danger'}`;
+            infoEl.className = `return-balance-pill return-balance-info ${balanced ? 'is-balanced' : 'is-unbalanced'}`;
+            updateSummary();
             return balanced;
         };
 
@@ -247,50 +392,67 @@
 
         const createRow = (data = {}) => {
             const row = document.createElement('div');
-            row.className = 'border border-dashed rounded p-4 mb-4 return-item-row';
+            row.className = 'return-item-row';
             row.innerHTML = `
-                <div class="row g-4 align-items-end">
-                    <div class="col-lg-4 col-md-6">
-                        <label class="required fs-6 fw-bold form-label mb-2">Item</label>
-                        <select class="form-select form-select-solid return-item-select" data-name="item_id" required>
-                            <option value=""></option>
-                            ${itemOptionsHtml}
-                        </select>
-                        <div class="invalid-feedback" data-error-for="item_id"></div>
+                <div class="return-item-header">
+                    <div class="d-flex gap-3 align-items-start flex-grow-1">
+                        <span class="return-item-number">1</span>
+                        <div class="flex-grow-1">
+                            <label class="required fs-6 fw-bold form-label mb-2">Item / SKU</label>
+                            <select class="form-select form-select-solid return-item-select" data-name="item_id" required>
+                                <option value=""></option>
+                                ${itemOptionsHtml}
+                            </select>
+                            <div class="invalid-feedback" data-error-for="item_id"></div>
+                        </div>
                     </div>
-                    <div class="col-lg-2 col-md-6">
+                    <button type="button" class="btn btn-light-danger btn-sm btn-remove-return-item" ${isFinalized ? 'disabled' : ''}>Hapus</button>
+                </div>
+
+                <div class="row g-4 align-items-start">
+                    <div class="col-md-6">
                         <label class="required fs-6 fw-bold form-label mb-2">Qty Resi</label>
                         <input type="number" min="1" class="form-control form-control-solid" data-name="qty" required>
+                        <div class="form-text">Qty dari database import resi atau input manual.</div>
                         <div class="invalid-feedback" data-error-for="qty"></div>
                     </div>
-                    <div class="col-lg-2 col-md-6">
-                        <label class="required fs-6 fw-bold form-label mb-2">Diterima</label>
+                    <div class="col-md-6">
+                        <label class="required fs-6 fw-bold form-label mb-2">Qty Diterima</label>
                         <input type="number" min="1" class="form-control form-control-solid" data-name="qty_received" required>
-                        <div class="form-text fs-8 return-balance-info text-muted">Isi qty diterima.</div>
                         <div class="invalid-feedback" data-error-for="qty_received"></div>
                     </div>
-                    <div class="col-lg-1 col-md-4">
-                        <label class="required fs-6 fw-bold form-label mb-2">Bagus</label>
-                        <input type="number" min="0" class="form-control form-control-solid" data-name="qty_good" required>
-                        <div class="invalid-feedback" data-error-for="qty_good"></div>
+                </div>
+
+                <div class="return-item-section">
+                    <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
+                        <div>
+                            <div class="fw-bold text-gray-800">Kondisi Barang</div>
+                            <div class="text-muted fs-8">Total bagus, rusak, dan hilang wajib sama dengan qty diterima.</div>
+                        </div>
+                        <span class="return-balance-pill return-balance-info">Isi qty diterima.</span>
                     </div>
-                    <div class="col-lg-1 col-md-4">
-                        <label class="required fs-6 fw-bold form-label mb-2">Rusak</label>
-                        <input type="number" min="0" class="form-control form-control-solid" data-name="qty_damaged" required>
-                        <div class="invalid-feedback" data-error-for="qty_damaged"></div>
+                    <div class="row g-4">
+                        <div class="col-md-4">
+                            <label class="required fs-6 fw-bold form-label mb-2">Bagus</label>
+                            <input type="number" min="0" class="form-control form-control-solid" data-name="qty_good" required>
+                            <div class="invalid-feedback" data-error-for="qty_good"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="required fs-6 fw-bold form-label mb-2">Rusak</label>
+                            <input type="number" min="0" class="form-control form-control-solid" data-name="qty_damaged" required>
+                            <div class="invalid-feedback" data-error-for="qty_damaged"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="required fs-6 fw-bold form-label mb-2">Hilang</label>
+                            <input type="number" min="0" class="form-control form-control-solid" data-name="qty_missing" required>
+                            <div class="invalid-feedback" data-error-for="qty_missing"></div>
+                        </div>
                     </div>
-                    <div class="col-lg-1 col-md-4">
-                        <label class="required fs-6 fw-bold form-label mb-2">Hilang</label>
-                        <input type="number" min="0" class="form-control form-control-solid" data-name="qty_missing" required>
-                        <div class="invalid-feedback" data-error-for="qty_missing"></div>
-                    </div>
-                    <div class="col-lg-1 text-end">
-                        <button type="button" class="btn btn-light btn-sm btn-remove-return-item" ${isFinalized ? 'disabled' : ''}>Hapus</button>
-                    </div>
-                    <div class="col-12">
-                        <label class="fs-6 fw-bold form-label mb-2">Catatan Item</label>
-                        <input type="text" class="form-control form-control-solid" data-name="note">
-                    </div>
+                </div>
+
+                <div class="return-item-section">
+                    <label class="fs-6 fw-bold form-label mb-2">Catatan Item</label>
+                    <input type="text" class="form-control form-control-solid" data-name="note" placeholder="Opsional">
                 </div>
             `;
             container.appendChild(row);
@@ -304,7 +466,7 @@
             row.querySelector('[data-name="note"]').value = data.note || '';
 
             initSelect2(row.querySelector('.return-item-select'));
-            row.querySelectorAll('[data-name="qty_received"], [data-name="qty_good"], [data-name="qty_damaged"], [data-name="qty_missing"]').forEach(el => {
+            row.querySelectorAll('[data-name="qty"], [data-name="qty_received"], [data-name="qty_good"], [data-name="qty_damaged"], [data-name="qty_missing"]').forEach(el => {
                 el.addEventListener('input', () => syncBalance(row, el.getAttribute('data-name')));
             });
             syncBalance(row);
