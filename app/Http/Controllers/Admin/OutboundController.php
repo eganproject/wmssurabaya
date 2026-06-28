@@ -45,6 +45,20 @@ class OutboundController extends Controller
         return $this->index('return', 'Outbound - Retur', 'returns');
     }
 
+    public function returnsCreate()
+    {
+        return $this->returnForm('Tambah Retur Customer');
+    }
+
+    public function returnsEdit(int $id)
+    {
+        $transaction = OutboundTransaction::with(['items.item'])
+            ->where('type', 'return')
+            ->findOrFail($id);
+
+        return $this->returnForm('Edit Retur Customer', $transaction);
+    }
+
     public function pickersData(Request $request)
     {
         return $this->data($request, 'picker');
@@ -397,8 +411,10 @@ class OutboundController extends Controller
                 'scan' => route('admin.outbound.manuals.scan', ':id'),
             ],
             'return' => [
+                'create' => route('admin.outbound.returns.create'),
                 'store' => route('admin.outbound.returns.store'),
                 'show' => route('admin.outbound.returns.show', ':id'),
+                'edit' => route('admin.outbound.returns.edit', ':id'),
                 'update' => route('admin.outbound.returns.update', ':id'),
                 'delete' => route('admin.outbound.returns.destroy', ':id'),
                 'detail' => route('admin.outbound.returns.detail', ':id'),
@@ -436,6 +452,35 @@ class OutboundController extends Controller
                 'manual' => route('admin.outbound.manuals.template'),
                 default => null,
             },
+        ]);
+    }
+
+    private function returnForm(string $pageTitle, ?OutboundTransaction $transaction = null)
+    {
+        $items = Item::with(['units' => fn ($q) => $q->orderByDesc('is_base')->orderBy('conversion_qty')])
+            ->orderBy('name')
+            ->get(['id', 'sku', 'name']);
+
+        $itemUnitsJson = $items->mapWithKeys(function ($item) {
+            return [
+                $item->id => $item->units->map(fn ($unit) => [
+                    'id' => $unit->id,
+                    'name' => $unit->name,
+                    'conversion_qty' => (int) $unit->conversion_qty,
+                    'is_base' => (bool) $unit->is_base,
+                ])->values(),
+            ];
+        });
+
+        return view('admin.stock-flow.return-form', [
+            'pageTitle' => $pageTitle,
+            'transaction' => $transaction,
+            'items' => $items,
+            'itemUnitsJson' => $itemUnitsJson,
+            'smallWarehouse' => Warehouse::findOrFail(Warehouse::smallId()),
+            'storeUrl' => route('admin.outbound.returns.store'),
+            'updateUrl' => $transaction ? route('admin.outbound.returns.update', $transaction->id) : null,
+            'indexUrl' => route('admin.outbound.returns.index'),
         ]);
     }
 

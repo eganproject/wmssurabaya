@@ -767,9 +767,6 @@
                             if (status === 'canceled') {
                                 return `<button type="button" class="btn btn-sm btn-light-warning btn-uncancel" data-id="${escapeHtml(idPesanan)}" data-resi="${escapeHtml(noResi)}">Batal Cancel</button>${deleteBtn}`;
                             }
-                            if (!canDelete) {
-                                return '<span class="text-muted">-</span>';
-                            }
                             return `<button type="button" class="btn btn-sm btn-light-warning btn-cancel" data-id="${escapeHtml(idPesanan)}" data-resi="${escapeHtml(noResi)}">Cancel</button>${deleteBtn}`;
                         }},
                     ],

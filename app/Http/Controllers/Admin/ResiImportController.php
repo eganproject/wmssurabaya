@@ -8,6 +8,7 @@ use App\Imports\ResiImport;
 use App\Models\Item;
 use App\Models\Kurir;
 use App\Models\PackerResiScan;
+use App\Models\PackerScanException;
 use App\Models\PackerScanOut;
 use App\Models\PickingList;
 use App\Models\PickingListException;
@@ -17,6 +18,8 @@ use App\Models\Resi;
 use App\Models\ResiDetail;
 use App\Models\ResiImportBatch;
 use App\Models\ResiImportBatchItem;
+use App\Models\StockMutation;
+use App\Support\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -629,27 +632,12 @@ class ResiImportController extends Controller
             ]);
         }
 
-        $hasPackerScan = PackerResiScan::where('resi_id', $resi->id)->exists();
-        $hasScanOut = PackerScanOut::where('resi_id', $resi->id)->exists();
-        $hasQcScan = QcScanResi::where('resi_id', $resi->id)->exists();
-        if ($hasScanOut) {
-            return response()->json([
-                'message' => 'Resi sudah scan out, tidak bisa dibatalkan.',
-            ], 422);
-        }
-        if ($hasPackerScan) {
-            return response()->json([
-                'message' => 'Resi sudah diproses, tidak bisa dibatalkan.',
-            ], 422);
-        }
-        if ($hasQcScan) {
-            return response()->json([
-                'message' => 'Resi sudah masuk proses QC, tidak bisa dibatalkan.',
-            ], 422);
-        }
-
         DB::beginTransaction();
         try {
+            $resi = Resi::whereKey($resi->id)->lockForUpdate()->firstOrFail();
+            $details = ResiDetail::where('resi_id', $resi->id)->get(['sku', 'qty']);
+            $rollbackSummary = $this->rollbackProcessedResiForCancel($resi, $details);
+
             $resi->status = 'canceled';
             $resi->canceled_at = now();
             $resi->canceled_by = auth()->id();
@@ -658,7 +646,6 @@ class ResiImportController extends Controller
             $resi->uncanceled_by = null;
             $resi->save();
 
-            $details = ResiDetail::where('resi_id', $resi->id)->get(['sku', 'qty']);
             $listDate = $resi->tanggal_upload?->format('Y-m-d') ?? now()->toDateString();
             if ($details->isNotEmpty()) {
                 $this->adjustPickingList($listDate, $details, -1);
@@ -675,6 +662,7 @@ class ResiImportController extends Controller
 
         return response()->json([
             'message' => 'Resi berhasil dibatalkan.',
+            'rollback' => $rollbackSummary ?? [],
         ]);
     }
 
@@ -732,6 +720,157 @@ class ResiImportController extends Controller
         return response()->json([
             'message' => 'Status cancel resi berhasil dibatalkan.',
         ]);
+    }
+
+    private function rollbackProcessedResiForCancel(Resi $resi, $details): array
+    {
+        $summary = [
+            'scan_out_deleted' => 0,
+            'packer_scan_deleted' => 0,
+            'qc_scan_deleted' => 0,
+            'stock_mutations_rolled_back' => 0,
+        ];
+
+        $scanOuts = PackerScanOut::where('resi_id', $resi->id)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($scanOuts as $scanOut) {
+            $this->restoreScanOutTransit($scanOut, $details);
+            $scanOut->delete();
+            $summary['scan_out_deleted']++;
+        }
+
+        $summary['packer_scan_deleted'] = PackerResiScan::where('resi_id', $resi->id)
+            ->lockForUpdate()
+            ->delete();
+
+        $qcScans = QcScanResi::with('items')
+            ->where('resi_id', $resi->id)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($qcScans as $qcScan) {
+            $mutationCount = StockMutation::where('source_type', 'qc_resi')
+                ->where('source_id', $qcScan->id)
+                ->count();
+
+            if ($mutationCount > 0) {
+                StockService::rollbackBySource('qc_resi', $qcScan->id);
+                StockMutation::where('source_type', 'qc_resi')
+                    ->where('source_id', $qcScan->id)
+                    ->delete();
+                $summary['stock_mutations_rolled_back'] += $mutationCount;
+            }
+
+            $this->removeQcTransitForScan($qcScan);
+            $qcScan->delete();
+            $summary['qc_scan_deleted']++;
+        }
+
+        return $summary;
+    }
+
+    private function restoreScanOutTransit(PackerScanOut $scanOut, $details): void
+    {
+        $scanDate = $scanOut->scan_date?->format('Y-m-d') ?? now()->toDateString();
+        $skuTotals = $this->scanOutSkuTotals($details);
+
+        foreach ($skuTotals as $sku => $qty) {
+            $itemId = Item::whereRaw('LOWER(sku) = ?', [strtolower($sku)])->value('id');
+            if (!$itemId || $qty <= 0) {
+                continue;
+            }
+
+            $remainingToRestore = (int) $qty;
+            $rows = QcTransitItem::where('item_id', $itemId)
+                ->whereDate('transit_date', '<=', $scanDate)
+                ->whereColumn('remaining_qty', '<', 'qty')
+                ->orderBy('transit_date')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($rows as $row) {
+                if ($remainingToRestore <= 0) {
+                    break;
+                }
+
+                $capacity = max(0, (int) $row->qty - (int) $row->remaining_qty);
+                if ($capacity <= 0) {
+                    continue;
+                }
+
+                $restore = min($capacity, $remainingToRestore);
+                $row->remaining_qty += $restore;
+                $row->save();
+                $remainingToRestore -= $restore;
+            }
+        }
+    }
+
+    private function removeQcTransitForScan(QcScanResi $qcScan): void
+    {
+        $scanDate = $qcScan->scanned_at?->toDateString() ?? now()->toDateString();
+
+        foreach ($qcScan->items as $itemRow) {
+            $qty = (int) ($itemRow->scanned_qty ?? 0);
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $itemId = (int) ($itemRow->item_id ?: 0);
+            if ($itemId <= 0 && !empty($itemRow->sku)) {
+                $itemId = (int) Item::whereRaw('LOWER(sku) = ?', [strtolower((string) $itemRow->sku)])->value('id');
+            }
+            if ($itemId <= 0) {
+                continue;
+            }
+
+            $transit = QcTransitItem::where('item_id', $itemId)
+                ->whereDate('transit_date', $scanDate)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$transit) {
+                continue;
+            }
+
+            $transit->qty = max(0, (int) $transit->qty - $qty);
+            $transit->remaining_qty = max(0, (int) $transit->remaining_qty - $qty);
+
+            if ($transit->qty <= 0 && $transit->remaining_qty <= 0) {
+                $transit->delete();
+            } else {
+                if ($transit->remaining_qty > $transit->qty) {
+                    $transit->remaining_qty = $transit->qty;
+                }
+                $transit->save();
+            }
+        }
+    }
+
+    private function scanOutSkuTotals($details): array
+    {
+        $exceptionLookup = PackerScanException::query()
+            ->pluck('sku')
+            ->map(fn ($sku) => strtolower(trim((string) $sku)))
+            ->filter()
+            ->flip()
+            ->all();
+
+        $totals = [];
+        foreach ($details as $detail) {
+            $sku = trim((string) ($detail['sku'] ?? $detail->sku ?? ''));
+            $qty = (int) ($detail['qty'] ?? $detail->qty ?? 0);
+            if ($sku === '' || $qty <= 0 || isset($exceptionLookup[strtolower($sku)])) {
+                continue;
+            }
+
+            $totals[$sku] = ($totals[$sku] ?? 0) + $qty;
+        }
+
+        return $totals;
     }
 
     private function parseTanggalPesanan($raw): ?string

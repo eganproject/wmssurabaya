@@ -788,7 +788,14 @@
         if (!canCreateDefault && openCreateBtn) {
             openCreateBtn.remove();
         } else {
-            openCreateBtn?.addEventListener('click', resetForm);
+            openCreateBtn?.addEventListener('click', () => {
+                const createUrl = resolveRoute(defaultTypeFilter, 'create');
+                if (isOutboundReturnFlow && createUrl) {
+                    window.location.href = createUrl;
+                    return;
+                }
+                resetForm();
+            });
         }
 
         itemsContainer?.addEventListener('change', (e) => {
@@ -898,8 +905,11 @@
                     const canEdit = perms.update && !isFinalized && (
                         !isApproved || (isInboundReturnFlow && rowType === 'return')
                     );
+                    const editUrl = resolveRoute(rowType, 'edit')?.replace(':id', data);
                     const editItem = canEdit
-                        ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${data}" data-type="${rowType}">Edit</a></div>`
+                        ? (isOutboundReturnFlow && rowType === 'return' && editUrl
+                            ? `<div class="menu-item px-3"><a href="${editUrl}" class="menu-link px-3">Edit</a></div>`
+                            : `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${data}" data-type="${rowType}">Edit</a></div>`)
                         : '';
                     const delItem = (!isApproved && !isFinalized && perms.delete)
                         ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-danger btn-delete" data-id="${data}" data-type="${rowType}">Hapus</a></div>`

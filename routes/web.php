@@ -326,9 +326,11 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
 
         Route::get('/returns', [OutboundController::class, 'returns'])->name('returns.index');
         Route::get('/returns/data', [OutboundController::class, 'returnsData'])->name('returns.data');
+        Route::get('/returns/create', [OutboundController::class, 'returnsCreate'])->name('returns.create');
         Route::post('/returns', [OutboundController::class, 'returnsStore'])->name('returns.store');
         Route::post('/returns/import', [OutboundController::class, 'returnsImport'])->name('returns.import');
         Route::get('/returns/template', [OutboundController::class, 'returnsTemplate'])->name('returns.template');
+        Route::get('/returns/{id}/edit', [OutboundController::class, 'returnsEdit'])->name('returns.edit');
         Route::get('/returns/{id}', [OutboundController::class, 'returnsShow'])->name('returns.show');
         Route::put('/returns/{id}', [OutboundController::class, 'returnsUpdate'])->name('returns.update');
         Route::delete('/returns/{id}', [OutboundController::class, 'returnsDestroy'])->name('returns.destroy');
