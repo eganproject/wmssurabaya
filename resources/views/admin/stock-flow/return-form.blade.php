@@ -22,6 +22,12 @@
             'note' => $row->note ?? '',
         ])->values()
         : collect();
+    $transactionPayload = $transaction ? [
+        'id' => $transaction->id,
+        'ref_no' => $transaction->ref_no,
+        'note' => $transaction->note,
+        'transacted_at' => $transaction->transacted_at?->format('Y-m-d H:i'),
+    ] : null;
 @endphp
 
 @section('content')
@@ -113,12 +119,7 @@
     const itemOptionsHtml = `@foreach($items as $item)<option value="{{ $item->id }}">{{ $item->sku }} - {{ $item->name }}</option>@endforeach`;
     const itemUnits = @json($itemUnitsJson);
     const initialItems = @json($initialItems);
-    const transaction = @json($transaction ? [
-        'id' => $transaction->id,
-        'ref_no' => $transaction->ref_no,
-        'note' => $transaction->note,
-        'transacted_at' => $transaction->transacted_at?->format('Y-m-d H:i'),
-    ] : null);
+    const transaction = @json($transactionPayload);
     const submitUrl = '{{ $transaction ? $updateUrl : $storeUrl }}';
     const indexUrl = '{{ $indexUrl }}';
     const csrfToken = '{{ csrf_token() }}';

@@ -26,6 +26,13 @@
         ])->values()
         : collect();
     $isFinalized = $transaction && ($transaction->status ?? 'pending') === 'finalized';
+    $transactionPayload = $transaction ? [
+        'id' => $transaction->id,
+        'ref_no' => $transaction->ref_no,
+        'note' => $transaction->note,
+        'status' => $transaction->status ?? 'pending',
+        'transacted_at' => $transaction->transacted_at?->format('Y-m-d H:i'),
+    ] : null;
 @endphp
 
 @section('content')
@@ -134,13 +141,7 @@
 <script>
     const itemOptionsHtml = `@foreach($items as $item)<option value="{{ $item->id }}">{{ $item->sku }} - {{ $item->name }}</option>@endforeach`;
     const initialItems = @json($initialItems);
-    const transaction = @json($transaction ? [
-        'id' => $transaction->id,
-        'ref_no' => $transaction->ref_no,
-        'note' => $transaction->note,
-        'status' => $transaction->status ?? 'pending',
-        'transacted_at' => $transaction->transacted_at?->format('Y-m-d H:i'),
-    ] : null);
+    const transaction = @json($transactionPayload);
     const lookupUrl = '{{ $lookupUrl }}';
     const submitUrl = '{{ $transaction ? $updateUrl : $storeUrl }}';
     const indexUrl = '{{ $indexUrl }}';

@@ -151,6 +151,7 @@
                         <th>SKU</th>
                         <th>Tanggal Order</th>
                         <th>Status</th>
+                        <th>Status Proses</th>
                         <th class="text-end">Aksi</th>
                     </tr>
                 </thead>
@@ -475,6 +476,48 @@
             return '<span class="badge badge-light-success">Active</span>';
         };
 
+        const renderProcessStatus = (status, label) => {
+            if (status === 'scan_out') {
+                return '<span class="badge badge-light-dark">Sudah Scan Out</span>';
+            }
+            if (status === 'packer_scan') {
+                return '<span class="badge badge-light-info">Sudah Scan Packer</span>';
+            }
+            if (status === 'qc_scan') {
+                return '<span class="badge badge-light-primary">Sudah QC Scan</span>';
+            }
+            return `<span class="badge badge-light-secondary">${escapeHtml(label || 'Belum QC Scan')}</span>`;
+        };
+
+        const cancelNotice = (status) => {
+            if (status === 'scan_out') {
+                return {
+                    title: 'Cancel resi yang sudah scan out?',
+                    html: 'Resi ini sudah <strong>Scan Out</strong>. Saat dicancel, data scan out akan dibatalkan, stok transit dikembalikan, data scan packer/QC terkait dibersihkan, dan picking list disesuaikan.',
+                    icon: 'warning',
+                };
+            }
+            if (status === 'packer_scan') {
+                return {
+                    title: 'Cancel resi yang sudah scan packer?',
+                    html: 'Resi ini sudah <strong>Scan Packer</strong>. Saat dicancel, data scan packer dan QC terkait akan dibersihkan, stok dikembalikan bila sudah ada mutasi, dan picking list disesuaikan.',
+                    icon: 'warning',
+                };
+            }
+            if (status === 'qc_scan') {
+                return {
+                    title: 'Cancel resi yang sudah QC scan?',
+                    html: 'Resi ini sudah <strong>QC Scan</strong>. Saat dicancel, data QC akan dibersihkan, stok yang sempat keluar akan dikembalikan, dan picking list disesuaikan.',
+                    icon: 'warning',
+                };
+            }
+            return {
+                title: 'Cancel resi yang belum QC scan?',
+                html: 'Resi ini <strong>belum QC Scan</strong>. Saat dicancel, status resi berubah menjadi cancel dan picking list dikurangi sesuai detail resi.',
+                icon: 'question',
+            };
+        };
+
         const loadBatches = async () => {
             if (!batchesUrl || !batchBodyEl) return;
             batchBodyEl.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-6">Memuat batch...</td></tr>';
@@ -756,10 +799,13 @@
                             }
                             return '<span class="badge badge-light-success">Aktif</span>';
                         }},
+                        { data: 'process_status', render: (data, type, row) => renderProcessStatus(data, row.process_status_label) },
                         { data: null, orderable: false, searchable: false, className: 'text-end', render: (data, type, row) => {
                             const idPesanan = row.id_pesanan || '';
                             const noResi = row.no_resi || '';
                             const status = row.status || 'active';
+                            const processStatus = row.process_status || 'not_scanned';
+                            const processLabel = row.process_status_label || 'Belum QC Scan';
                             const canDelete = row.can_delete === true;
                             const deleteBtn = canDelete
                                 ? `<button type="button" class="btn btn-sm btn-light-danger btn-delete-resi ms-2" data-resi-id="${row.id}" data-id="${escapeHtml(idPesanan)}" data-resi="${escapeHtml(noResi)}">Hapus</button>`
@@ -767,7 +813,7 @@
                             if (status === 'canceled') {
                                 return `<button type="button" class="btn btn-sm btn-light-warning btn-uncancel" data-id="${escapeHtml(idPesanan)}" data-resi="${escapeHtml(noResi)}">Batal Cancel</button>${deleteBtn}`;
                             }
-                            return `<button type="button" class="btn btn-sm btn-light-warning btn-cancel" data-id="${escapeHtml(idPesanan)}" data-resi="${escapeHtml(noResi)}">Cancel</button>${deleteBtn}`;
+                            return `<button type="button" class="btn btn-sm btn-light-warning btn-cancel" data-id="${escapeHtml(idPesanan)}" data-resi="${escapeHtml(noResi)}" data-process-status="${escapeHtml(processStatus)}" data-process-label="${escapeHtml(processLabel)}">Cancel</button>${deleteBtn}`;
                         }},
                     ],
                     language: {
@@ -996,6 +1042,9 @@
             e.preventDefault();
             const id = this.getAttribute('data-id');
             const resi = this.getAttribute('data-resi');
+            const processStatus = this.getAttribute('data-process-status') || 'not_scanned';
+            const processLabel = this.getAttribute('data-process-label') || 'Belum QC Scan';
+            const notice = cancelNotice(processStatus);
             const openModal = () => {
                 if (cancelIdInput) cancelIdInput.value = id || '';
                 if (cancelNoResiInput) cancelNoResiInput.value = resi || '';
@@ -1006,9 +1055,16 @@
 
             if (typeof Swal !== 'undefined') {
                 Swal.fire({
-                    title: 'Batalkan resi ini?',
-                    text: 'Resi yang dibatalkan tidak bisa diproses QC scan maupun scan out.',
-                    icon: 'warning',
+                    title: notice.title,
+                    html: `
+                        <div class="text-start">
+                            <div>No Resi: <strong>${escapeHtml(resi || '-')}</strong></div>
+                            <div>ID Pesanan: <strong>${escapeHtml(id || '-')}</strong></div>
+                            <div>Status Proses: <strong>${escapeHtml(processLabel)}</strong></div>
+                            <div class="text-muted mt-3">${notice.html}</div>
+                        </div>
+                    `,
+                    icon: notice.icon,
                     showCancelButton: true,
                     confirmButtonText: 'Ya, cancel',
                     cancelButtonText: 'Batal',
@@ -1016,7 +1072,7 @@
                     if (result.isConfirmed) openModal();
                 });
             } else {
-                if (confirm('Batalkan resi ini?')) openModal();
+                if (confirm(`Cancel resi dengan status ${processLabel}?`)) openModal();
             }
         });
 
@@ -1167,7 +1223,16 @@
                     return;
                 }
                 if (typeof Swal !== 'undefined') {
-                    Swal.fire('Berhasil', json?.message || 'Resi dibatalkan', 'success');
+                    Swal.fire({
+                        title: 'Berhasil',
+                        html: `
+                            <div class="text-start">
+                                <div>${escapeHtml(json?.message || 'Resi dibatalkan')}</div>
+                                ${json?.detail ? `<div class="text-muted mt-2">${escapeHtml(json.detail)}</div>` : ''}
+                            </div>
+                        `,
+                        icon: 'success',
+                    });
                 }
                 cancelModal?.hide();
                 reloadTable();

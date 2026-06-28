@@ -136,6 +136,15 @@ class ResiImportController extends Controller
             $hasScanOut = (int) ($row->scan_out_count ?? 0) > 0;
             $hasQcScan = (int) ($row->qc_scan_count ?? 0) > 0;
             $hasPackerScan = (int) ($row->packer_scan_count ?? 0) > 0;
+            $processStatus = $hasScanOut
+                ? 'scan_out'
+                : ($hasPackerScan ? 'packer_scan' : ($hasQcScan ? 'qc_scan' : 'not_scanned'));
+            $processLabel = match ($processStatus) {
+                'scan_out' => 'Sudah Scan Out',
+                'packer_scan' => 'Sudah Scan Packer',
+                'qc_scan' => 'Sudah QC Scan',
+                default => 'Belum QC Scan',
+            };
             $canDelete = ! $hasScanOut && ! $hasQcScan && ! $hasPackerScan;
             return [
                 'id' => $row->id,
@@ -147,6 +156,10 @@ class ResiImportController extends Controller
                 'catatan_pembeli' => $row->catatan_pembeli ?? '',
                 'has_catatan_pembeli' => trim((string) ($row->catatan_pembeli ?? '')) !== '',
                 'status' => $row->status ?? 'active',
+                'process_status' => $processStatus,
+                'process_status_label' => $processLabel,
+                'has_qc_scan' => $hasQcScan,
+                'has_packer_scan' => $hasPackerScan,
                 'has_scan_out' => $hasScanOut,
                 'can_delete' => $canDelete,
             ];
@@ -662,6 +675,7 @@ class ResiImportController extends Controller
 
         return response()->json([
             'message' => 'Resi berhasil dibatalkan.',
+            'detail' => $this->cancelRollbackDetail($rollbackSummary ?? []),
             'rollback' => $rollbackSummary ?? [],
         ]);
     }
@@ -769,6 +783,26 @@ class ResiImportController extends Controller
         }
 
         return $summary;
+    }
+
+    private function cancelRollbackDetail(array $summary): string
+    {
+        $scanOut = (int) ($summary['scan_out_deleted'] ?? 0);
+        $packer = (int) ($summary['packer_scan_deleted'] ?? 0);
+        $qc = (int) ($summary['qc_scan_deleted'] ?? 0);
+        $mutations = (int) ($summary['stock_mutations_rolled_back'] ?? 0);
+
+        if ($scanOut > 0) {
+            return "Resi sudah scan out. Data scan out dihapus, stok transit dikembalikan, data scan packer/QC terkait dibersihkan, dan {$mutations} mutasi stok di-rollback.";
+        }
+        if ($packer > 0) {
+            return 'Resi sudah scan packer. Data scan packer dibersihkan, data QC terkait dibersihkan, stok dikembalikan bila sudah ada mutasi, dan picking list disesuaikan.';
+        }
+        if ($qc > 0) {
+            return "Resi sudah QC scan. Data QC scan dibersihkan, stok yang sempat keluar dikembalikan, dan {$mutations} mutasi stok di-rollback.";
+        }
+
+        return 'Resi belum QC scan. Status diubah menjadi cancel dan picking list dikurangi sesuai detail resi.';
     }
 
     private function restoreScanOutTransit(PackerScanOut $scanOut, $details): void
