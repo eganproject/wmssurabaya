@@ -37,6 +37,20 @@ class InboundController extends Controller
         return $this->index('return', 'Inbound - Retur', 'returns');
     }
 
+    public function returnsCreate()
+    {
+        return $this->returnForm('Tambah Retur Inbound');
+    }
+
+    public function returnsEdit(int $id)
+    {
+        $transaction = InboundTransaction::with(['items.item'])
+            ->where('type', 'return')
+            ->findOrFail($id);
+
+        return $this->returnForm('Edit Retur Inbound', $transaction);
+    }
+
     public function receiptsData(Request $request)
     {
         return $this->data($request, 'receipt');
@@ -368,8 +382,10 @@ class InboundController extends Controller
                 'approve' => route('admin.inbound.receipts.approve', ':id'),
             ],
             'return' => [
+                'create' => route('admin.inbound.returns.create'),
                 'store' => route('admin.inbound.returns.store'),
                 'show' => route('admin.inbound.returns.show', ':id'),
+                'edit' => route('admin.inbound.returns.edit', ':id'),
                 'update' => route('admin.inbound.returns.update', ':id'),
                 'delete' => route('admin.inbound.returns.destroy', ':id'),
                 'detail' => route('admin.inbound.returns.detail', ':id'),
@@ -409,6 +425,22 @@ class InboundController extends Controller
                 'return' => route('admin.inbound.returns.template'),
                 default => null,
             },
+        ]);
+    }
+
+    private function returnForm(string $pageTitle, ?InboundTransaction $transaction = null)
+    {
+        $items = Item::orderBy('name')->get(['id', 'sku', 'name']);
+
+        return view('admin.stock-flow.inbound-return-form', [
+            'pageTitle' => $pageTitle,
+            'transaction' => $transaction,
+            'items' => $items,
+            'smallWarehouse' => Warehouse::findOrFail(Warehouse::smallId()),
+            'lookupUrl' => route('admin.inbound.returns.lookup-resi'),
+            'storeUrl' => route('admin.inbound.returns.store'),
+            'updateUrl' => $transaction ? route('admin.inbound.returns.update', $transaction->id) : null,
+            'indexUrl' => route('admin.inbound.returns.index'),
         ]);
     }
 

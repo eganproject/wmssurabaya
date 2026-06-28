@@ -146,18 +146,20 @@
                     @endif
                     @if(($typeDefault ?? '') === 'return' && isset($routeMap['receipt']))
                         <div class="border border-dashed rounded p-5 mb-7 bg-light">
-                            <div class="row g-3 align-items-end">
-                                <div class="col-lg-5">
+                            <div class="row g-4 align-items-center">
+                                <div class="col-lg-7">
                                     <label class="fs-6 fw-bold form-label mb-2">Nomor Resi / ID Pesanan</label>
-                                    <input type="text" class="form-control form-control-solid" id="flow_resi_lookup" placeholder="Scan atau ketik nomor resi" autocomplete="off" />
-                                    <div class="form-text">Jika cocok dengan data import, SKU dan qty resi akan diisi otomatis.</div>
+                                    <div class="position-relative">
+                                        <input type="text" class="form-control form-control-solid pe-12" id="flow_resi_lookup" placeholder="Scan atau ketik nomor resi" autocomplete="off" />
+                                        <span class="position-absolute top-50 end-0 translate-middle-y me-4 d-none" id="flow_resi_lookup_spinner">
+                                            <span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
+                                        </span>
+                                    </div>
+                                    <div class="form-text">SKU dan qty otomatis terisi saat resi ditemukan. Jika tidak ditemukan, item tetap bisa diisi manual.</div>
                                 </div>
-                                <div class="col-lg-3">
-                                    <button type="button" class="btn btn-light-primary w-100" id="btn_lookup_resi">Ambil Data Resi</button>
-                                </div>
-                                <div class="col-lg-4">
+                                <div class="col-lg-5">
                                     <div class="fw-bold text-gray-800" id="flow_resi_status">Belum ada resi dipilih.</div>
-                                    <div class="text-muted fs-8">Nomor ini akan disimpan sebagai Ref No transaksi.</div>
+                                    <div class="text-muted fs-8">Tekan Enter setelah scan untuk langsung memproses. Nomor ini akan disimpan sebagai Ref No transaksi.</div>
                                 </div>
                             </div>
                         </div>
@@ -293,7 +295,7 @@
         const closeFormBtn = document.getElementById('btn_close_flow_form');
         const cancelFormBtn = document.getElementById('btn_cancel_flow_form');
         const lookupResiInput = document.getElementById('flow_resi_lookup');
-        const lookupResiBtn = document.getElementById('btn_lookup_resi');
+        const lookupResiSpinner = document.getElementById('flow_resi_lookup_spinner');
         const lookupResiStatus = document.getElementById('flow_resi_status');
         const modalTitle = document.getElementById('flow_modal_title');
         const dateFromEl = document.getElementById('filter_date_from');
@@ -747,18 +749,36 @@
             validateUniqueItems();
         };
 
-        lookupResiBtn?.addEventListener('click', async () => {
+        let lookupResiTimer = null;
+        let lookupResiController = null;
+        let lastLookupResiCode = '';
+        let activeLookupResiCode = '';
+
+        const setLookupResiLoading = (loading) => {
+            lookupResiSpinner?.classList.toggle('d-none', !loading);
+            lookupResiInput?.classList.toggle('pe-12', loading);
+        };
+
+        const runResiLookup = async (force = false) => {
             const code = (lookupResiInput?.value || '').trim();
             if (!code) {
                 if (lookupResiStatus) lookupResiStatus.textContent = 'Masukkan nomor resi terlebih dahulu.';
+                lastLookupResiCode = '';
                 return;
             }
+            if (!force && code === lastLookupResiCode) return;
+            lastLookupResiCode = code;
             const lookupUrl = resolveRoute('return', 'lookupResi');
             if (!lookupUrl) return;
+            lookupResiController?.abort();
+            lookupResiController = new AbortController();
+            activeLookupResiCode = code;
             if (lookupResiStatus) lookupResiStatus.textContent = `Mencari ${code}...`;
+            setLookupResiLoading(true);
             try {
                 const res = await fetch(`${lookupUrl}?no_resi=${encodeURIComponent(code)}`, {
                     headers: { 'Accept': 'application/json' },
+                    signal: lookupResiController.signal,
                 });
                 const json = await res.json();
                 if (!res.ok) {
@@ -771,15 +791,38 @@
                 }
                 applyResiItems(json);
             } catch (err) {
+                if (err.name === 'AbortError') return;
                 if (lookupResiStatus) lookupResiStatus.textContent = 'Gagal lookup resi. Input manual tetap bisa dilakukan.';
+            } finally {
+                if (activeLookupResiCode === code) {
+                    setLookupResiLoading(false);
+                    activeLookupResiCode = '';
+                }
             }
-        });
+        };
 
         lookupResiInput?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                lookupResiBtn?.click();
+                window.clearTimeout(lookupResiTimer);
+                runResiLookup(true);
             }
+        });
+
+        lookupResiInput?.addEventListener('input', () => {
+            const code = (lookupResiInput.value || '').trim();
+            window.clearTimeout(lookupResiTimer);
+            if (!code) {
+                lastLookupResiCode = '';
+                activeLookupResiCode = '';
+                document.getElementById('flow_ref_no').value = '';
+                if (lookupResiStatus) lookupResiStatus.textContent = 'Belum ada resi dipilih.';
+                setLookupResiLoading(false);
+                return;
+            }
+            document.getElementById('flow_ref_no').value = code;
+            if (lookupResiStatus) lookupResiStatus.textContent = 'Menunggu input selesai...';
+            lookupResiTimer = window.setTimeout(() => runResiLookup(false), 650);
         });
 
         addItemBtn?.addEventListener('click', () => createItemRow());
@@ -790,7 +833,7 @@
         } else {
             openCreateBtn?.addEventListener('click', () => {
                 const createUrl = resolveRoute(defaultTypeFilter, 'create');
-                if (isOutboundReturnFlow && createUrl) {
+                if ((isInboundReturnFlow || isOutboundReturnFlow) && createUrl) {
                     window.location.href = createUrl;
                     return;
                 }
@@ -907,7 +950,7 @@
                     );
                     const editUrl = resolveRoute(rowType, 'edit')?.replace(':id', data);
                     const editItem = canEdit
-                        ? (isOutboundReturnFlow && rowType === 'return' && editUrl
+                        ? ((isInboundReturnFlow || isOutboundReturnFlow) && rowType === 'return' && editUrl
                             ? `<div class="menu-item px-3"><a href="${editUrl}" class="menu-link px-3">Edit</a></div>`
                             : `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${data}" data-type="${rowType}">Edit</a></div>`)
                         : '';
