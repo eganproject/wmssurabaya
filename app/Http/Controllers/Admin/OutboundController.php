@@ -564,6 +564,11 @@ class OutboundController extends Controller
                 'submit_by' => $row->creator?->name ?? '-',
                 'warehouse' => $row->warehouse?->name ?? '-',
                 'item' => $itemLabel ?: '-',
+                'item_details' => $items->map(fn ($it) => [
+                    'sku' => $it->item?->sku ?? '-',
+                    'name' => $it->item?->name ?? '',
+                    'qty' => (int) ($it->qty ?? 0),
+                ])->values(),
                 'qty' => $totalQty,
                 'note' => $row->note ?? '',
                 'type' => $row->type,

@@ -88,7 +88,7 @@
                         <th>Tanggal</th>
                         <th>Submit By</th>
                         <th>Gudang</th>
-                        <th>Item</th>
+                        <th>Ringkasan Item</th>
                         <th>Qty</th>
                         <th>Catatan</th>
                         <th class="text-end">Aksi</th>
@@ -291,7 +291,7 @@
     }
 
     .stock-flow-table {
-        min-width: 1120px;
+        min-width: 960px;
         margin-bottom: 0 !important;
     }
 
@@ -320,9 +320,50 @@
     }
 
     .stock-flow-item-cell {
-        max-width: 280px;
+        min-width: 260px;
+        max-width: 360px;
         white-space: normal;
         line-height: 1.45;
+    }
+
+    .stock-flow-item-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
+    .stock-flow-item-line {
+        display: grid;
+        grid-template-columns: minmax(84px, 120px) minmax(0, 1fr);
+        gap: 8px;
+        align-items: start;
+        padding: 5px 0;
+        border-top: 1px dashed #eff2f5;
+    }
+
+    .stock-flow-item-line:first-of-type {
+        border-top: 0;
+    }
+
+    .stock-flow-item-sku {
+        color: #181c32;
+        font-weight: 800;
+        overflow-wrap: anywhere;
+    }
+
+    .stock-flow-item-name,
+    .stock-flow-item-meta {
+        color: #7e8299;
+        font-size: 12px;
+        overflow-wrap: anywhere;
+    }
+
+    .stock-flow-item-more {
+        margin-top: 6px;
+        padding: 0;
+        font-size: 12px;
+        font-weight: 700;
     }
 
     .stock-flow-note-cell {
@@ -481,6 +522,67 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+
+        const formatNumber = (value) => Number(value || 0).toLocaleString('id-ID');
+
+        const itemQtyMeta = (detail = {}, row = {}) => {
+            if (row?.type === 'return' && Object.prototype.hasOwnProperty.call(detail, 'qty_received')) {
+                return `Resi ${formatNumber(detail.qty)} | Terima ${formatNumber(detail.qty_received)} | Bagus ${formatNumber(detail.qty_good)} | Rusak ${formatNumber(detail.qty_damaged)} | Hilang ${formatNumber(detail.qty_missing)}`;
+            }
+
+            if (Number(detail.conversion_qty || 1) > 1) {
+                return `${formatNumber(detail.qty_input)} ${escapeHtml(detail.unit || 'PCS/SET')} = ${formatNumber(detail.qty_base)} PCS/SET`;
+            }
+
+            return `${formatNumber(detail.qty_input || detail.qty)} ${escapeHtml(detail.unit || 'PCS/SET')}`;
+        };
+
+        const renderItemLine = (detail = {}, row = {}) => {
+            const itemName = detail.name ? `<div class="stock-flow-item-name">${escapeHtml(detail.name)}</div>` : '';
+
+            return `
+                <div class="stock-flow-item-line">
+                    <div class="stock-flow-item-sku">${escapeHtml(detail.sku || '-')}</div>
+                    <div>
+                        ${itemName}
+                        <div class="stock-flow-item-meta">${itemQtyMeta(detail, row)}</div>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderItemSummary = (data, row = {}) => {
+            const details = Array.isArray(row?.item_details) ? row.item_details : [];
+            if (!details.length) {
+                return `<div class="stock-flow-item-cell">${escapeHtml(data || '-')}</div>`;
+            }
+
+            const visible = details.slice(0, 2).map(detail => renderItemLine(detail, row)).join('');
+            const more = details.length > 2
+                ? `<button type="button" class="btn btn-link stock-flow-item-more btn-item-detail">Lihat ${details.length - 2} item lainnya</button>`
+                : '';
+
+            return `
+                <div class="stock-flow-item-cell">
+                    <div class="stock-flow-item-top">
+                        <span class="badge badge-light-primary">${details.length} SKU</span>
+                    </div>
+                    ${visible}
+                    ${more}
+                </div>
+            `;
+        };
+
+        const renderItemDetailHtml = (row = {}) => {
+            const details = Array.isArray(row?.item_details) ? row.item_details : [];
+            if (!details.length) return '<div class="text-muted">Tidak ada detail item.</div>';
+
+            return `
+                <div class="text-start">
+                    ${details.map(detail => renderItemLine(detail, row)).join('')}
+                </div>
+            `;
+        };
 
         const statusLabel = (status, row = {}) => {
             if (status === 'finalized') return '<span class="badge badge-light-success">Finalisasi</span>';
@@ -1048,18 +1150,18 @@
                 }
             },
             columns: [
-                { data: 'id', className: 'text-muted fw-bold', width: '64px' },
+                { data: 'id', visible: false, searchable: false },
                 { data: 'code', render: (data, type, row) => {
                     const code = escapeHtml(data || '-');
                     const refNo = escapeHtml(row?.ref_no || '');
                     return `<div class="stock-flow-code">${code}</div>${refNo ? `<div class="stock-flow-subtext">Ref: ${refNo}</div>` : ''}`;
                 } },
-                { data: 'type', render: (data) => `<span class="badge badge-light-info">${escapeHtml(typeLabelMap?.[data] || data || '-')}</span>` },
+                { data: 'type', visible: false, render: (data) => `<span class="badge badge-light-info">${escapeHtml(typeLabelMap?.[data] || data || '-')}</span>` },
                 { data: 'status', orderable:false, searchable:false, render: (data, type, row) => statusLabel(data, row) },
                 { data: 'transacted_at', render: (data) => `<span class="text-gray-800 fw-semibold text-nowrap">${escapeHtml(data || '-')}</span>` },
-                { data: 'submit_by', render: (data) => escapeHtml(data || '-') },
+                { data: 'submit_by', visible: false, render: (data) => escapeHtml(data || '-') },
                 { data: 'warehouse', render: (data) => `<span class="text-gray-800">${escapeHtml(data || '-')}</span>` },
-                { data: 'item', render: (data) => `<div class="stock-flow-item-cell">${escapeHtml(data || '-')}</div>` },
+                { data: 'item', orderable:false, render: (data, type, row) => renderItemSummary(data, row) },
                 { data: 'qty', render: (data, type, row) => {
                     const qty = Number(data || 0).toLocaleString('id-ID');
                     const details = Array.isArray(row?.qty_details) ? row.qty_details : [];
@@ -1139,6 +1241,19 @@
         });
         refreshMenus();
         dt.on('draw', refreshMenus);
+
+        tableEl.on('click', '.btn-item-detail', function(e) {
+            e.preventDefault();
+            const row = dt.row($(this).closest('tr')).data();
+            Swal.fire({
+                title: 'Detail Item',
+                html: renderItemDetailHtml(row),
+                width: 720,
+                confirmButtonText: 'Tutup',
+                customClass: { confirmButton: 'btn btn-primary' },
+                buttonsStyling: false,
+            });
+        });
 
         const reloadTable = () => dt.ajax.reload();
         const reloadTableDebounced = debounce(reloadTable);
