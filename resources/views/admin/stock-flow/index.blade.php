@@ -366,6 +366,32 @@
         font-weight: 700;
     }
 
+    .stock-flow-qty-cell {
+        min-width: 110px;
+        white-space: nowrap;
+    }
+
+    .stock-flow-qty-main {
+        color: #181c32;
+        font-size: 16px;
+        font-weight: 800;
+        line-height: 1.2;
+    }
+
+    .stock-flow-qty-label {
+        color: #7e8299;
+        font-size: 12px;
+        margin-top: 2px;
+    }
+
+    .stock-flow-qty-note {
+        display: inline-flex;
+        max-width: 160px;
+        margin-top: 6px;
+        white-space: normal;
+        line-height: 1.3;
+    }
+
     .stock-flow-note-cell {
         max-width: 240px;
         white-space: normal;
@@ -580,6 +606,27 @@
             return `
                 <div class="text-start">
                     ${details.map(detail => renderItemLine(detail, row)).join('')}
+                </div>
+            `;
+        };
+
+        const renderQtySummary = (data, row = {}) => {
+            const qty = formatNumber(data);
+            const details = Array.isArray(row?.item_details) ? row.item_details : [];
+            const unitLabel = row?.type === 'receipt' ? 'Total PCS/SET' : 'Total Qty';
+            const returnQty = Number(row?.return_warehouse_qty || 0);
+            const hasConversion = details.some(detail => Number(detail.conversion_qty || 1) > 1);
+            const conversionNote = hasConversion ? '<div class="stock-flow-qty-label">Satuan asli ada di item</div>' : '';
+            const returnNote = returnQty > 0
+                ? `<span class="badge badge-light-primary stock-flow-qty-note">Area retur: ${formatNumber(returnQty)} PCS/SET</span>`
+                : '';
+
+            return `
+                <div class="stock-flow-qty-cell">
+                    <div class="stock-flow-qty-main">${qty}</div>
+                    <div class="stock-flow-qty-label">${unitLabel}</div>
+                    ${conversionNote}
+                    ${returnNote}
                 </div>
             `;
         };
@@ -1154,7 +1201,8 @@
                 { data: 'code', render: (data, type, row) => {
                     const code = escapeHtml(data || '-');
                     const refNo = escapeHtml(row?.ref_no || '');
-                    return `<div class="stock-flow-code">${code}</div>${refNo ? `<div class="stock-flow-subtext">Ref: ${refNo}</div>` : ''}`;
+                    const refLabel = isInboundReturnFlow && row?.type === 'return' ? 'No Resi' : 'Ref';
+                    return `<div class="stock-flow-code">${code}</div>${refNo ? `<div class="stock-flow-subtext">${refLabel}: ${refNo}</div>` : ''}`;
                 } },
                 { data: 'type', visible: false, render: (data) => `<span class="badge badge-light-info">${escapeHtml(typeLabelMap?.[data] || data || '-')}</span>` },
                 { data: 'status', orderable:false, searchable:false, render: (data, type, row) => statusLabel(data, row) },
@@ -1162,27 +1210,7 @@
                 { data: 'submit_by', visible: false, render: (data) => escapeHtml(data || '-') },
                 { data: 'warehouse', render: (data) => `<span class="text-gray-800">${escapeHtml(data || '-')}</span>` },
                 { data: 'item', orderable:false, render: (data, type, row) => renderItemSummary(data, row) },
-                { data: 'qty', render: (data, type, row) => {
-                    const qty = Number(data || 0).toLocaleString('id-ID');
-                    const details = Array.isArray(row?.qty_details) ? row.qty_details : [];
-                    if (row?.type === 'receipt' && details.length) {
-                        return details.map(detail => {
-                            const input = Number(detail.qty_input || 0).toLocaleString('id-ID');
-                            const base = Number(detail.qty_base || 0).toLocaleString('id-ID');
-                            const unit = String(detail.unit || 'PCS/SET').replace(/[&<>"']/g, char => ({
-                                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
-                            }[char]));
-                            return Number(detail.conversion_qty || 1) > 1
-                                ? `<div class="fw-bold text-primary">${input} ${unit}</div><div class="text-muted fs-8">= ${base} PCS/SET</div>`
-                                : `<div class="fw-semibold">${input} ${unit}</div>`;
-                        }).join('<div class="separator separator-dashed my-1"></div>');
-                    }
-                    const returnQty = Number(row?.return_warehouse_qty || 0);
-                    if (returnQty > 0) {
-                        return `${qty}<div class="text-primary fs-8 fw-bold">Area retur Gudang Kecil: ${returnQty.toLocaleString('id-ID')} PCS/SET</div>`;
-                    }
-                    return qty;
-                } },
+                { data: 'qty', className: 'text-nowrap', render: (data, type, row) => renderQtySummary(data, row) },
                 { data: 'note', render: (data) => `<div class="stock-flow-note-cell">${escapeHtml(data || '-')}</div>` },
                 { data: 'id', orderable:false, searchable:false, className:'text-end', render: (data, type, row)=>{
                     const rowType = row?.type || defaultTypeFilter;
