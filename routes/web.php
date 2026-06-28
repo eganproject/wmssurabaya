@@ -285,6 +285,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
 
         Route::get('/returns', [InboundController::class, 'returns'])->name('returns.index');
         Route::get('/returns/data', [InboundController::class, 'returnsData'])->name('returns.data');
+        Route::get('/returns/lookup-resi', [InboundController::class, 'returnsLookupResi'])->name('returns.lookup-resi');
         Route::post('/returns', [InboundController::class, 'returnsStore'])->name('returns.store');
         Route::post('/returns/import', [InboundController::class, 'returnsImport'])->name('returns.import');
         Route::get('/returns/template', [InboundController::class, 'returnsTemplate'])->name('returns.template');

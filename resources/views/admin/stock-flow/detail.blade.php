@@ -298,9 +298,11 @@
                     <tr class="text-start text-gray-400 fw-bolder fs-7 text-uppercase gs-0">
                         <th>Item</th>
                         @if($isInboundReturn)
+                            <th>Qty Resi</th>
                             <th>Qty Diterima</th>
                             <th>Qty Bagus</th>
                             <th>Qty Rusak</th>
+                            <th>Qty Hilang</th>
                         @else
                             <th>Qty</th>
                         @endif
@@ -315,9 +317,11 @@
                         <tr>
                             <td>{{ $row->item?->sku }} - {{ $row->item?->name }}</td>
                             @if($isInboundReturn)
+                                <td>{{ $row->qty }}</td>
                                 <td>{{ $row->qty_received ?: $row->qty }}</td>
                                 <td>{{ $row->qty_good ?? 0 }}</td>
                                 <td>{{ $row->qty_damaged ?? 0 }}</td>
+                                <td>{{ $row->qty_missing ?? 0 }}</td>
                             @else
                                 <td>{{ $row->qty }}</td>
                             @endif

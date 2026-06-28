@@ -54,6 +54,7 @@ class DamagedGoodsInboundReturnTest extends TestCase
         $this->assertSame(4, (int) $tx->items->first()->qty_received);
         $this->assertSame(0, (int) $tx->items->first()->qty_good);
         $this->assertSame(4, (int) $tx->items->first()->qty_damaged);
+        $this->assertSame(0, (int) $tx->items->first()->qty_missing);
         $this->assertSame(4, DamagedItemStock::where('item_id', $item->id)->value('stock'));
         $this->assertSame(1, DamagedStockMutation::where('source_type', 'inbound_return')->where('source_id', $tx->id)->count());
 

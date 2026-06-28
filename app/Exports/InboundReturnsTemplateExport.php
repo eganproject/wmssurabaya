@@ -17,6 +17,7 @@ class InboundReturnsTemplateExport implements FromArray, WithHeadings, ShouldAut
             'qty_diterima',
             'qty_bagus',
             'qty_rusak',
+            'qty_hilang',
             'ref_no',
             'note',
             'item_note',
@@ -33,9 +34,9 @@ class InboundReturnsTemplateExport implements FromArray, WithHeadings, ShouldAut
         $defaults = $samples ?: ['SKU-CONTOH-1', 'SKU-CONTOH-2'];
 
         // Baris 1: ada barang bagus dan rusak
-        $rows[] = [$defaults[0], 10, 7, 3, 'RET-001', 'Retur dari customer', 'Sebagian kemasan rusak', $now];
+        $rows[] = [$defaults[0], 10, 6, 3, 1, 'RET-001', 'Retur dari customer', 'Sebagian kemasan rusak', $now];
         // Baris 2: semua barang bagus, ref_no sama agar tergabung dalam 1 transaksi
-        $rows[] = [$defaults[1] ?? $defaults[0], 5, 5, 0, 'RET-001', '', '', $now];
+        $rows[] = [$defaults[1] ?? $defaults[0], 5, 5, 0, 0, 'RET-001', '', '', $now];
 
         return $rows;
     }

@@ -493,6 +493,7 @@ class DamagedGoodsController extends Controller
                         'qty_received' => $row->qty,
                         'qty_good' => 0,
                         'qty_damaged' => $row->qty,
+                        'qty_missing' => 0,
                         'note' => $row->note ?? null,
                     ]);
                 }
@@ -530,6 +531,7 @@ class DamagedGoodsController extends Controller
                 'qty_received' => $row->qty,
                 'qty_good' => 0,
                 'qty_damaged' => $row->qty,
+                'qty_missing' => 0,
                 'note' => $row->note ?? null,
             ]);
 

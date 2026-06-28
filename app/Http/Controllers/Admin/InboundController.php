@@ -9,6 +9,7 @@ use App\Models\Item;
 use App\Models\ItemUnit;
 use App\Models\DamagedGood;
 use App\Models\DamagedGoodItem;
+use App\Models\Resi;
 use App\Models\StockMutation;
 use App\Models\Warehouse;
 use App\Exports\InboundReceiptsTemplateExport;
@@ -111,6 +112,61 @@ class InboundController extends Controller
         return $this->finalizeReturn($id);
     }
 
+    public function returnsLookupResi(Request $request)
+    {
+        $validated = $request->validate([
+            'no_resi' => ['required', 'string', 'max:100'],
+        ]);
+
+        $noResi = trim((string) $validated['no_resi']);
+        $resi = Resi::query()
+            ->with('details')
+            ->where('no_resi', $noResi)
+            ->orWhere('id_pesanan', $noResi)
+            ->first();
+
+        if (!$resi) {
+            return response()->json([
+                'found' => false,
+                'message' => 'Resi tidak ditemukan pada database import. Silakan input SKU dan qty secara manual.',
+                'items' => [],
+            ], 404);
+        }
+
+        $details = $resi->details
+            ->groupBy(fn ($row) => trim((string) $row->sku))
+            ->map(fn ($rows, $sku) => [
+                'sku' => $sku,
+                'qty' => (int) $rows->sum('qty'),
+            ])
+            ->values();
+
+        $itemMap = Item::query()
+            ->whereIn('sku', $details->pluck('sku')->filter()->all())
+            ->get(['id', 'sku', 'name'])
+            ->keyBy('sku');
+
+        return response()->json([
+            'found' => true,
+            'resi' => [
+                'id' => $resi->id,
+                'id_pesanan' => $resi->id_pesanan,
+                'no_resi' => $resi->no_resi,
+                'status' => $resi->status ?? 'active',
+            ],
+            'items' => $details->map(function ($row) use ($itemMap) {
+                $item = $itemMap->get($row['sku']);
+                return [
+                    'sku' => $row['sku'],
+                    'qty' => $row['qty'],
+                    'item_id' => $item?->id,
+                    'item_name' => $item?->name,
+                    'found_item' => (bool) $item,
+                ];
+            })->values(),
+        ]);
+    }
+
     public function returnsTemplate()
     {
         return Excel::download(
@@ -181,6 +237,7 @@ class InboundController extends Controller
                         'qty_received' => $row['qty_received'] ?? $row['qty'],
                         'qty_good' => $row['qty_good'] ?? 0,
                         'qty_damaged' => $row['qty_damaged'] ?? ($row['qty_received'] ?? $row['qty']),
+                        'qty_missing' => $row['qty_missing'] ?? 0,
                         'note' => $row['note'] ?? null,
                     ]);
                     $createdItems++;
@@ -266,6 +323,7 @@ class InboundController extends Controller
                         'qty_received' => $qty,
                         'qty_good' => $qty,
                         'qty_damaged' => 0,
+                        'qty_missing' => 0,
                         'note' => $row['note'] ?? null,
                     ]);
                     $createdItems++;
@@ -317,6 +375,7 @@ class InboundController extends Controller
                 'detail' => route('admin.inbound.returns.detail', ':id'),
                 'approve' => route('admin.inbound.returns.approve', ':id'),
                 'finalize' => route('admin.inbound.returns.finalize', ':id'),
+                'lookupResi' => route('admin.inbound.returns.lookup-resi'),
             ],
         ];
 
@@ -421,11 +480,13 @@ class InboundController extends Controller
                 }
                 if (($row->type ?? '') === 'return') {
                     return sprintf(
-                        '%s (terima %d, bagus %d, rusak %d)',
+                        '%s (resi %d, terima %d, bagus %d, rusak %d, hilang %d)',
                         $sku,
+                        (int) ($it->qty ?? 0),
                         (int) ($it->qty_received ?? $it->qty ?? 0),
                         (int) ($it->qty_good ?? 0),
-                        (int) ($it->qty_damaged ?? 0)
+                        (int) ($it->qty_damaged ?? 0),
+                        (int) ($it->qty_missing ?? 0)
                     );
                 }
 
@@ -494,6 +555,7 @@ class InboundController extends Controller
                     'qty_received' => $item->qty_received ?: $item->qty,
                     'qty_good' => $item->qty_good ?? 0,
                     'qty_damaged' => $item->qty_damaged ?? 0,
+                    'qty_missing' => $item->qty_missing ?? 0,
                     'note' => $item->note ?? '',
                 ];
             })->values(),
@@ -558,6 +620,7 @@ class InboundController extends Controller
                     'qty_received' => $row['qty_received'] ?? $row['qty'],
                     'qty_good' => $row['qty_good'] ?? $row['qty'],
                     'qty_damaged' => $row['qty_damaged'] ?? 0,
+                    'qty_missing' => $row['qty_missing'] ?? 0,
                     'note' => $row['note'] ?? null,
                 ]);
 
@@ -618,6 +681,7 @@ class InboundController extends Controller
                     'qty_received' => $row['qty_received'] ?? $row['qty'],
                     'qty_good' => $row['qty_good'] ?? $row['qty'],
                     'qty_damaged' => $row['qty_damaged'] ?? 0,
+                    'qty_missing' => $row['qty_missing'] ?? 0,
                     'note' => $row['note'] ?? null,
                 ]);
 
@@ -800,10 +864,11 @@ class InboundController extends Controller
             $received = (int) ($row->qty_received ?? $row->qty ?? 0);
             $good = (int) ($row->qty_good ?? 0);
             $damaged = (int) ($row->qty_damaged ?? 0);
-            if ($received <= 0 || $good + $damaged !== $received) {
+            $missing = (int) ($row->qty_missing ?? 0);
+            if ($received <= 0 || $good + $damaged + $missing !== $received) {
                 $sku = $row->item?->sku ?? 'item '.$row->item_id;
                 throw ValidationException::withMessages([
-                    'items' => "Qty OK + qty reject harus sama dengan qty diterima untuk {$sku}.",
+                    'items' => "Qty bagus + qty rusak + qty hilang harus sama dengan qty diterima untuk {$sku}.",
                 ]);
             }
         }
@@ -910,9 +975,11 @@ class InboundController extends Controller
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
         ];
         if ($isReturn) {
+            $rules['items.*.qty'] = ['required', 'integer', 'min:1'];
             $rules['items.*.qty_received'] = ['required', 'integer', 'min:1'];
             $rules['items.*.qty_good'] = ['required', 'integer', 'min:0'];
             $rules['items.*.qty_damaged'] = ['required', 'integer', 'min:0'];
+            $rules['items.*.qty_missing'] = ['required', 'integer', 'min:0'];
         } else {
             $rules['items.*.qty'] = ['required', 'integer', 'min:1'];
         }
@@ -927,17 +994,20 @@ class InboundController extends Controller
             ->map(function ($row) use ($isReturn) {
                 if ($isReturn) {
                     $received = (int) ($row['qty_received'] ?? 0);
+                    $resiQty = (int) ($row['qty'] ?? $received);
                     $good = (int) ($row['qty_good'] ?? 0);
                     $damaged = (int) ($row['qty_damaged'] ?? 0);
+                    $missing = (int) ($row['qty_missing'] ?? 0);
                     return [
                         'item_id' => (int) $row['item_id'],
                         'unit_id' => null,
-                        'qty_input' => $received,
+                        'qty_input' => $resiQty,
                         'conversion_qty' => 1,
-                        'qty' => $received,
+                        'qty' => $resiQty,
                         'qty_received' => $received,
                         'qty_good' => $good,
                         'qty_damaged' => $damaged,
+                        'qty_missing' => $missing,
                         'note' => $row['note'] ?? null,
                     ];
                 }
@@ -966,6 +1036,7 @@ class InboundController extends Controller
                     'qty_received' => $qty,
                     'qty_good' => $qty,
                     'qty_damaged' => 0,
+                    'qty_missing' => 0,
                     'note' => $row['note'] ?? null,
                 ];
             })->values();
@@ -981,8 +1052,8 @@ class InboundController extends Controller
                 if ((int) $row['qty_received'] <= 0) {
                     throw ValidationException::withMessages(["items.{$idx}.qty_received" => 'Qty diterima wajib lebih dari 0']);
                 }
-                if ((int) $row['qty_good'] + (int) $row['qty_damaged'] !== (int) $row['qty_received']) {
-                    throw ValidationException::withMessages(["items.{$idx}.qty_received" => 'Qty bagus + qty rusak harus sama dengan qty diterima']);
+                if ((int) $row['qty_good'] + (int) $row['qty_damaged'] + (int) $row['qty_missing'] !== (int) $row['qty_received']) {
+                    throw ValidationException::withMessages(["items.{$idx}.qty_received" => 'Qty bagus + qty rusak + qty hilang harus sama dengan qty diterima']);
                 }
                 StockService::assertWarehouseQuantity(
                     $validated['warehouse_id'],
@@ -1037,6 +1108,7 @@ class InboundController extends Controller
             $qtyReceived = $rows->sum('qty_received');
             $qtyGood = $rows->sum('qty_good');
             $qtyDamaged = $rows->sum('qty_damaged');
+            $qtyMissing = $rows->sum('qty_missing');
             $note = $rows->pluck('note')->first(fn ($n) => $n !== null && $n !== '') ?? null;
             return [
                 'item_id' => (int) $itemId,
@@ -1047,6 +1119,7 @@ class InboundController extends Controller
                 'qty_received' => $qtyReceived,
                 'qty_good' => $qtyGood,
                 'qty_damaged' => $qtyDamaged,
+                'qty_missing' => $qtyMissing,
                 'note' => $note,
             ];
         })->values()->all();

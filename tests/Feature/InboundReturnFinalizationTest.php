@@ -33,9 +33,11 @@ class InboundReturnFinalizationTest extends TestCase
                 'items' => [
                     [
                         'item_id' => $item->id,
+                        'qty' => 5,
                         'qty_received' => 5,
                         'qty_good' => 2,
                         'qty_damaged' => 2,
+                        'qty_missing' => 0,
                     ],
                 ],
             ])
@@ -64,9 +66,11 @@ class InboundReturnFinalizationTest extends TestCase
                 'items' => [
                     [
                         'item_id' => $item->id,
+                        'qty' => 5,
                         'qty_received' => 5,
                         'qty_good' => 3,
                         'qty_damaged' => 2,
+                        'qty_missing' => 0,
                     ],
                 ],
             ])

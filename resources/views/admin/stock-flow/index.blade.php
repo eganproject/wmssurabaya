@@ -65,12 +65,12 @@
                 <button type="button" class="btn btn-light" id="filter_reset">Reset</button>
             </div>
             @if($canImport)
-                <button type="button" class="btn btn-light-primary me-3" id="btn_import_flow" data-bs-toggle="modal" data-bs-target="#modal_import_flow">
+                <button type="button" class="btn btn-light-primary me-3" id="btn_import_flow">
                     Import Excel
                 </button>
             @endif
             @if($canCreateDefault)
-                <button type="button" class="btn btn-primary" id="btn_open_create_flow" data-bs-toggle="modal" data-bs-target="#modal_stock_flow">
+                <button type="button" class="btn btn-primary" id="btn_open_create_flow">
                     Tambah
                 </button>
             @endif
@@ -100,21 +100,25 @@
     </div>
 </div>
 
-<div class="modal fade" id="modal_stock_flow" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered mw-1100px">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="fw-bolder" id="flow_modal_title">Tambah</h2>
-                <div class="btn btn-icon btn-sm btn-active-icon-primary" data-bs-dismiss="modal">
-                    <span class="svg-icon svg-icon-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                            <rect opacity="0.5" x="6" y="17.3137" width="16" height="2" rx="1" transform="rotate(-45 6 17.3137)" fill="black" />
-                            <rect x="7.41422" y="6" width="16" height="2" rx="1" transform="rotate(45 7.41422 6)" fill="black" />
-                        </svg>
-                    </span>
+<div class="card mt-8 d-none" id="stock_flow_form_panel">
+    <div class="card-header border-0 pt-6">
+        <div class="card-title">
+            <div>
+                <h2 class="fw-bolder mb-1" id="flow_modal_title">Tambah</h2>
+                <div class="text-muted fs-7">
+                    @if(($typeDefault ?? '') === 'return' && isset($routeMap['receipt']))
+                        Isi nomor resi untuk menarik SKU dari import resi, atau tambah item manual bila resi tidak ditemukan.
+                    @else
+                        Lengkapi item dan qty untuk transaksi ini.
+                    @endif
                 </div>
             </div>
-            <div class="modal-body scroll-y mx-5 mx-xl-15 my-7">
+        </div>
+        <div class="card-toolbar">
+            <button type="button" class="btn btn-light" id="btn_close_flow_form">Tutup</button>
+        </div>
+    </div>
+    <div class="card-body py-6">
                 <form class="form" id="stock_flow_form">
                     @csrf
                     @if($locksToSmallWarehouse ?? false)
@@ -140,6 +144,24 @@
                             <div class="form-text" id="flow_warehouse_unit_info"></div>
                         </div>
                     @endif
+                    @if(($typeDefault ?? '') === 'return' && isset($routeMap['receipt']))
+                        <div class="border border-dashed rounded p-5 mb-7 bg-light">
+                            <div class="row g-3 align-items-end">
+                                <div class="col-lg-5">
+                                    <label class="fs-6 fw-bold form-label mb-2">Nomor Resi / ID Pesanan</label>
+                                    <input type="text" class="form-control form-control-solid" id="flow_resi_lookup" placeholder="Scan atau ketik nomor resi" autocomplete="off" />
+                                    <div class="form-text">Jika cocok dengan data import, SKU dan qty resi akan diisi otomatis.</div>
+                                </div>
+                                <div class="col-lg-3">
+                                    <button type="button" class="btn btn-light-primary w-100" id="btn_lookup_resi">Ambil Data Resi</button>
+                                </div>
+                                <div class="col-lg-4">
+                                    <div class="fw-bold text-gray-800" id="flow_resi_status">Belum ada resi dipilih.</div>
+                                    <div class="text-muted fs-8">Nomor ini akan disimpan sebagai Ref No transaksi.</div>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
                     <div id="flow_items_container"></div>
                     <div class="mb-7">
                         <button type="button" class="btn btn-light" id="btn_add_flow_item">Tambah Item</button>
@@ -150,7 +172,7 @@
                         <div class="invalid-feedback" id="error_transacted_at"></div>
                     </div>
                     <div class="fv-row mb-7">
-                        <label class="fs-6 fw-bold form-label mb-2">Ref No</label>
+                        <label class="fs-6 fw-bold form-label mb-2">{{ (($typeDefault ?? '') === 'return' && isset($routeMap['receipt'])) ? 'Nomor Resi / Ref No' : 'Ref No' }}</label>
                         <input type="text" class="form-control form-control-solid" name="ref_no" id="flow_ref_no" />
                         <div class="invalid-feedback" id="error_ref_no"></div>
                     </div>
@@ -160,7 +182,7 @@
                         <div class="invalid-feedback" id="error_note"></div>
                     </div>
                     <div class="text-end pt-3">
-                        <button type="button" class="btn btn-light me-3" data-bs-dismiss="modal">Batal</button>
+                        <button type="button" class="btn btn-light me-3" id="btn_cancel_flow_form">Batal</button>
                         <button type="submit" class="btn btn-primary">
                             <span class="indicator-label">Simpan</span>
                             <span class="indicator-progress">Please wait...
@@ -168,31 +190,24 @@
                         </button>
                     </div>
                 </form>
-            </div>
-        </div>
     </div>
 </div>
 
 @if($canImport)
-    <div class="modal fade" id="modal_import_flow" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered mw-650px">
-            <div class="modal-content">
-                <div class="modal-header">
+    <div class="card mt-8 d-none" id="modal_import_flow">
+        <div class="card-header border-0 pt-6">
+            <div class="card-title">
                     <h2 class="fw-bolder">{{ $importTitle ?? 'Import Data' }}</h2>
-                    <div class="btn btn-icon btn-sm btn-active-icon-primary" data-bs-dismiss="modal">
-                        <span class="svg-icon svg-icon-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                <rect opacity="0.5" x="6" y="17.3137" width="16" height="2" rx="1" transform="rotate(-45 6 17.3137)" fill="black" />
-                                <rect x="7.41422" y="6" width="16" height="2" rx="1" transform="rotate(45 7.41422 6)" fill="black" />
-                            </svg>
-                        </span>
-                    </div>
-                </div>
-                <div class="modal-body scroll-y mx-5 mx-xl-15 my-7">
+            </div>
+            <div class="card-toolbar">
+                <button type="button" class="btn btn-light" id="btn_close_import_flow">Tutup</button>
+            </div>
+        </div>
+        <div class="card-body py-6">
                     <div class="mb-6">
                         <div class="text-muted fs-7">
                             @if(($typeDefault ?? '') === 'return' && isset($routeMap['receipt']))
-                                Header minimal: <strong>sku</strong>, <strong>qty_diterima</strong>, <strong>qty_bagus</strong>, <strong>qty_rusak</strong>.<br>
+                                Header minimal: <strong>sku</strong>, <strong>qty_diterima</strong>, <strong>qty_bagus</strong>, <strong>qty_rusak</strong>, <strong>qty_hilang</strong>.<br>
                             @else
                                 Header minimal: <strong>sku</strong>, <strong>qty</strong>.<br>
                             @endif
@@ -221,11 +236,9 @@
                         <div class="invalid-feedback d-block" id="error_import_flow_file"></div>
                     </div>
                     <div class="text-end">
-                        <button type="button" class="btn btn-light me-3" data-bs-dismiss="modal">Batal</button>
+                        <button type="button" class="btn btn-light me-3" id="btn_cancel_import_flow">Batal</button>
                         <button type="button" class="btn btn-primary" id="btn_import_flow_submit">Import</button>
                     </div>
-                </div>
-            </div>
         </div>
     </div>
 @endif
@@ -273,11 +286,15 @@
         const tableEl = $('#stock_flow_table');
         const searchInput = document.querySelector('[data-kt-filter="search"]');
         const form = document.getElementById('stock_flow_form');
-        const modalEl = document.getElementById('modal_stock_flow');
-        const modal = modalEl ? new bootstrap.Modal(modalEl) : null;
+        const formPanel = document.getElementById('stock_flow_form_panel');
         const itemsContainer = document.getElementById('flow_items_container');
         const addItemBtn = document.getElementById('btn_add_flow_item');
         const openCreateBtn = document.getElementById('btn_open_create_flow');
+        const closeFormBtn = document.getElementById('btn_close_flow_form');
+        const cancelFormBtn = document.getElementById('btn_cancel_flow_form');
+        const lookupResiInput = document.getElementById('flow_resi_lookup');
+        const lookupResiBtn = document.getElementById('btn_lookup_resi');
+        const lookupResiStatus = document.getElementById('flow_resi_status');
         const modalTitle = document.getElementById('flow_modal_title');
         const dateFromEl = document.getElementById('filter_date_from');
         const dateToEl = document.getElementById('filter_date_to');
@@ -287,8 +304,9 @@
         const filterApplyBtn = document.getElementById('filter_apply');
         const filterResetBtn = document.getElementById('filter_reset');
         const importBtn = document.getElementById('btn_import_flow');
-        const importModalEl = document.getElementById('modal_import_flow');
-        const importModal = importModalEl ? new bootstrap.Modal(importModalEl) : null;
+        const importPanel = document.getElementById('modal_import_flow');
+        const closeImportBtn = document.getElementById('btn_close_import_flow');
+        const cancelImportBtn = document.getElementById('btn_cancel_import_flow');
         const importInput = document.getElementById('import_flow_file');
         const importError = document.getElementById('error_import_flow_file');
         const importSubmit = document.getElementById('btn_import_flow_submit');
@@ -337,6 +355,7 @@
             itemsContainer?.querySelectorAll('[data-error-for]')?.forEach(el => { el.textContent = ''; });
             itemsContainer?.querySelectorAll('.flow-item-select.is-invalid')?.forEach(el => { el.classList.remove('is-invalid'); });
             itemsContainer?.querySelectorAll('.flow-unit-select.is-invalid')?.forEach(el => { el.classList.remove('is-invalid'); });
+            itemsContainer?.querySelectorAll('input.is-invalid')?.forEach(el => { el.classList.remove('is-invalid'); });
         };
 
         const validateUniqueItems = () => {
@@ -372,6 +391,24 @@
             return !hasDuplicate;
         };
 
+        const validateReturnBalances = () => {
+            if (!isInboundReturnFlow || !itemsContainer) return true;
+            let valid = true;
+            itemsContainer.querySelectorAll('.flow-item-row').forEach((row) => {
+                const received = toQty(row.querySelector('input[data-name="qty_received"]')?.value);
+                const good = toQty(row.querySelector('input[data-name="qty_good"]')?.value);
+                const damaged = toQty(row.querySelector('input[data-name="qty_damaged"]')?.value);
+                const missing = toQty(row.querySelector('input[data-name="qty_missing"]')?.value);
+                syncReturnQtyRow(row, 'qty_missing');
+                if (received <= 0 || good + damaged + missing !== received) {
+                    valid = false;
+                    const errEl = row.querySelector('[data-error-for="qty_received"]');
+                    if (errEl) errEl.textContent = 'Qty bagus + rusak + hilang harus sama dengan qty diterima';
+                }
+            });
+            return valid;
+        };
+
         const toQty = (value) => {
             const qty = parseInt(value, 10);
             return Number.isFinite(qty) && qty > 0 ? qty : 0;
@@ -379,25 +416,52 @@
 
         const clampQty = (value, max) => Math.min(Math.max(toQty(value), 0), Math.max(toQty(max), 0));
 
+        const showFormPanel = () => {
+            formPanel?.classList.remove('d-none');
+            formPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
+        const hideFormPanel = () => {
+            formPanel?.classList.add('d-none');
+        };
+
         const syncReturnQtyRow = (row, changedField) => {
             if (!isInboundReturnFlow || !row) return;
 
             const receivedEl = row.querySelector('input[data-name="qty_received"]');
             const goodEl = row.querySelector('input[data-name="qty_good"]');
             const damagedEl = row.querySelector('input[data-name="qty_damaged"]');
-            if (!receivedEl || !goodEl || !damagedEl) return;
+            const missingEl = row.querySelector('input[data-name="qty_missing"]');
+            const balanceEl = row.querySelector('.return-balance-info');
+            if (!receivedEl || !goodEl || !damagedEl || !missingEl) return;
 
             const received = toQty(receivedEl.value);
-            if (changedField === 'qty_damaged') {
-                const damaged = clampQty(damagedEl.value, received);
+            if (changedField === 'qty_received') {
+                const good = clampQty(goodEl.value || received, received);
+                const damaged = clampQty(damagedEl.value, received - good);
+                goodEl.value = good;
                 damagedEl.value = damaged;
-                goodEl.value = Math.max(0, received - damaged);
-                return;
+                missingEl.value = Math.max(0, received - good - damaged);
+            } else if (changedField === 'qty_good' || changedField === 'qty_damaged') {
+                const good = clampQty(goodEl.value, received);
+                const damaged = clampQty(damagedEl.value, Math.max(0, received - good));
+                goodEl.value = good;
+                damagedEl.value = damaged;
+                missingEl.value = Math.max(0, received - good - damaged);
+            } else if (changedField === 'qty_missing') {
+                const missing = clampQty(missingEl.value, received);
+                missingEl.value = missing;
             }
 
-            const good = clampQty(goodEl.value, received);
-            goodEl.value = good;
-            damagedEl.value = Math.max(0, received - good);
+            const total = toQty(goodEl.value) + toQty(damagedEl.value) + toQty(missingEl.value);
+            const balanced = received > 0 && total === received;
+            [receivedEl, goodEl, damagedEl, missingEl].forEach(el => el.classList.toggle('is-invalid', !balanced));
+            if (balanceEl) {
+                balanceEl.textContent = balanced
+                    ? `Balance: ${total.toLocaleString('id-ID')} / ${received.toLocaleString('id-ID')}`
+                    : `Belum balance: ${total.toLocaleString('id-ID')} / ${received.toLocaleString('id-ID')}`;
+                balanceEl.className = `form-text fs-8 return-balance-info ${balanced ? 'text-success' : 'text-danger'}`;
+            }
         };
 
         const initSelect2 = (selectEl) => {
@@ -496,9 +560,9 @@
 
         const createItemRow = (data = {}) => {
             const row = document.createElement('div');
-            row.className = 'row g-3 align-items-end mb-4 flow-item-row';
+            row.className = 'row g-3 align-items-end mb-4 flow-item-row border-bottom border-dashed pb-4';
             row.innerHTML = isInboundReturnFlow ? `
-                <div class="col-md-3">
+                <div class="col-lg-3 col-md-6">
                     <label class="required fs-6 fw-bold form-label mb-2">Item</label>
                     <select class="form-select form-select-solid flow-item-select" data-name="item_id" required>
                         <option value=""></option>
@@ -506,26 +570,37 @@
                     </select>
                     <div class="invalid-feedback" data-error-for="item_id"></div>
                 </div>
-                <div class="col-md-2">
+                <div class="col-lg-1 col-md-6">
+                    <label class="required fs-6 fw-bold form-label mb-2">Qty Resi</label>
+                    <input type="number" min="1" class="form-control form-control-solid" data-name="qty" required />
+                    <div class="invalid-feedback" data-error-for="qty"></div>
+                </div>
+                <div class="col-lg-2 col-md-6">
                     <label class="required fs-6 fw-bold form-label mb-2">Qty Diterima</label>
                     <input type="number" min="1" class="form-control form-control-solid" data-name="qty_received" required />
+                    <div class="form-text fs-8 return-balance-info text-muted">Isi qty diterima.</div>
                     <div class="invalid-feedback" data-error-for="qty_received"></div>
                 </div>
-                <div class="col-md-2">
+                <div class="col-lg-1 col-md-4">
                     <label class="required fs-6 fw-bold form-label mb-2">Qty Bagus</label>
                     <input type="number" min="0" class="form-control form-control-solid" data-name="qty_good" required />
                     <div class="invalid-feedback" data-error-for="qty_good"></div>
                 </div>
-                <div class="col-md-2">
+                <div class="col-lg-1 col-md-4">
                     <label class="required fs-6 fw-bold form-label mb-2">Qty Rusak</label>
                     <input type="number" min="0" class="form-control form-control-solid" data-name="qty_damaged" required />
                     <div class="invalid-feedback" data-error-for="qty_damaged"></div>
                 </div>
-                <div class="col-md-1">
+                <div class="col-lg-1 col-md-4">
+                    <label class="required fs-6 fw-bold form-label mb-2">Hilang</label>
+                    <input type="number" min="0" class="form-control form-control-solid" data-name="qty_missing" required />
+                    <div class="invalid-feedback" data-error-for="qty_missing"></div>
+                </div>
+                <div class="col-lg-2 col-md-8">
                     <label class="fs-6 fw-bold form-label mb-2">Catatan</label>
                     <input type="text" class="form-control form-control-solid" data-name="note" />
                 </div>
-                <div class="col-md-1 text-end">
+                <div class="col-lg-1 col-md-4 text-end">
                     <button type="button" class="btn btn-light btn-sm btn-remove-item">Hapus</button>
                 </div>
             ` : (isOutboundReturnFlow ? `
@@ -605,7 +680,9 @@
             const qtyGoodEl = row.querySelector('input[data-name="qty_good"]');
             if (qtyGoodEl) qtyGoodEl.value = data.qty_good ?? 0;
             const qtyDamagedEl = row.querySelector('input[data-name="qty_damaged"]');
-            if (qtyDamagedEl) qtyDamagedEl.value = data.qty_damaged ?? data.qty ?? 0;
+            if (qtyDamagedEl) qtyDamagedEl.value = data.qty_damaged ?? 0;
+            const qtyMissingEl = row.querySelector('input[data-name="qty_missing"]');
+            if (qtyMissingEl) qtyMissingEl.value = data.qty_missing ?? 0;
             const noteEl = row.querySelector('input[data-name="note"]');
             if (noteEl) noteEl.value = data.note ?? '';
             const stockSourceEl = row.querySelector('select[data-name="stock_source"]');
@@ -613,6 +690,9 @@
 
             initSelect2(selectEl);
             renumberRows();
+            if (data.qty_received || data.qty || data.qty_good || data.qty_damaged || data.qty_missing) {
+                syncReturnQtyRow(row, 'qty_received');
+            }
             validateUniqueItems();
         };
 
@@ -621,6 +701,8 @@
             form.dataset.editId = '';
             form.dataset.flowType = defaultTypeFilter || '';
             if (modalTitle) modalTitle.textContent = 'Tambah';
+            if (lookupResiInput) lookupResiInput.value = '';
+            if (lookupResiStatus) lookupResiStatus.textContent = 'Belum ada resi dipilih.';
             const nowJkt = getJakartaNow();
             if (fpTransacted) {
                 fpTransacted.setDate(nowJkt, true, 'Y-m-d H:i');
@@ -631,9 +713,78 @@
             createItemRow();
             clearErrors();
             validateUniqueItems();
+            showFormPanel();
         };
 
+        const applyResiItems = (payload) => {
+            const rows = Array.isArray(payload?.items) ? payload.items : [];
+            const noResi = payload?.resi?.no_resi || payload?.resi?.id_pesanan || lookupResiInput?.value || '';
+            document.getElementById('flow_ref_no').value = noResi;
+            if (lookupResiStatus) {
+                lookupResiStatus.textContent = rows.length
+                    ? `${rows.length} SKU ditemukan dari database import.`
+                    : 'Resi ditemukan, tetapi belum ada detail SKU.';
+            }
+            const unmatched = rows.filter(row => !row.found_item);
+            if (unmatched.length && typeof Swal !== 'undefined') {
+                Swal.fire('Perlu input manual', `SKU belum ada di master item: ${unmatched.map(row => row.sku).join(', ')}`, 'warning');
+            }
+            const matched = rows.filter(row => row.found_item && row.item_id);
+            if (!matched.length) {
+                return;
+            }
+            itemsContainer.innerHTML = '';
+            matched.forEach(row => createItemRow({
+                item_id: row.item_id,
+                qty: row.qty,
+                qty_received: row.qty,
+                qty_good: row.qty,
+                qty_damaged: 0,
+                qty_missing: 0,
+                note: row.sku ? `Dari resi ${noResi}` : '',
+            }));
+            clearErrors();
+            validateUniqueItems();
+        };
+
+        lookupResiBtn?.addEventListener('click', async () => {
+            const code = (lookupResiInput?.value || '').trim();
+            if (!code) {
+                if (lookupResiStatus) lookupResiStatus.textContent = 'Masukkan nomor resi terlebih dahulu.';
+                return;
+            }
+            const lookupUrl = resolveRoute('return', 'lookupResi');
+            if (!lookupUrl) return;
+            if (lookupResiStatus) lookupResiStatus.textContent = `Mencari ${code}...`;
+            try {
+                const res = await fetch(`${lookupUrl}?no_resi=${encodeURIComponent(code)}`, {
+                    headers: { 'Accept': 'application/json' },
+                });
+                const json = await res.json();
+                if (!res.ok) {
+                    document.getElementById('flow_ref_no').value = code;
+                    if (lookupResiStatus) lookupResiStatus.textContent = json.message || 'Resi tidak ditemukan. Input manual tetap bisa dilakukan.';
+                    if (itemsContainer.querySelectorAll('.flow-item-row').length === 0) {
+                        createItemRow();
+                    }
+                    return;
+                }
+                applyResiItems(json);
+            } catch (err) {
+                if (lookupResiStatus) lookupResiStatus.textContent = 'Gagal lookup resi. Input manual tetap bisa dilakukan.';
+            }
+        });
+
+        lookupResiInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                lookupResiBtn?.click();
+            }
+        });
+
         addItemBtn?.addEventListener('click', () => createItemRow());
+        closeFormBtn?.addEventListener('click', hideFormPanel);
+        cancelFormBtn?.addEventListener('click', hideFormPanel);
         if (!canCreateDefault && openCreateBtn) {
             openCreateBtn.remove();
         } else {
@@ -656,7 +807,7 @@
             if (e.target.matches('input[data-name="qty"]')) {
                 updateQtyUnitInfo(e.target.closest('.flow-item-row'));
             }
-            if (e.target.matches('input[data-name="qty_received"], input[data-name="qty_good"], input[data-name="qty_damaged"]')) {
+            if (e.target.matches('input[data-name="qty_received"], input[data-name="qty_good"], input[data-name="qty_damaged"], input[data-name="qty_missing"]')) {
                 syncReturnQtyRow(e.target.closest('.flow-item-row'), e.target.getAttribute('data-name'));
             }
         });
@@ -788,7 +939,11 @@
         importBtn?.addEventListener('click', () => {
             if (importInput) importInput.value = '';
             if (importError) importError.textContent = '';
+            importPanel?.classList.remove('d-none');
+            importPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
+        closeImportBtn?.addEventListener('click', () => importPanel?.classList.add('d-none'));
+        cancelImportBtn?.addEventListener('click', () => importPanel?.classList.add('d-none'));
 
         importSubmit?.addEventListener('click', async () => {
             if (!importUrl) return;
@@ -830,7 +985,7 @@
                     Swal.fire('Berhasil', json.message || 'Import berhasil', 'success');
                 }
                 if (importInput) importInput.value = '';
-                importModal?.hide();
+                importPanel?.classList.add('d-none');
                 reloadTable();
             } catch (err) {
                 if (typeof Swal !== 'undefined') Swal.fire('Error', 'Gagal import', 'error');
@@ -858,6 +1013,8 @@
                         : (json.warehouse_id || warehouseEl.value);
                 }
                 document.getElementById('flow_ref_no').value = json.ref_no || '';
+                if (lookupResiInput) lookupResiInput.value = json.ref_no || '';
+                if (lookupResiStatus) lookupResiStatus.textContent = json.ref_no ? `Ref No: ${json.ref_no}` : 'Mode edit manual.';
                 document.getElementById('flow_note').value = json.note || '';
                 if (fpTransacted) {
                     fpTransacted.setDate(json.transacted_at || null, true, 'Y-m-d\\TH:i');
@@ -872,7 +1029,7 @@
                 }
                 clearErrors();
                 validateUniqueItems();
-                modal?.show();
+                showFormPanel();
             } catch (err) {
                 console.error(err);
                 if (typeof Swal !== 'undefined') Swal.fire('Error', 'Gagal memuat data', 'error');
@@ -1026,6 +1183,10 @@
                 if (typeof Swal !== 'undefined') Swal.fire('Error', 'Item tidak boleh duplikat', 'error');
                 return;
             }
+            if (!validateReturnBalances()) {
+                if (typeof Swal !== 'undefined') Swal.fire('Error', 'Qty bagus + rusak + hilang harus sama dengan qty diterima', 'error');
+                return;
+            }
             const isEdit = !!form.dataset.editId;
             const flowType = form.dataset.flowType || defaultTypeFilter || '';
             const url = isEdit
@@ -1081,7 +1242,7 @@
                     return;
                 }
                 if (typeof Swal !== 'undefined') Swal.fire('Berhasil', json.message || 'Berhasil', 'success');
-                modal?.hide();
+                hideFormPanel();
                 reloadTable();
             } catch (err) {
                 console.error(err);

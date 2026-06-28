@@ -19,6 +19,7 @@ class InboundItem extends Model
         'qty_received',
         'qty_good',
         'qty_damaged',
+        'qty_missing',
         'note',
     ];
 
