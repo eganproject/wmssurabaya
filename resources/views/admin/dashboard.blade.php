@@ -488,6 +488,156 @@
         box-shadow: inset 0 -3px 0 var(--dash-blue);
     }
 
+    /* ---------- Status control ---------- */
+    .status-control-hero {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 22px;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    }
+    .status-control-title {
+        font-size: 18px;
+        font-weight: 900;
+        color: #0f172a;
+    }
+    .status-control-sub {
+        color: #64748b;
+        font-size: 12.5px;
+        margin-top: 3px;
+    }
+    .status-control-total {
+        min-width: 180px;
+        text-align: right;
+    }
+    .status-control-total-value {
+        font-size: 34px;
+        line-height: 1;
+        font-weight: 900;
+        color: var(--dash-blue);
+    }
+    .status-control-total-label {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 700;
+        margin-top: 5px;
+    }
+    .status-section {
+        margin-top: 20px;
+    }
+    .status-section-head {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+    .status-section-title {
+        color: #0f172a;
+        font-size: 15px;
+        font-weight: 900;
+    }
+    .status-section-sub {
+        color: #94a3b8;
+        font-size: 12px;
+        margin-top: 2px;
+    }
+    .status-control-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 14px;
+    }
+    .status-control-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        height: 100%;
+        padding: 16px;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #fff;
+        color: inherit;
+        transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+    }
+    .status-control-card:hover {
+        transform: translateY(-2px);
+        border-color: #cbd5e1;
+        box-shadow: 0 16px 34px rgba(15, 23, 42, .08);
+        color: inherit;
+    }
+    .status-control-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 42px;
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        background: rgba(37, 99, 235, .1);
+        color: var(--dash-blue);
+    }
+    .status-control-card[data-tone="amber"] .status-control-icon {
+        background: rgba(217, 119, 6, .12);
+        color: var(--dash-amber);
+    }
+    .status-control-card[data-tone="red"] .status-control-icon {
+        background: rgba(220, 38, 38, .1);
+        color: var(--dash-red);
+    }
+    .status-control-card[data-tone="green"] .status-control-icon {
+        background: rgba(5, 150, 105, .12);
+        color: var(--dash-green);
+    }
+    .status-control-body {
+        min-width: 0;
+        flex: 1;
+    }
+    .status-control-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+    }
+    .status-control-page {
+        color: #0f172a;
+        font-weight: 900;
+        line-height: 1.25;
+    }
+    .status-control-count {
+        color: #0f172a;
+        font-size: 24px;
+        font-weight: 900;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+    }
+    .status-control-label {
+        display: inline-flex;
+        margin-top: 8px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #475569;
+        font-size: 11px;
+        font-weight: 800;
+    }
+    .status-control-desc {
+        color: #64748b;
+        font-size: 12px;
+        line-height: 1.45;
+        margin-top: 8px;
+    }
+    .status-control-action {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 12px;
+        color: var(--dash-blue);
+        font-size: 12px;
+        font-weight: 900;
+    }
+
     /* ---------- Inventory widgets ---------- */
     .dash-table-card {
         border: 1px solid #e9edf3;
@@ -601,14 +751,39 @@
         .inventory-filter-link {
             justify-content: center;
         }
+        .status-control-hero {
+            align-items: flex-start;
+            flex-direction: column;
+            padding: 18px;
+        }
+        .status-control-total {
+            min-width: 0;
+            width: 100%;
+            text-align: left;
+        }
+        .status-section-head {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+        .status-control-row {
+            align-items: flex-start;
+            flex-direction: column-reverse;
+        }
+        .status-control-count {
+            font-size: 28px;
+        }
     }
 </style>
 
 <div class="dash-wrap">
     @php
-        $activeDashboardTab = request('dashboard_tab') === 'inventori' || request()->has('inventory_warehouse_id')
-            ? 'inventori'
-            : 'operasional';
+        $requestedDashboardTab = request('dashboard_tab');
+        $activeDashboardTab = match (true) {
+            $requestedDashboardTab === 'kontrol-status' => 'kontrol-status',
+            $requestedDashboardTab === 'aktivitas-stok' => 'aktivitas-stok',
+            $requestedDashboardTab === 'inventori' || request()->has('inventory_warehouse_id') => 'inventori',
+            default => 'operasional',
+        };
     @endphp
     <ul class="nav dash-tabs" id="dashboard_tabs" role="tablist">
         <li class="nav-item" role="presentation">
@@ -622,7 +797,12 @@
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-aktivitas-stok" data-bs-toggle="tab" data-bs-target="#pane-aktivitas-stok" type="button" role="tab" aria-controls="pane-aktivitas-stok" aria-selected="false">
+            <button class="nav-link {{ $activeDashboardTab === 'kontrol-status' ? 'active' : '' }}" id="tab-kontrol-status" data-bs-toggle="tab" data-bs-target="#pane-kontrol-status" type="button" role="tab" aria-controls="pane-kontrol-status" aria-selected="{{ $activeDashboardTab === 'kontrol-status' ? 'true' : 'false' }}">
+                <i class="fa-solid fa-list-check"></i> Kontrol Status
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {{ $activeDashboardTab === 'aktivitas-stok' ? 'active' : '' }}" id="tab-aktivitas-stok" data-bs-toggle="tab" data-bs-target="#pane-aktivitas-stok" type="button" role="tab" aria-controls="pane-aktivitas-stok" aria-selected="{{ $activeDashboardTab === 'aktivitas-stok' ? 'true' : 'false' }}">
                 <i class="fa-solid fa-arrow-right-arrow-left"></i> Aktivitas Stok
             </button>
         </li>
@@ -986,7 +1166,59 @@
             </div>
         </div>
 
-        <div class="tab-pane fade" id="pane-aktivitas-stok" role="tabpanel" aria-labelledby="tab-aktivitas-stok">
+        <div class="tab-pane fade {{ $activeDashboardTab === 'kontrol-status' ? 'show active' : '' }}" id="pane-kontrol-status" role="tabpanel" aria-labelledby="tab-kontrol-status">
+            <div class="card mb-6">
+                <div class="card-body">
+                    <div class="status-control-hero">
+                        <div>
+                            <div class="status-control-title"><i class="fa-solid fa-list-check text-primary me-2"></i>Kontrol Status Pekerjaan</div>
+                            <div class="status-control-sub">Pantau pekerjaan yang belum selesai, belum disetujui, belum difinalisasi, atau belum discan.</div>
+                        </div>
+                        <div class="status-control-total">
+                            <div class="status-control-total-value">{{ number_format((int) ($totalOpenStatus ?? 0)) }}</div>
+                            <div class="status-control-total-label">status perlu ditindaklanjuti</div>
+                        </div>
+                    </div>
+
+                    @foreach(($statusControlSections ?? []) as $section)
+                        @php
+                            $sectionTotal = collect($section['items'] ?? [])->sum('count');
+                        @endphp
+                        <div class="status-section">
+                            <div class="status-section-head">
+                                <div>
+                                    <div class="status-section-title">{{ $section['title'] ?? '-' }}</div>
+                                    <div class="status-section-sub">{{ $section['subtitle'] ?? '-' }}</div>
+                                </div>
+                                <span class="badge badge-light-primary">{{ number_format((int) $sectionTotal) }} pending</span>
+                            </div>
+                            <div class="status-control-grid">
+                                @foreach(($section['items'] ?? []) as $item)
+                                    <a href="{{ $item['url'] ?? '#' }}" class="status-control-card text-decoration-none" data-tone="{{ $item['tone'] ?? 'blue' }}">
+                                        <span class="status-control-icon">
+                                            <i class="fa-solid {{ $item['icon'] ?? 'fa-circle-info' }}"></i>
+                                        </span>
+                                        <span class="status-control-body">
+                                            <span class="status-control-row">
+                                                <span>
+                                                    <span class="status-control-page">{{ $item['page'] ?? '-' }}</span>
+                                                    <span class="status-control-label">{{ $item['label'] ?? '-' }}</span>
+                                                </span>
+                                                <span class="status-control-count">{{ number_format((int) ($item['count'] ?? 0)) }}</span>
+                                            </span>
+                                            <span class="status-control-desc">{{ $item['description'] ?? '-' }}</span>
+                                            <span class="status-control-action">Buka halaman <i class="fa-solid fa-arrow-right"></i></span>
+                                        </span>
+                                    </a>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade {{ $activeDashboardTab === 'aktivitas-stok' ? 'show active' : '' }}" id="pane-aktivitas-stok" role="tabpanel" aria-labelledby="tab-aktivitas-stok">
             @php
                 $todayStock = $stockMutationToday ?? [];
                 $stockInQty = (int) ($todayStock['in_qty'] ?? 0);

@@ -240,6 +240,178 @@ class DashboardController extends Controller
             ->limit(10)
             ->get();
 
+        $pendingStatus = fn ($query) => $query->where(function ($q) {
+            $q->whereNull('status')->orWhere('status', 'pending');
+        });
+
+        $activeResiForStatus = Resi::query()
+            ->whereDate('tanggal_upload', $selectedDate)
+            ->where(function ($q) {
+                $q->whereNull('status')->orWhere('status', '!=', 'canceled');
+            });
+
+        $statusControlSections = [
+            [
+                'title' => 'Proses Resi',
+                'subtitle' => 'Kontrol resi import tanggal '.$selectedDate,
+                'items' => [
+                    [
+                        'label' => 'Belum QC Scan',
+                        'page' => 'Import Resi',
+                        'count' => (clone $activeResiForStatus)
+                            ->whereNotExists(function ($q) {
+                                $q->selectRaw('1')
+                                    ->from('qc_scan_resis')
+                                    ->whereColumn('qc_scan_resis.resi_id', 'resis.id');
+                            })
+                            ->count(),
+                        'description' => 'Resi aktif yang belum masuk QC scan.',
+                        'url' => route('admin.inventory.resi-import.index'),
+                        'icon' => 'fa-clipboard-check',
+                        'tone' => 'amber',
+                    ],
+                    [
+                        'label' => 'Belum Scan Out',
+                        'page' => 'Import Resi',
+                        'count' => (clone $activeResiForStatus)
+                            ->whereNotExists(function ($q) {
+                                $q->selectRaw('1')
+                                    ->from('packer_scan_outs')
+                                    ->whereColumn('packer_scan_outs.resi_id', 'resis.id');
+                            })
+                            ->count(),
+                        'description' => 'Resi aktif yang belum selesai scan out.',
+                        'url' => route('admin.inventory.resi-import.index'),
+                        'icon' => 'fa-barcode',
+                        'tone' => 'red',
+                    ],
+                ],
+            ],
+            [
+                'title' => 'Inbound',
+                'subtitle' => 'Penerimaan barang dan retur inbound',
+                'items' => [
+                    [
+                        'label' => 'Belum Disetujui',
+                        'page' => 'Penerimaan Barang',
+                        'count' => $pendingStatus(DB::table('inbound_transactions')->where('type', 'receipt'))->count(),
+                        'description' => 'Penerimaan barang yang masih menunggu approval.',
+                        'url' => route('admin.inbound.receipts.index'),
+                        'icon' => 'fa-boxes-packing',
+                        'tone' => 'amber',
+                    ],
+                    [
+                        'label' => 'Belum Difinalisasi',
+                        'page' => 'Retur Inbound',
+                        'count' => DB::table('inbound_transactions')
+                            ->where('type', 'return')
+                            ->where('status', 'approved')
+                            ->count(),
+                        'description' => 'Retur inbound yang sudah masuk area retur dan belum finalisasi.',
+                        'url' => route('admin.inbound.returns.index'),
+                        'icon' => 'fa-rotate-left',
+                        'tone' => 'blue',
+                    ],
+                ],
+            ],
+            [
+                'title' => 'Outbound',
+                'subtitle' => 'Picker, outbound manual, dan retur outbound',
+                'items' => [
+                    [
+                        'label' => 'Belum Disetujui',
+                        'page' => 'Outbound Picker',
+                        'count' => $pendingStatus(DB::table('outbound_transactions')->where('type', 'picker'))->count(),
+                        'description' => 'Outbound picker yang masih menunggu approval.',
+                        'url' => route('admin.outbound.pickers.index'),
+                        'icon' => 'fa-person-dolly',
+                        'tone' => 'amber',
+                    ],
+                    [
+                        'label' => 'Belum Discan',
+                        'page' => 'Outbound Manual',
+                        'count' => DB::table('outbound_transactions')
+                            ->where('type', 'manual')
+                            ->where(function ($q) {
+                                $q->whereNull('scan_status')->orWhere('scan_status', '!=', 'complete');
+                            })
+                            ->count(),
+                        'description' => 'Outbound manual yang scan itemnya belum selesai.',
+                        'url' => route('admin.outbound.manuals.index'),
+                        'icon' => 'fa-barcode',
+                        'tone' => 'red',
+                    ],
+                    [
+                        'label' => 'Belum Disetujui',
+                        'page' => 'Retur Outbound',
+                        'count' => $pendingStatus(DB::table('outbound_transactions')->where('type', 'return'))->count(),
+                        'description' => 'Retur outbound yang masih menunggu approval.',
+                        'url' => route('admin.outbound.returns.index'),
+                        'icon' => 'fa-right-left',
+                        'tone' => 'amber',
+                    ],
+                ],
+            ],
+            [
+                'title' => 'Inventori',
+                'subtitle' => 'Kontrol dokumen stok yang belum selesai',
+                'items' => [
+                    [
+                        'label' => 'Belum Disetujui',
+                        'page' => 'Stock Adjustment',
+                        'count' => $pendingStatus(DB::table('stock_adjustments'))->count(),
+                        'description' => 'Adjustment stok yang belum diapprove.',
+                        'url' => route('admin.inventory.stock-adjustments.index'),
+                        'icon' => 'fa-sliders',
+                        'tone' => 'amber',
+                    ],
+                    [
+                        'label' => 'Belum Diterima',
+                        'page' => 'Stock Transfer',
+                        'count' => DB::table('stock_transfers')->whereIn('status', ['draft', 'shipped'])->count(),
+                        'description' => 'Transfer stok draft atau sudah dikirim tapi belum diterima.',
+                        'url' => route('admin.inventory.stock-transfers.index'),
+                        'icon' => 'fa-truck-ramp-box',
+                        'tone' => 'blue',
+                    ],
+                    [
+                        'label' => 'Belum Selesai',
+                        'page' => 'Stock Opname',
+                        'count' => DB::table('stock_opnames')
+                            ->where(function ($q) {
+                                $q->whereNull('status')->orWhere('status', 'open');
+                            })
+                            ->count(),
+                        'description' => 'Stock opname yang masih terbuka.',
+                        'url' => route('admin.inventory.stock-opname.index'),
+                        'icon' => 'fa-clipboard-list',
+                        'tone' => 'blue',
+                    ],
+                    [
+                        'label' => 'Belum Disetujui',
+                        'page' => 'Barang Rusak',
+                        'count' => $pendingStatus(DB::table('damaged_goods'))->count(),
+                        'description' => 'Transaksi barang rusak yang masih menunggu approval.',
+                        'url' => route('admin.inventory.damaged-goods.index'),
+                        'icon' => 'fa-triangle-exclamation',
+                        'tone' => 'amber',
+                    ],
+                    [
+                        'label' => 'Belum Disetujui',
+                        'page' => 'Alokasi Barang Rusak',
+                        'count' => $pendingStatus(DB::table('damaged_allocations'))->count(),
+                        'description' => 'Alokasi stok rusak yang belum diapprove.',
+                        'url' => route('admin.inventory.damaged-allocations.index'),
+                        'icon' => 'fa-box-open',
+                        'tone' => 'amber',
+                    ],
+                ],
+            ],
+        ];
+
+        $totalOpenStatus = collect($statusControlSections)
+            ->sum(fn ($section) => collect($section['items'])->sum('count'));
+
         return view('admin.dashboard', [
             'today' => $selectedDate,
             'totalResi' => $totalResiActive,
@@ -262,6 +434,8 @@ class DashboardController extends Controller
             'stockMutationToday' => $stockMutationToday,
             'fastMovingItems' => $fastMovingItems,
             'recentMutations' => $recentMutations,
+            'statusControlSections' => $statusControlSections,
+            'totalOpenStatus' => $totalOpenStatus,
         ]);
     }
 
