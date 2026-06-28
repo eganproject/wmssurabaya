@@ -39,6 +39,30 @@
         ];
     }
     $defaultType = $typeDefault ?? '';
+    $isInboundReturnPage = $defaultType === 'return' && isset($routeMap['receipt']);
+    $isInboundReceiptPage = $defaultType === 'receipt' && isset($routeMap['receipt']);
+    $isOutboundManualPage = $defaultType === 'manual' && isset($routeMap['picker']);
+    $statusFilterOptions = [];
+    if ($isInboundReturnPage) {
+        $statusFilterOptions = [
+            'approved' => 'Area Retur / Belum Finalisasi',
+            'finalized' => 'Finalisasi',
+            'pending' => 'Menunggu',
+        ];
+    } elseif ($isInboundReceiptPage) {
+        $statusFilterOptions = [
+            'pending' => 'Menunggu Persetujuan',
+            'approved' => 'Disetujui',
+        ];
+    } elseif ($isOutboundManualPage) {
+        $statusFilterOptions = [
+            'pending' => 'Belum Disetujui',
+            'approved' => 'Disetujui',
+            'scan_not_started' => 'Belum Scan',
+            'scan_in_progress' => 'Scan Berjalan',
+            'scan_complete' => 'Scan Selesai',
+        ];
+    }
     $canCreateDefault = $permMap[$defaultType]['create'] ?? false;
     $canImport = !empty($importUrl ?? null) && $canCreateDefault;
 @endphp
@@ -59,6 +83,14 @@
         </div>
         <div class="card-toolbar stock-flow-toolbar">
             <div class="stock-flow-filter">
+                @if(!empty($statusFilterOptions))
+                    <select class="form-select form-select-solid stock-flow-status" id="filter_status">
+                        <option value="">Semua Status</option>
+                        @foreach($statusFilterOptions as $value => $label)
+                            <option value="{{ $value }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
+                @endif
                 <input type="text" class="form-control form-control-solid stock-flow-date" id="filter_date_from" placeholder="Dari" />
                 <input type="text" class="form-control form-control-solid stock-flow-date" id="filter_date_to" placeholder="Sampai" />
                 <button type="button" class="btn btn-light" id="filter_apply">Filter</button>
@@ -285,6 +317,10 @@
         width: 145px;
     }
 
+    .stock-flow-status {
+        width: 240px;
+    }
+
     .stock-flow-table-wrap {
         border: 1px solid #eff2f5;
         border-radius: 8px;
@@ -429,6 +465,10 @@
         .stock-flow-filter > * {
             flex: 1 1 140px;
         }
+
+        .stock-flow-status {
+            width: 100%;
+        }
     }
 
     @media (max-width: 575.98px) {
@@ -500,6 +540,7 @@
         const lookupResiSpinner = document.getElementById('flow_resi_lookup_spinner');
         const lookupResiStatus = document.getElementById('flow_resi_status');
         const modalTitle = document.getElementById('flow_modal_title');
+        const statusEl = document.getElementById('filter_status');
         const dateFromEl = document.getElementById('filter_date_from');
         const dateToEl = document.getElementById('filter_date_to');
         const transactedAtEl = document.getElementById('flow_transacted_at');
@@ -1192,6 +1233,7 @@
                 dataSrc: 'data',
                 data: function(params) {
                     params.q = searchInput?.value || '';
+                    if (statusEl?.value) params.status = statusEl.value;
                     if (dateFromEl?.value) params.date_from = dateFromEl.value;
                     if (dateToEl?.value) params.date_to = dateToEl.value;
                 }
@@ -1286,8 +1328,10 @@
         const reloadTable = () => dt.ajax.reload();
         const reloadTableDebounced = debounce(reloadTable);
         searchInput?.addEventListener('keyup', reloadTableDebounced);
+        statusEl?.addEventListener('change', reloadTable);
         filterApplyBtn?.addEventListener('click', reloadTable);
         filterResetBtn?.addEventListener('click', () => {
+            if (statusEl) statusEl.value = '';
             if (fpFrom) fpFrom.clear(); else if (dateFromEl) dateFromEl.value = '';
             if (fpTo) fpTo.clear(); else if (dateToEl) dateToEl.value = '';
             reloadTable();

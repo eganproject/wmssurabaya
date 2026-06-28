@@ -52,6 +52,11 @@ class StockAdjustmentController extends Controller
             ->with(['items.item', 'items.unit', 'creator', 'warehouse'])
             ->orderBy('transacted_at', 'desc');
 
+        $status = $request->input('status');
+        if (in_array($status, ['pending', 'approved'], true)) {
+            $query->where('status', $status);
+        }
+
         $search = trim((string) $request->input('q', ''));
         if ($search !== '') {
             $query->where(function ($q) use ($search) {

@@ -516,6 +516,16 @@ class OutboundController extends Controller
             $query->where('outbound_transactions.type', $baseType);
         }
 
+        $status = $request->input('status');
+        if ($type === 'manual') {
+            if (in_array($status, ['pending', 'approved'], true)) {
+                $query->where('outbound_transactions.status', $status);
+            } elseif (in_array($status, ['scan_not_started', 'scan_in_progress', 'scan_complete'], true)) {
+                $scanStatus = str_replace('scan_', '', $status);
+                $query->where('outbound_transactions.scan_status', $scanStatus);
+            }
+        }
+
         $search = trim((string) $request->input('q', ''));
         if ($search !== '') {
             $query->where(function ($q) use ($search) {

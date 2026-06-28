@@ -475,6 +475,11 @@ class InboundController extends Controller
             $query->where('inbound_transactions.type', $baseType);
         }
 
+        $status = $request->input('status');
+        if (in_array($type, ['receipt', 'return'], true) && in_array($status, ['pending', 'approved', 'finalized'], true)) {
+            $query->where('inbound_transactions.status', $status);
+        }
+
         $search = trim((string) $request->input('q', ''));
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
