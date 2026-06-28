@@ -894,13 +894,15 @@ class InboundController extends Controller
         $tx->loadMissing('items.item');
         foreach ($tx->items as $row) {
             $received = (int) ($row->qty_received ?? $row->qty ?? 0);
+            $resiQty = (int) ($row->qty_input ?: $row->qty ?: 0);
             $good = (int) ($row->qty_good ?? 0);
             $damaged = (int) ($row->qty_damaged ?? 0);
             $missing = (int) ($row->qty_missing ?? 0);
-            if ($received <= 0 || $good + $damaged + $missing !== $received) {
+            $expectedMissing = max(0, $resiQty - $received);
+            if ($received <= 0 || $received > $resiQty || $good + $damaged !== $received || $missing !== $expectedMissing) {
                 $sku = $row->item?->sku ?? 'item '.$row->item_id;
                 throw ValidationException::withMessages([
-                    'items' => "Qty bagus + qty rusak + qty hilang harus sama dengan qty diterima untuk {$sku}.",
+                    'items' => "Qty bagus + qty rusak harus sama dengan qty diterima, dan qty hilang harus selisih qty resi untuk {$sku}.",
                 ]);
             }
         }
@@ -1029,7 +1031,7 @@ class InboundController extends Controller
                     $resiQty = (int) ($row['qty'] ?? $received);
                     $good = (int) ($row['qty_good'] ?? 0);
                     $damaged = (int) ($row['qty_damaged'] ?? 0);
-                    $missing = (int) ($row['qty_missing'] ?? 0);
+                    $missing = max(0, $resiQty - $received);
                     return [
                         'item_id' => (int) $row['item_id'],
                         'unit_id' => null,
@@ -1084,8 +1086,11 @@ class InboundController extends Controller
                 if ((int) $row['qty_received'] <= 0) {
                     throw ValidationException::withMessages(["items.{$idx}.qty_received" => 'Qty diterima wajib lebih dari 0']);
                 }
-                if ((int) $row['qty_good'] + (int) $row['qty_damaged'] + (int) $row['qty_missing'] !== (int) $row['qty_received']) {
-                    throw ValidationException::withMessages(["items.{$idx}.qty_received" => 'Qty bagus + qty rusak + qty hilang harus sama dengan qty diterima']);
+                if ((int) $row['qty_received'] > (int) $row['qty']) {
+                    throw ValidationException::withMessages(["items.{$idx}.qty_received" => 'Qty diterima tidak boleh lebih besar dari qty resi']);
+                }
+                if ((int) $row['qty_good'] + (int) $row['qty_damaged'] !== (int) $row['qty_received']) {
+                    throw ValidationException::withMessages(["items.{$idx}.qty_received" => 'Qty bagus + qty rusak harus sama dengan qty diterima']);
                 }
                 StockService::assertWarehouseQuantity(
                     $validated['warehouse_id'],

@@ -112,7 +112,7 @@
                             <div class="card-title">
                                 <div>
                                     <h2 class="fw-bolder mb-1">Item Diterima</h2>
-                                    <div class="text-muted fs-7">Qty bagus + rusak + hilang harus sama dengan qty diterima.</div>
+                                    <div class="text-muted fs-7">Qty hilang dihitung otomatis dari selisih qty resi dan qty diterima.</div>
                                 </div>
                             </div>
                             <div class="card-toolbar">
@@ -247,6 +247,21 @@
         color: #f1416c;
     }
 
+    .return-missing-box {
+        border: 1px dashed #f1bc00;
+        border-radius: 8px;
+        background: #fff8dd;
+        padding: 10px 12px;
+        min-height: 44px;
+    }
+
+    .return-missing-value {
+        color: #b58100;
+        font-size: 20px;
+        font-weight: 800;
+        line-height: 1.2;
+    }
+
     @media (max-width: 767.98px) {
         .return-item-row {
             padding: 14px;
@@ -355,31 +370,38 @@
         };
 
         const syncBalance = (row, changedField = null) => {
+            const resiEl = row.querySelector('[data-name="qty"]');
             const receivedEl = row.querySelector('[data-name="qty_received"]');
             const goodEl = row.querySelector('[data-name="qty_good"]');
             const damagedEl = row.querySelector('[data-name="qty_damaged"]');
             const missingEl = row.querySelector('[data-name="qty_missing"]');
+            const missingDisplayEl = row.querySelector('[data-missing-display]');
             const infoEl = row.querySelector('.return-balance-info');
+            const resiQty = toQty(resiEl.value);
             const received = toQty(receivedEl.value);
+            const missing = Math.max(0, resiQty - received);
+            missingEl.value = missing;
+            if (missingDisplayEl) missingDisplayEl.textContent = missing.toLocaleString('id-ID');
 
             if (changedField === 'qty_received') {
                 goodEl.value = received;
                 damagedEl.value = 0;
-                missingEl.value = 0;
             } else if (changedField === 'qty_good' || changedField === 'qty_damaged') {
                 const good = Math.min(toQty(goodEl.value), received);
                 const damaged = Math.min(toQty(damagedEl.value), Math.max(0, received - good));
                 goodEl.value = good;
                 damagedEl.value = damaged;
-                missingEl.value = Math.max(0, received - good - damaged);
             }
 
-            const total = toQty(goodEl.value) + toQty(damagedEl.value) + toQty(missingEl.value);
-            const balanced = received > 0 && total === received;
-            [receivedEl, goodEl, damagedEl, missingEl].forEach(el => el.classList.toggle('is-invalid', !balanced));
-            infoEl.textContent = balanced
-                ? `Balance: ${total.toLocaleString('id-ID')} / ${received.toLocaleString('id-ID')}`
-                : `Belum balance: ${total.toLocaleString('id-ID')} / ${received.toLocaleString('id-ID')}`;
+            const total = toQty(goodEl.value) + toQty(damagedEl.value);
+            const exceedsResi = received > resiQty;
+            const balanced = received > 0 && !exceedsResi && total === received;
+            [receivedEl, goodEl, damagedEl].forEach(el => el.classList.toggle('is-invalid', !balanced));
+            infoEl.textContent = exceedsResi
+                ? `Diterima melebihi qty resi: ${received.toLocaleString('id-ID')} / ${resiQty.toLocaleString('id-ID')}`
+                : (balanced
+                    ? `Balance: ${total.toLocaleString('id-ID')} / ${received.toLocaleString('id-ID')}`
+                    : `Belum balance: ${total.toLocaleString('id-ID')} / ${received.toLocaleString('id-ID')}`);
             infoEl.className = `return-balance-pill return-balance-info ${balanced ? 'is-balanced' : 'is-unbalanced'}`;
             updateSummary();
             return balanced;
@@ -427,7 +449,7 @@
                     <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
                         <div>
                             <div class="fw-bold text-gray-800">Kondisi Barang</div>
-                            <div class="text-muted fs-8">Total bagus, rusak, dan hilang wajib sama dengan qty diterima.</div>
+                            <div class="text-muted fs-8">Bagus + rusak wajib sama dengan qty diterima. Hilang dihitung dari qty resi - qty diterima.</div>
                         </div>
                         <span class="return-balance-pill return-balance-info">Isi qty diterima.</span>
                     </div>
@@ -443,9 +465,12 @@
                             <div class="invalid-feedback" data-error-for="qty_damaged"></div>
                         </div>
                         <div class="col-md-4">
-                            <label class="required fs-6 fw-bold form-label mb-2">Hilang</label>
-                            <input type="number" min="0" class="form-control form-control-solid" data-name="qty_missing" required>
-                            <div class="invalid-feedback" data-error-for="qty_missing"></div>
+                            <label class="fs-6 fw-bold form-label mb-2">Hilang Otomatis</label>
+                            <div class="return-missing-box">
+                                <div class="return-missing-value" data-missing-display>0</div>
+                                <div class="text-muted fs-8">Qty resi - qty diterima</div>
+                            </div>
+                            <input type="hidden" data-name="qty_missing" value="0">
                         </div>
                     </div>
                 </div>
@@ -462,11 +487,11 @@
             row.querySelector('[data-name="qty_received"]').value = data.qty_received ?? data.qty ?? '';
             row.querySelector('[data-name="qty_good"]').value = data.qty_good ?? data.qty_received ?? data.qty ?? '';
             row.querySelector('[data-name="qty_damaged"]').value = data.qty_damaged ?? 0;
-            row.querySelector('[data-name="qty_missing"]').value = data.qty_missing ?? 0;
+            row.querySelector('[data-name="qty_missing"]').value = data.qty_missing ?? Math.max(0, toQty(data.qty) - toQty(data.qty_received ?? data.qty));
             row.querySelector('[data-name="note"]').value = data.note || '';
 
             initSelect2(row.querySelector('.return-item-select'));
-            row.querySelectorAll('[data-name="qty"], [data-name="qty_received"], [data-name="qty_good"], [data-name="qty_damaged"], [data-name="qty_missing"]').forEach(el => {
+            row.querySelectorAll('[data-name="qty"], [data-name="qty_received"], [data-name="qty_good"], [data-name="qty_damaged"]').forEach(el => {
                 el.addEventListener('input', () => syncBalance(row, el.getAttribute('data-name')));
             });
             syncBalance(row);
@@ -573,7 +598,7 @@
             event.preventDefault();
             clearErrors();
             if (!validateBalances()) {
-                if (typeof Swal !== 'undefined') Swal.fire('Error', 'Qty bagus + rusak + hilang harus sama dengan qty diterima.', 'error');
+                if (typeof Swal !== 'undefined') Swal.fire('Error', 'Qty bagus + rusak harus sama dengan qty diterima.', 'error');
                 return;
             }
 
