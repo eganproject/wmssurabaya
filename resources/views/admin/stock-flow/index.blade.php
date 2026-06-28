@@ -954,7 +954,8 @@
                             ? `<div class="menu-item px-3"><a href="${editUrl}" class="menu-link px-3">Edit</a></div>`
                             : `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${data}" data-type="${rowType}">Edit</a></div>`)
                         : '';
-                    const delItem = (!isApproved && !isFinalized && perms.delete)
+                    const canDeleteApprovedReturn = isInboundReturnFlow && rowType === 'return' && isApproved && !isFinalized;
+                    const delItem = ((!isApproved || canDeleteApprovedReturn) && !isFinalized && perms.delete)
                         ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-danger btn-delete" data-id="${data}" data-type="${rowType}">Hapus</a></div>`
                         : '';
                     const actions = `${detailItem}${scanItem}${approveItem}${finalizeItem}${editItem}${delItem}`;
@@ -1094,11 +1095,14 @@
             const id = this.getAttribute('data-id');
             const rowType = this.getAttribute('data-type') || defaultTypeFilter;
             if (!id) return;
+            const isReturnDelete = isInboundReturnFlow && rowType === 'return';
             let confirmed = true;
             if (typeof Swal !== 'undefined') {
                 const res = await Swal.fire({
                     title: 'Apakah Anda yakin?',
-                    text: 'Data akan dihapus dan stok akan dikembalikan',
+                    text: isReturnDelete
+                        ? 'Retur inbound akan dihapus selama belum finalisasi.'
+                        : 'Data akan dihapus dan stok akan dikembalikan',
                     icon: 'warning',
                     showCancelButton: true,
                     confirmButtonText: 'Hapus',
