@@ -535,6 +535,7 @@ class InboundController extends Controller
             return [
                 'id' => $row->id,
                 'code' => $row->code,
+                'ref_no' => $row->ref_no ?? '',
                 'transacted_at' => $ts,
                 'submit_by' => $row->creator?->name ?? '-',
                 'warehouse' => $row->warehouse?->name ?? '-',

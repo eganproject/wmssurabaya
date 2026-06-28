@@ -13,8 +13,12 @@ class StockOpnameReportController extends Controller
 {
     public function index()
     {
+        $latestDate = $this->latestCompletedOpnameDate();
+
         return view('admin.reports.stock-opname.index', [
             'dataUrl' => route('admin.reports.stock-opname.data'),
+            'defaultDateFrom' => $latestDate,
+            'defaultDateTo' => $latestDate,
         ]);
     }
 
@@ -162,10 +166,11 @@ class StockOpnameReportController extends Controller
 
     public function export(Request $request)
     {
+        [$dateFrom, $dateTo] = $this->resolvedDateRange($request);
         $filters = [
             'q' => trim((string) $request->input('q', '')),
-            'date_from' => $request->input('date_from'),
-            'date_to' => $request->input('date_to'),
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
         ];
         $filename = 'laporan-stock-opname-'.now()->format('YmdHis').'.xlsx';
 
@@ -174,8 +179,7 @@ class StockOpnameReportController extends Controller
 
     private function applyDateFilter($query, Request $request): void
     {
-        $dateFrom = $request->input('date_from');
-        $dateTo = $request->input('date_to');
+        [$dateFrom, $dateTo] = $this->resolvedDateRange($request);
 
         try {
             if ($dateFrom) {
@@ -189,5 +193,28 @@ class StockOpnameReportController extends Controller
         } catch (\Throwable) {
             // ignore invalid date filters
         }
+    }
+
+    private function resolvedDateRange(Request $request): array
+    {
+        $dateFrom = trim((string) $request->input('date_from', ''));
+        $dateTo = trim((string) $request->input('date_to', ''));
+
+        if ($dateFrom === '' && $dateTo === '') {
+            $latestDate = $this->latestCompletedOpnameDate();
+            return [$latestDate, $latestDate];
+        }
+
+        return [$dateFrom ?: null, $dateTo ?: null];
+    }
+
+    private function latestCompletedOpnameDate(): ?string
+    {
+        $latest = DB::table('stock_opnames')
+            ->where('status', 'completed')
+            ->whereNotNull('transacted_at')
+            ->max('transacted_at');
+
+        return $latest ? Carbon::parse($latest)->toDateString() : null;
     }
 }

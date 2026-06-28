@@ -44,28 +44,28 @@
 @endphp
 
 @section('content')
-<div class="card">
-    <div class="card-header border-0 pt-6">
-        <div class="card-title">
-            <div class="d-flex align-items-center position-relative my-1">
+<div class="card stock-flow-card">
+    <div class="card-header border-0 pt-6 stock-flow-header">
+        <div class="card-title stock-flow-title">
+            <div class="d-flex align-items-center position-relative stock-flow-search">
                 <span class="svg-icon svg-icon-1 position-absolute ms-6">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
                         <rect opacity="0.5" x="17.0365" y="15.1223" width="8.15546" height="2" rx="1" transform="rotate(45 17.0365 15.1223)" fill="black" />
                         <path d="M11 19C6.55556 19 3 15.4444 3 11C3 6.55556 6.55556 3 11 3C15.4444 3 19 6.55556 19 11C19 15.4444 15.4444 19 11 19ZM11 5C7.53333 5 5 7.53333 5 11C5 14.4667 7.53333 17 11 17C14.4667 17 17 14.4667 17 11C17 7.53333 14.4667 5 11 5Z" fill="black" />
                     </svg>
                 </span>
-                <input type="text" class="form-control form-control-solid w-250px ps-14" placeholder="Search" data-kt-filter="search" />
+                <input type="text" class="form-control form-control-solid ps-14" placeholder="Cari kode, item, ref no, catatan" data-kt-filter="search" />
             </div>
         </div>
-        <div class="card-toolbar">
-            <div class="d-flex align-items-center gap-2 me-4">
-                <input type="text" class="form-control form-control-solid w-150px" id="filter_date_from" placeholder="Dari" />
-                <input type="text" class="form-control form-control-solid w-150px" id="filter_date_to" placeholder="Sampai" />
+        <div class="card-toolbar stock-flow-toolbar">
+            <div class="stock-flow-filter">
+                <input type="text" class="form-control form-control-solid stock-flow-date" id="filter_date_from" placeholder="Dari" />
+                <input type="text" class="form-control form-control-solid stock-flow-date" id="filter_date_to" placeholder="Sampai" />
                 <button type="button" class="btn btn-light" id="filter_apply">Filter</button>
                 <button type="button" class="btn btn-light" id="filter_reset">Reset</button>
             </div>
             @if($canImport)
-                <button type="button" class="btn btn-light-primary me-3" id="btn_import_flow">
+                <button type="button" class="btn btn-light-primary" id="btn_import_flow">
                     Import Excel
                 </button>
             @endif
@@ -77,8 +77,8 @@
         </div>
     </div>
     <div class="card-body py-6">
-        <div class="table-responsive">
-            <table class="table align-middle table-row-dashed fs-6 gy-5" id="stock_flow_table">
+        <div class="table-responsive stock-flow-table-wrap">
+            <table class="table align-middle table-row-dashed fs-6 gy-4 stock-flow-table" id="stock_flow_table">
                 <thead>
                     <tr class="text-start text-gray-400 fw-bolder fs-7 text-uppercase gs-0">
                         <th>ID</th>
@@ -246,6 +246,141 @@
 @endif
 @endsection
 
+@push('styles')
+<style>
+    .stock-flow-card {
+        overflow: hidden;
+    }
+
+    .stock-flow-header {
+        align-items: stretch;
+        gap: 16px;
+    }
+
+    .stock-flow-title {
+        flex: 1 1 280px;
+        margin: 0;
+    }
+
+    .stock-flow-search {
+        width: min(100%, 360px);
+    }
+
+    .stock-flow-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+        align-items: center;
+    }
+
+    .stock-flow-filter {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .stock-flow-date {
+        width: 145px;
+    }
+
+    .stock-flow-table-wrap {
+        border: 1px solid #eff2f5;
+        border-radius: 8px;
+    }
+
+    .stock-flow-table {
+        min-width: 1120px;
+        margin-bottom: 0 !important;
+    }
+
+    .stock-flow-table thead th {
+        background: #f8f9fb;
+        color: #7e8299 !important;
+        padding-top: 14px !important;
+        padding-bottom: 14px !important;
+        white-space: nowrap;
+    }
+
+    .stock-flow-table tbody td {
+        vertical-align: top;
+    }
+
+    .stock-flow-code {
+        font-weight: 800;
+        color: #181c32;
+        white-space: nowrap;
+    }
+
+    .stock-flow-subtext {
+        color: #7e8299;
+        font-size: 12px;
+        margin-top: 2px;
+    }
+
+    .stock-flow-item-cell {
+        max-width: 280px;
+        white-space: normal;
+        line-height: 1.45;
+    }
+
+    .stock-flow-note-cell {
+        max-width: 240px;
+        white-space: normal;
+        color: #5e6278;
+        line-height: 1.45;
+    }
+
+    .stock-flow-actions .btn {
+        min-width: 96px;
+    }
+
+    .stock-flow-actions .menu-link {
+        min-height: 36px;
+        align-items: center;
+    }
+
+    @media (max-width: 991.98px) {
+        .stock-flow-header {
+            flex-direction: column;
+            padding-right: 1.5rem;
+        }
+
+        .stock-flow-title,
+        .stock-flow-toolbar,
+        .stock-flow-search,
+        .stock-flow-filter,
+        .stock-flow-toolbar > .btn {
+            width: 100%;
+        }
+
+        .stock-flow-toolbar {
+            justify-content: stretch;
+        }
+
+        .stock-flow-filter > * {
+            flex: 1 1 140px;
+        }
+    }
+
+    @media (max-width: 575.98px) {
+        .stock-flow-filter > *,
+        .stock-flow-toolbar > .btn {
+            flex-basis: 100%;
+        }
+
+        .stock-flow-table-wrap {
+            margin-left: -0.5rem;
+            margin-right: -0.5rem;
+            border-left: 0;
+            border-right: 0;
+            border-radius: 0;
+        }
+    }
+</style>
+@endpush
+
 @php
     $itemUnitsJson = $items->mapWithKeys(function ($item) {
         return [
@@ -326,11 +461,26 @@
             return formatDateTime(jkt);
         };
 
+        const debounce = (fn, delay = 350) => {
+            let timer = null;
+            return (...args) => {
+                window.clearTimeout(timer);
+                timer = window.setTimeout(() => fn(...args), delay);
+            };
+        };
+
         const resolveRoute = (type, key) => {
             if (routeMap && routeMap[type] && routeMap[type][key]) return routeMap[type][key];
             if (routeMap && routeMap[defaultTypeFilter] && routeMap[defaultTypeFilter][key]) return routeMap[defaultTypeFilter][key];
             return { store: storeUrl, show: showUrlTpl, update: updateUrlTpl, delete: deleteUrlTpl, detail: detailUrlTpl, approve: approveUrlTpl }[key] || '';
         };
+
+        const escapeHtml = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
 
         const statusLabel = (status, row = {}) => {
             if (status === 'finalized') return '<span class="badge badge-light-success">Finalisasi</span>';
@@ -886,6 +1036,7 @@
             processing: true,
             serverSide: true,
             dom: 'rtip',
+            autoWidth: false,
             order: [[0, 'desc']],
             ajax: {
                 url: dataUrl,
@@ -897,14 +1048,18 @@
                 }
             },
             columns: [
-                { data: 'id' },
-                { data: 'code' },
-                { data: 'type', render: (data) => typeLabelMap?.[data] || data || '-' },
+                { data: 'id', className: 'text-muted fw-bold', width: '64px' },
+                { data: 'code', render: (data, type, row) => {
+                    const code = escapeHtml(data || '-');
+                    const refNo = escapeHtml(row?.ref_no || '');
+                    return `<div class="stock-flow-code">${code}</div>${refNo ? `<div class="stock-flow-subtext">Ref: ${refNo}</div>` : ''}`;
+                } },
+                { data: 'type', render: (data) => `<span class="badge badge-light-info">${escapeHtml(typeLabelMap?.[data] || data || '-')}</span>` },
                 { data: 'status', orderable:false, searchable:false, render: (data, type, row) => statusLabel(data, row) },
-                { data: 'transacted_at' },
-                { data: 'submit_by' },
-                { data: 'warehouse' },
-                { data: 'item' },
+                { data: 'transacted_at', render: (data) => `<span class="text-gray-800 fw-semibold text-nowrap">${escapeHtml(data || '-')}</span>` },
+                { data: 'submit_by', render: (data) => escapeHtml(data || '-') },
+                { data: 'warehouse', render: (data) => `<span class="text-gray-800">${escapeHtml(data || '-')}</span>` },
+                { data: 'item', render: (data) => `<div class="stock-flow-item-cell">${escapeHtml(data || '-')}</div>` },
                 { data: 'qty', render: (data, type, row) => {
                     const qty = Number(data || 0).toLocaleString('id-ID');
                     const details = Array.isArray(row?.qty_details) ? row.qty_details : [];
@@ -926,7 +1081,7 @@
                     }
                     return qty;
                 } },
-                { data: 'note' },
+                { data: 'note', render: (data) => `<div class="stock-flow-note-cell">${escapeHtml(data || '-')}</div>` },
                 { data: 'id', orderable:false, searchable:false, className:'text-end', render: (data, type, row)=>{
                     const rowType = row?.type || defaultTypeFilter;
                     const perms = permMap?.[rowType] || {};
@@ -961,7 +1116,7 @@
                     const actions = `${detailItem}${scanItem}${approveItem}${finalizeItem}${editItem}${delItem}`;
                     if (!actions) return '';
                     return `
-                        <div class="text-end">
+                        <div class="text-end stock-flow-actions">
                             <a href="#" class="btn btn-sm btn-light btn-active-light-primary" data-kt-menu-trigger="click" data-kt-menu-placement="bottom-end">
                                 Actions
                                 <span class="svg-icon svg-icon-5 m-0">
@@ -976,13 +1131,18 @@
                         </div>
                     `;
                 }}
-            ]
+            ],
+            language: {
+                emptyTable: 'Belum ada data untuk filter ini.',
+                processing: 'Memuat data...',
+            }
         });
         refreshMenus();
         dt.on('draw', refreshMenus);
 
         const reloadTable = () => dt.ajax.reload();
-        searchInput?.addEventListener('keyup', reloadTable);
+        const reloadTableDebounced = debounce(reloadTable);
+        searchInput?.addEventListener('keyup', reloadTableDebounced);
         filterApplyBtn?.addEventListener('click', reloadTable);
         filterResetBtn?.addEventListener('click', () => {
             if (fpFrom) fpFrom.clear(); else if (dateFromEl) dateFromEl.value = '';

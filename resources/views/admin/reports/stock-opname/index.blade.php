@@ -8,8 +8,8 @@
     <div class="card-header border-0 pt-6">
         <div class="card-title">
             <div class="d-flex align-items-center gap-2">
-                <input type="text" class="form-control form-control-solid w-150px" id="filter_date_from" placeholder="Dari" />
-                <input type="text" class="form-control form-control-solid w-150px" id="filter_date_to" placeholder="Sampai" />
+                <input type="text" class="form-control form-control-solid w-150px" id="filter_date_from" placeholder="Dari" value="{{ $defaultDateFrom ?? '' }}" />
+                <input type="text" class="form-control form-control-solid w-150px" id="filter_date_to" placeholder="Sampai" value="{{ $defaultDateTo ?? '' }}" />
                 <button type="button" class="btn btn-light" id="filter_apply">Filter</button>
                 <button type="button" class="btn btn-light" id="filter_reset">Reset</button>
             </div>
@@ -155,6 +155,8 @@
     const dataUrl = '{{ $dataUrl }}';
     const diffUrl = '{{ route('admin.reports.stock-opname.diff-sku') }}';
     const exportUrl = '{{ route('admin.reports.stock-opname.export') }}';
+    const defaultDateFrom = '{{ $defaultDateFrom ?? '' }}';
+    const defaultDateTo = '{{ $defaultDateTo ?? '' }}';
 
     document.addEventListener('DOMContentLoaded', () => {
         const tableEl = $('#stock_opname_report_table');
@@ -179,10 +181,10 @@
         let fpTo = null;
         if (typeof flatpickr !== 'undefined') {
             if (dateFromEl) {
-                fpFrom = flatpickr(dateFromEl, { dateFormat: 'Y-m-d', allowInput: true });
+                fpFrom = flatpickr(dateFromEl, { dateFormat: 'Y-m-d', allowInput: true, defaultDate: defaultDateFrom || null });
             }
             if (dateToEl) {
-                fpTo = flatpickr(dateToEl, { dateFormat: 'Y-m-d', allowInput: true });
+                fpTo = flatpickr(dateToEl, { dateFormat: 'Y-m-d', allowInput: true, defaultDate: defaultDateTo || null });
             }
         }
 
@@ -271,8 +273,8 @@
         searchInput?.addEventListener('keyup', reloadAll);
         applyBtn?.addEventListener('click', reloadAll);
         resetBtn?.addEventListener('click', () => {
-            if (fpFrom) fpFrom.clear(); else if (dateFromEl) dateFromEl.value = '';
-            if (fpTo) fpTo.clear(); else if (dateToEl) dateToEl.value = '';
+            if (fpFrom) fpFrom.setDate(defaultDateFrom || null, true); else if (dateFromEl) dateFromEl.value = defaultDateFrom || '';
+            if (fpTo) fpTo.setDate(defaultDateTo || null, true); else if (dateToEl) dateToEl.value = defaultDateTo || '';
             reloadAll();
         });
 
