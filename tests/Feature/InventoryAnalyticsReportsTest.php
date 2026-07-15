@@ -12,11 +12,57 @@ use App\Models\StockTransferItem;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Maatwebsite\Excel\Facades\Excel;
 use Tests\TestCase;
 
 class InventoryAnalyticsReportsTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_stock_as_of_date_report_returns_closing_stock_for_selected_day(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $warehouse = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
+        $item = Item::create(['sku' => 'ASOF-001', 'name' => 'Item Saldo Harian', 'category_id' => null]);
+        $unit = ItemUnit::create(['item_id' => $item->id, 'name' => 'PCS', 'conversion_qty' => 1, 'is_base' => true]);
+        ItemStock::create(['warehouse_id' => $warehouse->id, 'item_id' => $item->id, 'stock' => 25]);
+
+        StockMutation::create([
+            'warehouse_id' => $warehouse->id, 'item_id' => $item->id, 'unit_id' => $unit->id,
+            'direction' => 'in', 'qty' => 15, 'qty_input' => 15, 'conversion_qty' => 1,
+            'stock_before' => 20, 'stock_after' => 35, 'source_type' => 'inbound', 'source_id' => 7101,
+            'occurred_at' => '2026-07-12 10:00:00', 'created_by' => $user->id,
+        ]);
+        StockMutation::create([
+            'warehouse_id' => $warehouse->id, 'item_id' => $item->id, 'unit_id' => $unit->id,
+            'direction' => 'out', 'qty' => 10, 'qty_input' => 10, 'conversion_qty' => 1,
+            'stock_before' => 35, 'stock_after' => 25, 'source_type' => 'outbound', 'source_id' => 7102,
+            'occurred_at' => '2026-07-14 09:00:00', 'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.reports.stock-as-of-date.data', [
+                'draw' => 1, 'start' => 0, 'length' => 10,
+                'warehouse_id' => $warehouse->id, 'date' => '2026-07-12',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('as_of_date', '2026-07-12')
+            ->assertJsonPath('data.0.sku', 'ASOF-001')
+            ->assertJsonPath('data.0.stock', 35)
+            ->assertJsonPath('summary.total_stock', 35);
+    }
+
+    public function test_stock_as_of_date_report_can_be_exported_to_excel(): void
+    {
+        Excel::fake();
+        $user = User::factory()->create(['email_verified_at' => now()]);
+
+        $this->actingAs($user)
+            ->get(route('admin.reports.stock-as-of-date.export', ['date' => '2026-07-12']))
+            ->assertOk();
+
+        Excel::assertDownloaded('laporan-stok-per-tanggal-2026-07-12.xlsx');
+    }
 
     public function test_transfer_analytics_reports_accuracy_fill_rate_and_discrepancy(): void
     {
