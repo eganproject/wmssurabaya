@@ -12,6 +12,7 @@ use App\Models\ItemStock;
 use App\Models\ItemUnit;
 use App\Models\ItemWarehouseSetting;
 use App\Models\Warehouse;
+use App\Models\Uom;
 use App\Exports\ItemsTemplateExport;
 use App\Imports\ItemsImport;
 use App\Support\StockService;
@@ -29,12 +30,13 @@ class ItemController extends Controller
     {
         $categories = Category::orderBy('name')->get(['id', 'name']);
         $warehouses = Warehouse::where('is_active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']);
-        return view('admin.masterdata.items.index', compact('categories', 'warehouses'));
+        $uoms = Uom::where('is_active', true)->orderBy('code')->get(['id', 'code', 'name']);
+        return view('admin.masterdata.items.index', compact('categories', 'warehouses', 'uoms'));
     }
 
     public function show(Item $item)
     {
-        $item->load(['bundleComponents.componentItem', 'units', 'warehouseSettings']);
+        $item->load(['bundleComponents.componentItem', 'units.uom', 'warehouseSettings']);
         $baseUnit = $item->units->firstWhere('is_base', true);
         $packageUnit = $item->units->firstWhere('is_base', false);
         return response()->json([
@@ -50,7 +52,9 @@ class ItemController extends Controller
             ])->values(),
             'is_bundle' => (bool) $item->is_bundle,
             'base_unit_name' => $baseUnit?->name ?? 'PCS',
+            'base_uom_id' => $baseUnit?->uom_id,
             'package_unit_name' => $packageUnit?->name ?? '',
+            'package_uom_id' => $packageUnit?->uom_id,
             'package_conversion_qty' => (int) ($packageUnit?->conversion_qty ?? 1),
             'components' => $item->bundleComponents->map(fn ($bc) => [
                 'component_item_id' => $bc->component_item_id,
@@ -66,6 +70,7 @@ class ItemController extends Controller
         $defaultWarehouseId = Warehouse::defaultId();
         $query = Item::with([
             'category',
+            'units.uom',
             'warehouseSettings' => fn ($settings) => $settings->where('warehouse_id', $defaultWarehouseId),
         ])->orderBy('name');
 
@@ -110,6 +115,8 @@ class ItemController extends Controller
                 'description' => $i->description ?? '',
                 'default_safety_stock' => (int) ($i->warehouseSettings->first()?->safety_stock ?? 0),
                 'is_bundle' => (bool) $i->is_bundle,
+                'base_unit' => $i->units->firstWhere('is_base', true)?->name ?? 'PCS',
+                'package_unit' => $i->units->firstWhere('is_base', false)?->name,
             ];
         });
 
@@ -137,7 +144,9 @@ class ItemController extends Controller
             'components.*.component_item_id' => ['required_with:components', 'integer', 'exists:items,id'],
             'components.*.qty' => ['required_with:components', 'integer', 'min:1'],
             'base_unit_name' => ['nullable', 'string', 'max:30'],
+            'base_uom_id' => ['nullable', 'integer', 'exists:uoms,id'],
             'package_unit_name' => ['nullable', 'string', 'max:30', 'different:base_unit_name'],
+            'package_uom_id' => ['nullable', 'integer', 'exists:uoms,id', 'different:base_uom_id'],
             'package_conversion_qty' => ['nullable', 'integer', 'min:2'],
             'warehouse_settings' => ['nullable', 'array'],
             'warehouse_settings.*.warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
@@ -159,7 +168,7 @@ class ItemController extends Controller
         $validated['is_bundle'] = $isBundle;
         $warehouseSettings = $validated['warehouse_settings'] ?? [];
         $unitPayload = $this->unitPayload($validated);
-        unset($validated['components'], $validated['base_unit_name'], $validated['package_unit_name'], $validated['package_conversion_qty'], $validated['warehouse_settings']);
+        unset($validated['components'], $validated['base_unit_name'], $validated['base_uom_id'], $validated['package_unit_name'], $validated['package_uom_id'], $validated['package_conversion_qty'], $validated['warehouse_settings']);
 
         DB::beginTransaction();
         try {
@@ -213,7 +222,9 @@ class ItemController extends Controller
             'components.*.component_item_id' => ['required_with:components', 'integer', 'exists:items,id'],
             'components.*.qty' => ['required_with:components', 'integer', 'min:1'],
             'base_unit_name' => ['nullable', 'string', 'max:30'],
+            'base_uom_id' => ['nullable', 'integer', 'exists:uoms,id'],
             'package_unit_name' => ['nullable', 'string', 'max:30', 'different:base_unit_name'],
+            'package_uom_id' => ['nullable', 'integer', 'exists:uoms,id', 'different:base_uom_id'],
             'package_conversion_qty' => ['nullable', 'integer', 'min:2'],
             'warehouse_settings' => ['nullable', 'array'],
             'warehouse_settings.*.warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
@@ -240,7 +251,7 @@ class ItemController extends Controller
         $validated['is_bundle'] = $isBundle;
         $warehouseSettings = $validated['warehouse_settings'] ?? [];
         $unitPayload = $this->unitPayload($validated);
-        unset($validated['components'], $validated['base_unit_name'], $validated['package_unit_name'], $validated['package_conversion_qty'], $validated['warehouse_settings']);
+        unset($validated['components'], $validated['base_unit_name'], $validated['base_uom_id'], $validated['package_unit_name'], $validated['package_uom_id'], $validated['package_conversion_qty'], $validated['warehouse_settings']);
 
         DB::beginTransaction();
         try {
@@ -448,9 +459,13 @@ class ItemController extends Controller
 
     private function unitPayload(array $validated): array
     {
+        $baseUom = !empty($validated['base_uom_id']) ? Uom::find($validated['base_uom_id']) : null;
+        $packageUom = !empty($validated['package_uom_id']) ? Uom::find($validated['package_uom_id']) : null;
         return [
-            'base_name' => strtoupper(trim((string) ($validated['base_unit_name'] ?? 'PCS'))) ?: 'PCS',
-            'package_name' => strtoupper(trim((string) ($validated['package_unit_name'] ?? ''))),
+            'base_name' => $baseUom?->code ?? (strtoupper(trim((string) ($validated['base_unit_name'] ?? 'PCS'))) ?: 'PCS'),
+            'base_uom_id' => $baseUom?->id,
+            'package_name' => $packageUom?->code ?? strtoupper(trim((string) ($validated['package_unit_name'] ?? ''))),
+            'package_uom_id' => $packageUom?->id,
             'package_conversion_qty' => max(2, (int) ($validated['package_conversion_qty'] ?? 2)),
         ];
     }
@@ -509,11 +524,12 @@ class ItemController extends Controller
             ->delete();
 
         if ($base) {
-            $base->update(['name' => $payload['base_name'], 'conversion_qty' => 1]);
+            $base->update(['name' => $payload['base_name'], 'uom_id' => $payload['base_uom_id'], 'conversion_qty' => 1]);
         } else {
             $base = ItemUnit::create([
                 'item_id' => $item->id,
                 'name' => $payload['base_name'],
+                'uom_id' => $payload['base_uom_id'],
                 'conversion_qty' => 1,
                 'is_base' => true,
             ]);
@@ -530,7 +546,7 @@ class ItemController extends Controller
             ->delete();
         ItemUnit::updateOrCreate(
             ['item_id' => $item->id, 'name' => $packageName],
-            ['conversion_qty' => $payload['package_conversion_qty'], 'is_base' => false]
+            ['uom_id' => $payload['package_uom_id'], 'conversion_qty' => $payload['package_conversion_qty'], 'is_base' => false]
         );
     }
 

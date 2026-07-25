@@ -11,6 +11,7 @@ class ItemUnit extends Model
 
     protected $fillable = [
         'item_id',
+        'uom_id',
         'name',
         'conversion_qty',
         'is_base',
@@ -25,6 +26,11 @@ class ItemUnit extends Model
     public function item()
     {
         return $this->belongsTo(Item::class);
+    }
+
+    public function uom()
+    {
+        return $this->belongsTo(Uom::class);
     }
 
     public function getIsPackageAttribute(): bool

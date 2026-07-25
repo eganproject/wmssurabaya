@@ -154,6 +154,8 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::resource('categories', \App\Http\Controllers\Admin\CategoryController::class)->except(['create','show','edit'])->names('categories');
 
         // Items
+        Route::get('/uoms/data', [\App\Http\Controllers\Admin\UomController::class, 'data'])->name('uoms.data');
+        Route::resource('uoms', \App\Http\Controllers\Admin\UomController::class)->except(['create','show','edit'])->names('uoms');
         Route::get('/items/data', [\App\Http\Controllers\Admin\ItemController::class, 'data'])->name('items.data');
         Route::get('/items/template', [\App\Http\Controllers\Admin\ItemController::class, 'template'])->name('items.template');
         Route::get('/items/{item}', [\App\Http\Controllers\Admin\ItemController::class, 'show'])->name('items.show');

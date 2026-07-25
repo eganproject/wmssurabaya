@@ -21,6 +21,7 @@ class MenuSeeder extends Seeder
             ['name' => 'Divisi', 'slug' => 'divisi', 'route' => 'admin.masterdata.divisi.index', 'icon' => 'fa-solid fa-people-group', 'parent_slug' => 'master-data', 'sort_order' => 21.4],
             ['name' => 'Kurir', 'slug' => 'kurir', 'route' => 'admin.masterdata.kurir.index', 'icon' => 'fa-solid fa-truck', 'parent_slug' => 'master-data', 'sort_order' => 21.45],
             ['name' => 'Categories', 'slug' => 'categories', 'route' => 'admin.masterdata.categories.index', 'icon' => 'fa-solid fa-sitemap', 'parent_slug' => 'master-data', 'sort_order' => 21.5],
+            ['name' => 'UOM', 'slug' => 'uoms', 'route' => 'admin.masterdata.uoms.index', 'icon' => 'fa-solid fa-ruler-combined', 'parent_slug' => 'master-data', 'sort_order' => 21.55],
             ['name' => 'Items', 'slug' => 'items', 'route' => 'admin.masterdata.items.index', 'icon' => 'fa-solid fa-box', 'parent_slug' => 'master-data', 'sort_order' => 21.6],
             ['name' => 'Gudang', 'slug' => 'warehouses', 'route' => 'admin.masterdata.warehouses.index', 'icon' => 'fa-solid fa-warehouse', 'parent_slug' => 'master-data', 'sort_order' => 21.65],
             ['name' => 'Item Stocks', 'slug' => 'item-stocks', 'route' => 'admin.inventory.item-stocks.index', 'icon' => 'fa-solid fa-boxes-stacked', 'parent_slug' => 'inventory', 'sort_order' => 10],

@@ -90,7 +90,7 @@
                     <tr class="text-start text-gray-600 fw-bolder fs-7 text-uppercase gs-0">
                         <th>No</th>
                         <th>Identitas Item</th>
-                        <th>Kategori & Deskripsi</th>
+                        <th>Kategori, UOM & Deskripsi</th>
                         <th>Pengaturan Gudang Kecil</th>
                         <th class="text-end">Aksi</th>
                     </tr>
@@ -165,12 +165,14 @@
 
                     <div class="row g-4 mb-7">
                         <div class="col-md-4">
-                            <label class="required fs-6 fw-bold form-label mb-2">Satuan Dasar</label>
-                            <input type="text" class="form-control form-control-solid" name="base_unit_name" id="item_base_unit_name" value="PCS" placeholder="PCS / SET" />
+                            <label class="required fs-6 fw-bold form-label mb-2">UOM Dasar</label>
+                            <select class="form-select form-select-solid" name="base_uom_id" id="item_base_uom_id" required>
+                                @foreach($uoms as $uom)<option value="{{ $uom->id }}" data-code="{{ $uom->code }}" @selected($uom->code === 'PCS')>{{ $uom->code }} — {{ $uom->name }}</option>@endforeach
+                            </select><input type="hidden" name="base_unit_name" id="item_base_unit_name" value="PCS" />
                         </div>
                         <div class="col-md-4">
-                            <label class="fs-6 fw-bold form-label mb-2">Satuan Kemasan</label>
-                            <input type="text" class="form-control form-control-solid" name="package_unit_name" id="item_package_unit_name" placeholder="DUS / BOX / KOLI" />
+                            <label class="fs-6 fw-bold form-label mb-2">UOM Kemasan</label>
+                            <select class="form-select form-select-solid" name="package_uom_id" id="item_package_uom_id"><option value="">Tanpa kemasan</option>@foreach($uoms as $uom)<option value="{{ $uom->id }}" data-code="{{ $uom->code }}">{{ $uom->code }} — {{ $uom->name }}</option>@endforeach</select><input type="hidden" name="package_unit_name" id="item_package_unit_name" />
                         </div>
                         <div class="col-md-4">
                             <label class="fs-6 fw-bold form-label mb-2">Isi per Kemasan</label>
@@ -300,6 +302,8 @@
         const formDescription = document.getElementById('item_description');
         const formBaseUnit    = document.getElementById('item_base_unit_name');
         const formPackageUnit = document.getElementById('item_package_unit_name');
+        const formBaseUom     = document.getElementById('item_base_uom_id');
+        const formPackageUom  = document.getElementById('item_package_uom_id');
         const formPackageConversion = document.getElementById('item_package_conversion_qty');
         const formIsBundle   = document.getElementById('item_is_bundle');
         const bundleSection  = document.getElementById('bundle_components_section');
@@ -405,6 +409,13 @@
                 $(formCategory).val(normalized).trigger('change');
             }
         };
+
+        const syncUomNames = () => {
+            if (formBaseUom && formBaseUnit) formBaseUnit.value = formBaseUom.selectedOptions[0]?.dataset.code || 'PCS';
+            if (formPackageUom && formPackageUnit) formPackageUnit.value = formPackageUom.selectedOptions[0]?.dataset.code || '';
+        };
+        formBaseUom?.addEventListener('change', syncUomNames);
+        formPackageUom?.addEventListener('change', syncUomNames);
 
         const errorIds = ['error_sku','error_name','error_category_id','error_address','error_description','error_safety_stock','error_is_bundle','error_components'];
         const clearErrors = () => {
@@ -593,6 +604,7 @@
                     render: (value, type, row) => `
                         <div>
                             <div class="fw-semibold text-gray-800 mb-1">${escapeHtml(value || 'Tanpa kategori')}</div>
+                            <div class="mb-1"><span class="badge badge-light-info">Dasar: ${escapeHtml(row.base_unit || 'PCS')}</span>${row.package_unit ? ` <span class="badge badge-light-warning">Kemasan: ${escapeHtml(row.package_unit)}</span>` : ''}</div>
                             <div class="item-description">
                                 ${row.description ? escapeHtml(row.description) : '<span class="text-muted">Tidak ada deskripsi</span>'}
                             </div>
@@ -663,6 +675,9 @@
             document.querySelectorAll('.warehouse-safety').forEach(el => el.value = 0);
             formBaseUnit && (formBaseUnit.value = 'PCS');
             formPackageUnit && (formPackageUnit.value = '');
+            if (formBaseUom) formBaseUom.value = Array.from(formBaseUom.options).find(o => o.dataset.code === 'PCS')?.value || formBaseUom.options[0]?.value || '';
+            if (formPackageUom) formPackageUom.value = '';
+            syncUomNames();
             formPackageConversion && (formPackageConversion.value = 2);
             formIsBundle.checked = false;
             bundleSection.classList.add('d-none');
@@ -697,6 +712,8 @@
                     row.querySelector('.warehouse-location').value = setting?.location || '';
                     row.querySelector('.warehouse-safety').value = setting?.safety_stock ?? 0;
                 });
+                if (formBaseUom) formBaseUom.value = json.base_uom_id || Array.from(formBaseUom.options).find(o => o.dataset.code === (json.base_unit_name || 'PCS'))?.value || '';
+                if (formPackageUom) formPackageUom.value = json.package_uom_id || Array.from(formPackageUom.options).find(o => o.dataset.code === (json.package_unit_name || ''))?.value || '';
                 formBaseUnit && (formBaseUnit.value = json.base_unit_name || 'PCS');
                 formPackageUnit && (formPackageUnit.value = json.package_unit_name || '');
                 formPackageConversion && (formPackageConversion.value = json.package_conversion_qty || 2);
