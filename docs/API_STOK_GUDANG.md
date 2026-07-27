@@ -1,13 +1,13 @@
 # API Stok Gudang
 
-API ini memiliki format respons yang sama dengan API `warehouse29`, dengan tambahan opsional `warehouse_code` karena WMS Surabaya menyimpan stok per gudang.
+API ini memiliki format respons yang sama dengan API `warehouse29`. `qty` dan `min_qty` adalah total dari seluruh gudang aktif WMS Surabaya.
 
 ## Konfigurasi
 
 ```env
 STOCK_API_ENABLED=true
 STOCK_API_TOKEN=<token-rahasia-panjang-dan-acak>
-STOCK_API_DEFAULT_WAREHOUSE_CODE=WH-SMALL
+STOCK_API_WAREHOUSE_CODE=WSSBY
 STOCK_API_RATE_LIMIT_PER_MINUTE=60
 ```
 
@@ -34,11 +34,7 @@ Accept: application/json
 - `GET /api/v1/stocks?updated_since=<ISO-8601>&updated_until=<ISO-8601>&page=1&per_page=100`
 - `GET /api/v1/stocks?as_of=YYYY-MM-DD&page=1&per_page=100`
 
-`warehouse_code` opsional. Jika kosong, API menggunakan `STOCK_API_DEFAULT_WAREHOUSE_CODE`; contoh `WH-SMALL`:
-
-```http
-GET /api/v1/stocks?warehouse_code=WH-SMALL&as_of=2026-06-30&page=1&per_page=100
-```
+`meta.warehouse_code` diambil dari `STOCK_API_WAREHOUSE_CODE` dan berfungsi sebagai identitas WMS Surabaya, bukan filter gudang.
 
 Format respons tetap:
 
@@ -52,4 +48,4 @@ Format respons tetap:
 
 `per_page` maksimum 500. Tanpa `as_of`, data dapat diambil inkremental dengan `updated_since`/`updated_until` dan diurutkan `updated_at ASC, sku ASC`. Gunakan `meta.server_time` dari halaman pertama sebagai `updated_until` di halaman berikutnya.
 
-`as_of` memakai WIB dan mengembalikan saldo penutup tanggal tersebut. Parameter ini tidak dapat digabung dengan `updated_since` atau `updated_until`. Stok rusak tidak termasuk; bundle dihitung virtual dari komponen pada gudang yang dipilih.
+`as_of` memakai WIB dan mengembalikan saldo penutup tanggal tersebut. Parameter ini tidak dapat digabung dengan `updated_since` atau `updated_until`. Stok rusak tidak termasuk; bundle dihitung virtual per gudang lalu dijumlahkan.

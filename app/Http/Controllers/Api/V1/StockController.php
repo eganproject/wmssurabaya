@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\StockApiSyncRecord;
-use App\Models\Warehouse;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
@@ -22,13 +21,13 @@ class StockController extends Controller
 
         $serverTime = now('Asia/Jakarta');
         if ($filters['as_of']) {
-            $query = $this->historicalQuery($filters['warehouse']->id, $filters['as_of']);
+            $query = $this->historicalQuery($filters['as_of']);
         } else {
-            $query = StockApiSyncRecord::query()->where('warehouse_id', $filters['warehouse']->id);
+            $query = $this->catalogQuery();
+            $query->where('source_updated_at', '<=', $filters['updated_until'] ?? $serverTime);
             if ($filters['updated_since']) {
                 $query->where('source_updated_at', '>=', $filters['updated_since']);
             }
-            $query->where('source_updated_at', '<=', $filters['updated_until'] ?? $serverTime);
         }
 
         $total = (clone $query)->count();
@@ -39,7 +38,7 @@ class StockController extends Controller
         return response()->json([
             'success' => true,
             'meta' => [
-                'warehouse_code' => $filters['warehouse']->code,
+                'warehouse_code' => config('stock_api.warehouse_code'),
                 'server_time' => $serverTime->toIso8601String(),
                 'page' => $filters['page'],
                 'per_page' => $filters['per_page'],
@@ -59,7 +58,7 @@ class StockController extends Controller
         ]);
     }
 
-    private function historicalQuery(int $warehouseId, CarbonImmutable $asOf): Builder
+    private function historicalQuery(CarbonImmutable $asOf): Builder
     {
         $movementsAfter = DB::table('stock_mutations')
             ->select('warehouse_id', 'item_id')
@@ -90,22 +89,43 @@ class StockController extends Controller
             ->selectRaw('MAX(component_stock.last_mutation_at) as last_mutation_at')
             ->groupBy('component_stock.warehouse_id', 'ib.bundle_item_id');
 
-        return DB::table('stock_api_sync_records as sr')
+        $physicalTotal = DB::query()->fromSub($physicalAsOf, 'physical_stock')
+            ->select('item_id')
+            ->selectRaw('SUM(stock_as_of) as stock_as_of')
+            ->selectRaw('MAX(last_mutation_at) as last_mutation_at')
+            ->groupBy('item_id');
+        $bundleTotal = DB::query()->fromSub($bundleAsOf, 'bundle_stock')
+            ->select('bundle_item_id')
+            ->selectRaw('SUM(stock_as_of) as stock_as_of')
+            ->selectRaw('MAX(last_mutation_at) as last_mutation_at')
+            ->groupBy('bundle_item_id');
+
+        return $this->catalogQuery()
             ->leftJoin('items as i', 'i.id', '=', 'sr.item_id')
-            ->leftJoinSub($physicalAsOf, 'physical_stock', function ($join) {
-                $join->on('physical_stock.warehouse_id', '=', 'sr.warehouse_id')
-                    ->on('physical_stock.item_id', '=', 'sr.item_id');
-            })
-            ->leftJoinSub($bundleAsOf, 'bundle_stock', function ($join) {
-                $join->on('bundle_stock.warehouse_id', '=', 'sr.warehouse_id')
-                    ->on('bundle_stock.bundle_item_id', '=', 'sr.item_id');
-            })
-            ->where('sr.warehouse_id', $warehouseId)
+            ->leftJoinSub($physicalTotal, 'physical_stock', 'physical_stock.item_id', '=', 'sr.item_id')
+            ->leftJoinSub($bundleTotal, 'bundle_stock', 'bundle_stock.bundle_item_id', '=', 'sr.item_id')
             ->select([
                 'sr.sku', 'sr.name', 'sr.category', 'sr.uom', 'sr.min_qty', 'sr.status', 'sr.source_updated_at',
                 DB::raw('CASE WHEN COALESCE(i.is_bundle, 0) = 1 THEN COALESCE(bundle_stock.stock_as_of, 0) ELSE COALESCE(physical_stock.stock_as_of, 0) END as historical_qty'),
                 DB::raw('CASE WHEN COALESCE(i.is_bundle, 0) = 1 THEN COALESCE(bundle_stock.last_mutation_at, sr.source_updated_at) ELSE COALESCE(physical_stock.last_mutation_at, sr.source_updated_at) END as historical_updated_at'),
             ]);
+    }
+
+    private function catalogQuery(string $alias = 'sr'): Builder
+    {
+        $catalog = DB::table('stock_api_sync_records')
+            ->select('sku')
+            ->selectRaw('MAX(item_id) as item_id')
+            ->selectRaw('MAX(name) as name')
+            ->selectRaw('MAX(category) as category')
+            ->selectRaw('MAX(uom) as uom')
+            ->selectRaw('CASE WHEN COUNT(min_qty) = 0 THEN NULL ELSE SUM(COALESCE(min_qty, 0)) END as min_qty')
+            ->selectRaw("CASE WHEN SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) > 0 THEN 'active' ELSE 'deleted' END as status")
+            ->selectRaw("SUM(CASE WHEN status = 'active' THEN qty ELSE 0 END) as qty")
+            ->selectRaw('MAX(source_updated_at) as source_updated_at')
+            ->groupBy('sku');
+
+        return DB::query()->fromSub($catalog, $alias);
     }
 
     private function filters(Request $request): array
@@ -114,11 +134,6 @@ class StockController extends Controller
         $perPage = filter_var($request->input('per_page', 100), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 500]]);
         if ($page === false || $perPage === false) {
             return [[], $this->error('page dan per_page harus berupa integer positif; per_page maksimum 500.')];
-        }
-        $warehouseCode = trim((string) $request->input('warehouse_code', config('stock_api.default_warehouse_code')));
-        $warehouse = Warehouse::where('code', $warehouseCode)->where('is_active', true)->first();
-        if (! $warehouse) {
-            return [[], $this->error('warehouse_code tidak ditemukan atau tidak aktif.')];
         }
         $since = $this->parseIsoTimestamp($request->input('updated_since'));
         $until = $this->parseIsoTimestamp($request->input('updated_until'));
@@ -137,7 +152,7 @@ class StockController extends Controller
         }
 
         return [[
-            'page' => $page, 'per_page' => $perPage, 'warehouse' => $warehouse,
+            'page' => $page, 'per_page' => $perPage,
             'updated_since' => $since, 'updated_until' => $until, 'as_of' => $asOf,
         ], null];
     }
