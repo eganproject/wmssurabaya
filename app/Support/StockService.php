@@ -92,7 +92,7 @@ class StockService
                     ]);
                 }
 
-                return StockMutation::create([
+                $mutation = StockMutation::create([
                     'warehouse_id' => $warehouseId,
                     'item_id' => $itemId,
                     'unit_id' => $unitId,
@@ -111,6 +111,11 @@ class StockService
                     'created_by' => $payload['created_by'] ?? null,
                     'idempotency_key' => $idempotencyKey,
                 ]);
+
+                StockApiSyncService::syncItem($warehouseId, $itemId, $mutation->occurred_at);
+                StockApiSyncService::syncBundlesUsingComponent($warehouseId, $itemId, $mutation->occurred_at);
+
+                return $mutation;
             });
         } catch (QueryException $e) {
             if ($idempotencyKey && self::isUniqueConstraintViolation($e)) {
@@ -146,6 +151,8 @@ class StockService
 
             $stock->stock = $newStock;
             $stock->save();
+            StockApiSyncService::syncItem($warehouseId, (int) $mutation->item_id);
+            StockApiSyncService::syncBundlesUsingComponent($warehouseId, (int) $mutation->item_id);
         }
     }
 
