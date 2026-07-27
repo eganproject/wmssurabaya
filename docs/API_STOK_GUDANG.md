@@ -37,6 +37,12 @@ Accept: application/json
 - `GET /api/v1/stocks?updated_since=<ISO-8601>&updated_until=<ISO-8601>&page=1&per_page=100`
 - `GET /api/v1/stocks?as_of=YYYY-MM-DD&page=1&per_page=100`
 
+Respons `GET /api/v1/health`:
+
+```json
+{"success": true, "warehouse_code": "WSSBY", "server_time": "2026-07-27T12:00:00+07:00"}
+```
+
 `meta.warehouse_code` diambil dari `STOCK_API_WAREHOUSE_CODE` dan berfungsi sebagai identitas WMS Surabaya, bukan filter gudang.
 
 Format respons tetap:
