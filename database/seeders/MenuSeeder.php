@@ -24,6 +24,7 @@ class MenuSeeder extends Seeder
             ['name' => 'UOM', 'slug' => 'uoms', 'route' => 'admin.masterdata.uoms.index', 'icon' => 'fa-solid fa-ruler-combined', 'parent_slug' => 'master-data', 'sort_order' => 21.55],
             ['name' => 'Items', 'slug' => 'items', 'route' => 'admin.masterdata.items.index', 'icon' => 'fa-solid fa-box', 'parent_slug' => 'master-data', 'sort_order' => 21.6],
             ['name' => 'Gudang', 'slug' => 'warehouses', 'route' => 'admin.masterdata.warehouses.index', 'icon' => 'fa-solid fa-warehouse', 'parent_slug' => 'master-data', 'sort_order' => 21.65],
+            ['name' => 'Akses API Stok', 'slug' => 'stock-api-access', 'route' => 'admin.masterdata.stock-api-access.index', 'icon' => 'fa-solid fa-shield-halved', 'parent_slug' => 'master-data', 'sort_order' => 21.66],
             ['name' => 'Item Stocks', 'slug' => 'item-stocks', 'route' => 'admin.inventory.item-stocks.index', 'icon' => 'fa-solid fa-boxes-stacked', 'parent_slug' => 'inventory', 'sort_order' => 10],
             ['name' => 'Stock Mutations', 'slug' => 'stock-mutations', 'route' => 'admin.inventory.stock-mutations.index', 'icon' => 'fa-solid fa-right-left', 'parent_slug' => 'inventory', 'sort_order' => 11],
             ['name' => 'Transfer Antar Gudang', 'slug' => 'stock-transfers', 'route' => 'admin.inventory.stock-transfers.index', 'icon' => 'fa-solid fa-truck-ramp-box', 'parent_slug' => 'inventory', 'sort_order' => 11.5],

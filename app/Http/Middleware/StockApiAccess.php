@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\StockApiAllowedIp;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -17,6 +18,10 @@ class StockApiAccess
         $token = (string) config('stock_api.token');
         if ($token === '' || ! hash_equals($token, (string) $request->bearerToken())) {
             return response()->json(['success' => false, 'error' => ['code' => 'UNAUTHORIZED', 'message' => 'Token API tidak valid.']], 401);
+        }
+
+        if (! StockApiAllowedIp::where('is_active', true)->where('ip_address', $request->ip())->exists()) {
+            return response()->json(['success' => false, 'error' => ['code' => 'IP_NOT_ALLOWED', 'message' => 'IP sumber tidak diizinkan.']], 403);
         }
 
         return $next($request);

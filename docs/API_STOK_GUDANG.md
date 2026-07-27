@@ -15,11 +15,14 @@ STOCK_API_RATE_LIMIT_PER_MINUTE=60
 
 ```bash
 php artisan migrate
+php artisan db:seed --class=MenuSeeder
 php artisan stock-api:backfill
 php artisan optimize:clear
 ```
 
 Backfill hanya membentuk data proyeksi API; tidak mengubah `item_stocks` atau `stock_mutations`.
+
+Sebelum memanggil API, tambahkan IP publik server pusat melalui **Master Data → Akses API Stok**. Hanya IP aktif dalam daftar tersebut yang dapat memakai token. Jika daftar masih kosong, seluruh akses API ditolak.
 
 ## Endpoint
 

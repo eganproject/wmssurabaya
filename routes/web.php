@@ -38,6 +38,7 @@ use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\DivisiController;
 use App\Http\Controllers\Admin\KurirController;
 use App\Http\Controllers\Admin\QcScanInputController;
+use App\Http\Controllers\Admin\StockApiAllowedIpController;
 use App\Http\Controllers\Mobile\StockOpnameMobileController;
 use App\Http\Controllers\Picker\PickerDashboardController;
 use App\Http\Controllers\Picker\PackerScanOutController;
@@ -168,6 +169,11 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
 
         Route::get('/warehouses/data', [WarehouseController::class, 'data'])->name('warehouses.data');
         Route::resource('warehouses', WarehouseController::class)->except(['create','show','edit'])->names('warehouses');
+
+        Route::get('/stock-api-access', [StockApiAllowedIpController::class, 'index'])->name('stock-api-access.index');
+        Route::post('/stock-api-access', [StockApiAllowedIpController::class, 'store'])->name('stock-api-access.store');
+        Route::put('/stock-api-access/{stockApiAllowedIp}', [StockApiAllowedIpController::class, 'update'])->name('stock-api-access.update');
+        Route::delete('/stock-api-access/{stockApiAllowedIp}', [StockApiAllowedIpController::class, 'destroy'])->name('stock-api-access.destroy');
 
         // Permissions management
         Route::get('/permissions', [PermissionController::class, 'index'])->name('permissions.index');
