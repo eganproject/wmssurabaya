@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(php artisan *)"
+      "Bash(php artisan *)",
+      "Bash(php -l app/Http/Controllers/Admin/ItemController.php)",
+      "Bash(php -l app/Imports/ItemsImport.php)",
+      "Bash(git --no-pager diff --stat)",
+      "Bash(git --no-pager diff app/)"
     ]
   }
 }

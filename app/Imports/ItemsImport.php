@@ -10,6 +10,7 @@ use App\Models\ItemWarehouseSetting;
 use App\Models\StockMutation;
 use App\Models\Warehouse;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 use Maatwebsite\Excel\Concerns\ToCollection;
@@ -178,9 +179,9 @@ class ItemsImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
                 if ($packageUnit) {
                     $packageChanged = strcasecmp($packageUnit->name, $packageUnitName) !== 0
                         || (int) $packageUnit->conversion_qty !== max(1, $packageConversion);
-                    if ($packageChanged && $this->hasBulkActivity($item->id)) {
+                    if ($packageChanged && $this->hasBulkStockBalance($item->id)) {
                         throw ValidationException::withMessages([
-                            'file' => "Baris {$rowNumber} SKU {$sku}: satuan atau isi per koli tidak dapat diubah karena sudah ada aktivitas Gudang Besar.",
+                            'file' => "Baris {$rowNumber} SKU {$sku}: satuan atau isi per koli tidak dapat diubah karena masih ada saldo di Gudang Besar.",
                         ]);
                     }
                     $packageUnit->update([
@@ -369,7 +370,12 @@ class ItemsImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
         ]);
     }
 
-    protected function hasBulkActivity(int $itemId): bool
+    /**
+     * Isi per koli hanya dikunci selama masih ada saldo berjalan di Gudang Besar.
+     * Riwayat mutasi tidak ikut mengunci karena tiap mutasi menyimpan
+     * conversion_qty-nya sendiri, sehingga histori lama tetap akurat.
+     */
+    protected function hasBulkStockBalance(int $itemId): bool
     {
         $bulkWarehouseIds = Warehouse::where('type', Warehouse::TYPE_BULK)->pluck('id');
 
@@ -377,8 +383,10 @@ class ItemsImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
                 ->whereIn('warehouse_id', $bulkWarehouseIds)
                 ->where('stock', '!=', 0)
                 ->exists()
-            || StockMutation::where('item_id', $itemId)
+            || DB::table('damaged_item_stocks')
+                ->where('item_id', $itemId)
                 ->whereIn('warehouse_id', $bulkWarehouseIds)
+                ->where('stock', '!=', 0)
                 ->exists();
     }
 

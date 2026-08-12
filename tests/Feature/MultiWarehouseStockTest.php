@@ -184,6 +184,60 @@ class MultiWarehouseStockTest extends TestCase
         $this->assertSame(12, (int) $package->fresh()->conversion_qty);
     }
 
+    public function test_package_conversion_can_change_when_bulk_balance_is_empty(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $item = Item::create(['sku' => 'BULK-FREE', 'name' => 'Bulk Free', 'category_id' => null]);
+        ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'PCS',
+            'conversion_qty' => 1,
+            'is_base' => true,
+        ]);
+        $package = ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'KOLI',
+            'conversion_qty' => 12,
+            'is_base' => false,
+        ]);
+        $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
+
+        // Ada riwayat mutasi, tetapi saldo akhirnya kembali kosong.
+        StockService::mutate([
+            'warehouse_id' => $bulk->id,
+            'item_id' => $item->id,
+            'unit_id' => $package->id,
+            'qty_input' => 2,
+            'direction' => 'in',
+            'qty' => 24,
+            'source_type' => 'test',
+            'source_id' => 34,
+        ]);
+        StockService::mutate([
+            'warehouse_id' => $bulk->id,
+            'item_id' => $item->id,
+            'unit_id' => $package->id,
+            'qty_input' => 2,
+            'direction' => 'out',
+            'qty' => 24,
+            'source_type' => 'test',
+            'source_id' => 35,
+        ]);
+
+        $this->actingAs($user)
+            ->putJson(route('admin.masterdata.items.update', $item), [
+                'sku' => $item->sku,
+                'name' => $item->name,
+                'category_id' => 0,
+                'base_unit_name' => 'PCS',
+                'package_unit_name' => 'KOLI',
+                'package_conversion_qty' => 10,
+            ])
+            ->assertOk();
+
+        $this->assertSame(10, (int) $package->fresh()->conversion_qty);
+    }
+
     public function test_transfer_ship_and_receive_moves_stock_between_warehouses(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);

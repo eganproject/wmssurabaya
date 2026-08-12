@@ -512,9 +512,9 @@ class ItemController extends Controller
             || strcasecmp($existingPackage->name, $packageName) !== 0
             || (int) $existingPackage->conversion_qty !== (int) $payload['package_conversion_qty']
         );
-        if ($packageChanged && $this->hasBulkActivity($item->id)) {
+        if ($packageChanged && $this->hasBulkStockBalance($item->id)) {
             throw ValidationException::withMessages([
-                'package_conversion_qty' => 'Satuan atau isi per koli tidak dapat diubah karena item sudah memiliki saldo atau riwayat Gudang Besar.',
+                'package_conversion_qty' => 'Satuan atau isi per koli tidak dapat diubah karena item masih memiliki saldo di Gudang Besar. Kosongkan dulu saldo Gudang Besar untuk item ini.',
             ]);
         }
 
@@ -550,7 +550,12 @@ class ItemController extends Controller
         );
     }
 
-    private function hasBulkActivity(int $itemId): bool
+    /**
+     * Isi per koli hanya dikunci selama masih ada saldo berjalan di Gudang Besar.
+     * Riwayat mutasi tidak ikut mengunci karena tiap mutasi menyimpan
+     * conversion_qty-nya sendiri, sehingga histori lama tetap akurat.
+     */
+    private function hasBulkStockBalance(int $itemId): bool
     {
         $bulkWarehouseIds = Warehouse::where('type', Warehouse::TYPE_BULK)->pluck('id');
 
@@ -558,13 +563,10 @@ class ItemController extends Controller
                 ->whereIn('warehouse_id', $bulkWarehouseIds)
                 ->where('stock', '!=', 0)
                 ->exists()
-            || DB::table('stock_mutations')
+            || DB::table('damaged_item_stocks')
                 ->where('item_id', $itemId)
                 ->whereIn('warehouse_id', $bulkWarehouseIds)
-                ->exists()
-            || DB::table('damaged_stock_mutations')
-                ->where('item_id', $itemId)
-                ->whereIn('warehouse_id', $bulkWarehouseIds)
+                ->where('stock', '!=', 0)
                 ->exists();
     }
 
