@@ -25,7 +25,18 @@
             },
         };
 
+        const isFormValid = (form) => form.noValidate
+            || typeof form.checkValidity !== 'function'
+            || form.checkValidity();
+
         const triggerSubmit = (form) => {
+            // requestSubmit() dibatalkan diam-diam jika ada field yang tidak lolos
+            // validasi bawaan browser, sehingga dialog "Memproses..." tidak pernah tertutup.
+            if (!isFormValid(form)) {
+                Swal.close();
+                if (typeof form.reportValidity === 'function') form.reportValidity();
+                return;
+            }
             if (typeof form.requestSubmit === 'function') {
                 form.dataset.swalBypass = 'true';
                 form.requestSubmit();
@@ -51,6 +62,10 @@
                 }
                 event.preventDefault();
                 event.stopImmediatePropagation();
+                if (!isFormValid(form)) {
+                    if (typeof form.reportValidity === 'function') form.reportValidity();
+                    return;
+                }
                 Swal.fire(confirmationText).then((result) => {
                     if (result.isConfirmed) {
                         Swal.fire(loadingConfig);

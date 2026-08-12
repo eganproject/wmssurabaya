@@ -326,7 +326,9 @@
             row.innerHTML = `
                 <div class="col-md-8">
                     <label class="required fs-7 fw-bold form-label mb-1">Item Komponen</label>
-                    <select class="form-select form-select-solid component-item-select" data-name="component_item_id" required>
+                    {{-- tanpa atribut required: select2 menyembunyikan select asli sehingga
+                         validasi bawaan browser memblokir submit tanpa pesan yang terlihat --}}
+                    <select class="form-select form-select-solid component-item-select" data-name="component_item_id">
                         <option value=""></option>
                     </select>
                 </div>
@@ -792,15 +794,15 @@
                     body: fd,
                 });
                 const json = await res.json().catch(() => ({}));
+                closeSwal();
                 if (!res.ok) {
-                    if (json?.errors) {
-                        Object.entries(json.errors).forEach(([key, msgs]) => {
-                            const errEl = document.getElementById(`error_${key}`);
-                            if (errEl) errEl.textContent = msgs.join(', ');
-                        });
-                    } else {
-                        Swal?.fire('Error', json.message || 'Gagal menyimpan item', 'error');
-                    }
+                    const messages = Object.entries(json?.errors || {}).map(([key, msgs]) => {
+                        const text = Array.isArray(msgs) ? msgs.join(', ') : String(msgs);
+                        const errEl = document.getElementById(`error_${key}`);
+                        if (errEl) errEl.textContent = text;
+                        return text;
+                    });
+                    Swal?.fire('Error', messages.join('\n') || json.message || 'Gagal menyimpan item', 'error');
                     return;
                 }
                 Swal?.fire('Berhasil', json.message || 'Berhasil', 'success');
@@ -808,6 +810,7 @@
                 reloadTable(true);
             } catch (err) {
                 console.error(err);
+                closeSwal();
                 Swal?.fire('Error', 'Gagal menyimpan item', 'error');
             }
         });
