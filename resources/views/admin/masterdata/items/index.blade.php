@@ -176,8 +176,8 @@
                         </div>
                         <div class="col-md-4">
                             <label class="fs-6 fw-bold form-label mb-2">Isi per Kemasan</label>
-                            <input type="number" min="2" class="form-control form-control-solid" name="package_conversion_qty" id="item_package_conversion_qty" value="2" />
-                            <div class="form-text">Contoh: 1 DUS = 24 PCS.</div>
+                            <input type="number" min="1" class="form-control form-control-solid" name="package_conversion_qty" id="item_package_conversion_qty" value="1" />
+                            <div class="form-text">Minimal 1. Contoh: 1 DUS = 24 PCS.</div>
                         </div>
                     </div>
 
@@ -242,7 +242,7 @@
                         <li><strong>category</strong> (opsional, anak kategori; jika kosong akan dimasukkan ke kategori default "Tanpa Kategori")</li>
                         <li><strong>base_unit</strong> (opsional, default <code>PCS</code>; dapat diisi <code>SET</code>)</li>
                         <li><strong>package_unit</strong> (opsional, contoh <code>KOLI</code>, <code>DUS</code>, atau <code>BOX</code>)</li>
-                        <li><strong>package_conversion_qty</strong> (wajib jika package_unit atau stok Gudang Besar diisi; contoh <code>24</code> berarti 1 KOLI = 24 PCS)</li>
+                        <li><strong>package_conversion_qty</strong> (wajib jika package_unit atau stok Gudang Besar diisi; minimal <code>1</code>, contoh <code>24</code> berarti 1 KOLI = 24 PCS)</li>
                         <li><strong>small_warehouse_stock</strong> (opsional, stok awal Gudang Kecil dalam satuan dasar)</li>
                         <li><strong>large_warehouse_stock</strong> (opsional, stok awal Gudang Besar dalam satuan kemasan; package_unit default <code>KOLI</code>)</li>
                         <li><strong>small_warehouse_safety_stock</strong> dan <strong>small_warehouse_location</strong> (opsional)</li>
@@ -678,7 +678,7 @@
             if (formBaseUom) formBaseUom.value = Array.from(formBaseUom.options).find(o => o.dataset.code === 'PCS')?.value || formBaseUom.options[0]?.value || '';
             if (formPackageUom) formPackageUom.value = '';
             syncUomNames();
-            formPackageConversion && (formPackageConversion.value = 2);
+            formPackageConversion && (formPackageConversion.value = 1);
             formIsBundle.checked = false;
             bundleSection.classList.add('d-none');
             bundleContainer.innerHTML = '';
@@ -716,7 +716,7 @@
                 if (formPackageUom) formPackageUom.value = json.package_uom_id || Array.from(formPackageUom.options).find(o => o.dataset.code === (json.package_unit_name || ''))?.value || '';
                 formBaseUnit && (formBaseUnit.value = json.base_unit_name || 'PCS');
                 formPackageUnit && (formPackageUnit.value = json.package_unit_name || '');
-                formPackageConversion && (formPackageConversion.value = json.package_conversion_qty || 2);
+                formPackageConversion && (formPackageConversion.value = json.package_conversion_qty || 1);
                 setCategoryValue(json.category_id || '0');
 
                 // Bundle state

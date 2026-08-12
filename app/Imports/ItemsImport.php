@@ -110,9 +110,9 @@ class ItemsImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
                     'file' => "Baris {$rowNumber} SKU {$sku}: satuan dasar dan satuan kemasan harus berbeda.",
                 ]);
             }
-            if ($packageUnitName !== '' && $packageConversion < 2) {
+            if ($packageUnitName !== '' && $packageConversion < 1) {
                 throw ValidationException::withMessages([
-                    'file' => "Baris {$rowNumber} SKU {$sku}: package_conversion_qty/isi_per_kemasan wajib minimal 2 jika satuan kemasan diisi.",
+                    'file' => "Baris {$rowNumber} SKU {$sku}: package_conversion_qty/isi_per_kemasan wajib minimal 1 jika satuan kemasan diisi.",
                 ]);
             }
 
@@ -177,7 +177,7 @@ class ItemsImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
                 $packageUnit = ItemUnit::where('item_id', $item->id)->where('is_base', false)->first();
                 if ($packageUnit) {
                     $packageChanged = strcasecmp($packageUnit->name, $packageUnitName) !== 0
-                        || (int) $packageUnit->conversion_qty !== max(2, $packageConversion);
+                        || (int) $packageUnit->conversion_qty !== max(1, $packageConversion);
                     if ($packageChanged && $this->hasBulkActivity($item->id)) {
                         throw ValidationException::withMessages([
                             'file' => "Baris {$rowNumber} SKU {$sku}: satuan atau isi per koli tidak dapat diubah karena sudah ada aktivitas Gudang Besar.",
@@ -185,13 +185,13 @@ class ItemsImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
                     }
                     $packageUnit->update([
                         'name' => $packageUnitName,
-                        'conversion_qty' => max(2, $packageConversion),
+                        'conversion_qty' => max(1, $packageConversion),
                     ]);
                 } else {
                     $packageUnit = ItemUnit::create([
                         'item_id' => $item->id,
                         'name' => $packageUnitName,
-                        'conversion_qty' => max(2, $packageConversion),
+                        'conversion_qty' => max(1, $packageConversion),
                         'is_base' => false,
                     ]);
                 }

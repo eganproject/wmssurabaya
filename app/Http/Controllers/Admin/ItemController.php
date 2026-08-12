@@ -147,7 +147,7 @@ class ItemController extends Controller
             'base_uom_id' => ['nullable', 'integer', 'exists:uoms,id'],
             'package_unit_name' => ['nullable', 'string', 'max:30', 'different:base_unit_name'],
             'package_uom_id' => ['nullable', 'integer', 'exists:uoms,id', 'different:base_uom_id'],
-            'package_conversion_qty' => ['nullable', 'integer', 'min:2'],
+            'package_conversion_qty' => ['nullable', 'integer', 'min:1'],
             'warehouse_settings' => ['nullable', 'array'],
             'warehouse_settings.*.warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
             'warehouse_settings.*.safety_stock' => ['nullable', 'integer', 'min:0'],
@@ -225,7 +225,7 @@ class ItemController extends Controller
             'base_uom_id' => ['nullable', 'integer', 'exists:uoms,id'],
             'package_unit_name' => ['nullable', 'string', 'max:30', 'different:base_unit_name'],
             'package_uom_id' => ['nullable', 'integer', 'exists:uoms,id', 'different:base_uom_id'],
-            'package_conversion_qty' => ['nullable', 'integer', 'min:2'],
+            'package_conversion_qty' => ['nullable', 'integer', 'min:1'],
             'warehouse_settings' => ['nullable', 'array'],
             'warehouse_settings.*.warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
             'warehouse_settings.*.safety_stock' => ['nullable', 'integer', 'min:0'],
@@ -466,7 +466,7 @@ class ItemController extends Controller
             'base_uom_id' => $baseUom?->id,
             'package_name' => $packageUom?->code ?? strtoupper(trim((string) ($validated['package_unit_name'] ?? ''))),
             'package_uom_id' => $packageUom?->id,
-            'package_conversion_qty' => max(2, (int) ($validated['package_conversion_qty'] ?? 2)),
+            'package_conversion_qty' => max(1, (int) ($validated['package_conversion_qty'] ?? 1)),
         ];
     }
 

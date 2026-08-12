@@ -196,7 +196,7 @@ class DamagedStockService
         $packageUnit = ItemUnit::where('item_id', $itemId)
             ->where('is_base', false)
             ->first();
-        if (!$packageUnit || (int) $packageUnit->conversion_qty < 2) {
+        if (!$packageUnit || (int) $packageUnit->conversion_qty < 1) {
             throw ValidationException::withMessages([
                 'qty' => 'Item belum memiliki satuan koli untuk transaksi Gudang Besar.',
             ]);

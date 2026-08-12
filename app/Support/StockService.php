@@ -180,7 +180,7 @@ class StockService
             $unit = ItemUnit::where('id', $unitId)
                 ->where('item_id', $itemId)
                 ->first();
-            if (!$unit || $unit->is_base || (int) $unit->conversion_qty < 2) {
+            if (!$unit || $unit->is_base || (int) $unit->conversion_qty < 1) {
                 throw ValidationException::withMessages([
                     'unit_id' => 'Gudang Besar wajib menggunakan satuan koli, bukan satuan dasar.',
                 ]);
@@ -198,7 +198,7 @@ class StockService
         $packageUnit = ItemUnit::where('item_id', $itemId)
             ->where('is_base', false)
             ->first();
-        if (!$packageUnit || (int) $packageUnit->conversion_qty < 2) {
+        if (!$packageUnit || (int) $packageUnit->conversion_qty < 1) {
             throw ValidationException::withMessages([
                 'qty' => 'Item belum memiliki satuan koli untuk transaksi Gudang Besar.',
             ]);

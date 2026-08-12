@@ -1008,7 +1008,7 @@ class OutboundController extends Controller
                 $conversionQty = 1;
                 if ($isBulkWarehouse && $unitId <= 0) {
                     $item = Item::with('packageUnit')->find((int) $row['item_id']);
-                    if ($item?->packageUnit && (int) $item->packageUnit->conversion_qty >= 2) {
+                    if ($item?->packageUnit && (int) $item->packageUnit->conversion_qty >= 1) {
                         $unitId = (int) $item->packageUnit->id;
                     } else {
                         throw ValidationException::withMessages([
