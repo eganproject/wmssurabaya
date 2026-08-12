@@ -752,7 +752,7 @@
                 osc.type = kind === 'ok' ? 'sine' : 'triangle';
                 osc.frequency.setValueAtTime(f, now + t);
                 gain.gain.setValueAtTime(0.0001, now + t);
-                gain.gain.exponentialRampToValueAtTime(0.035, now + t + 0.01);
+                gain.gain.exponentialRampToValueAtTime(1, now + t + 0.01);
                 gain.gain.exponentialRampToValueAtTime(0.0001, now + t + d);
                 osc.connect(gain);
                 gain.connect(ctx.destination);

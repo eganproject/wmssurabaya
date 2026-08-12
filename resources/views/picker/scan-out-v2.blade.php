@@ -213,14 +213,21 @@
         }
         return audioCtx;
     };
-    const playBeep = (frequency = 880, duration = 120, volume = 0.35) => {
+    const playBeep = (frequency = 880, duration = 120, volume = 1) => {
         const ctx = getAudioCtx();
         if (!ctx) return;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
+        const now = ctx.currentTime;
+        const seconds = duration / 1000;
+        const peak = Math.max(0.0001, volume);
         osc.type = 'sine';
         osc.frequency.value = frequency;
-        gain.gain.value = volume;
+        // attack/release singkat supaya volume penuh tidak berbunyi "klik"
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(peak, now + 0.005);
+        gain.gain.setValueAtTime(peak, now + Math.max(0.006, seconds - 0.005));
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + seconds);
         osc.connect(gain);
         gain.connect(ctx.destination);
         osc.start();
@@ -230,8 +237,8 @@
             gain.disconnect();
         }, duration);
     };
-    const playScanSound = () => playBeep(760, 120, 0.35);
-    const playSuccessSound = () => playBeep(1200, 140, 0.45);
+    const playScanSound = () => playBeep(760, 120, 1);
+    const playSuccessSound = () => playBeep(1200, 140, 1);
 
     const el = {
         scanType: document.getElementById('scan_type'),
