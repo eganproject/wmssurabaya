@@ -834,7 +834,14 @@
                     width: '100%',
                     minimumResultsForSearch: 0,
                 })
-                    .on('select2:opening select2:closing select2:close', function(e){ e.stopPropagation(); });
+                    .on('select2:opening select2:closing select2:close', function(e){ e.stopPropagation(); })
+                    // Select2 memicu event jQuery sendiri. Tangani langsung agar
+                    // pilihan SKU selalu memuat ulang satuan kemasannya.
+                    .on('select2:select select2:clear', function() {
+                        if (selectEl.matches('.flow-item-select')) {
+                            syncUnitOptions(selectEl.closest('.flow-item-row'));
+                        }
+                    });
             }
         };
 
