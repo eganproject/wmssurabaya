@@ -1134,9 +1134,18 @@ class InboundController extends Controller
                 }
             }
         } else {
-            foreach ($items as $row) {
+            $warehouseType = Warehouse::whereKey($validated['warehouse_id'])->value('type');
+            foreach ($items as $idx => $row) {
+                // Jangan biarkan qty koli tanpa satuan kemasan diproses sebagai PCS.
+                // Tanpa unit_id, qty input tidak dapat dikonversi ke satuan dasar.
+                if ($warehouseType === Warehouse::TYPE_BULK && !$row['unit_id']) {
+                    throw ValidationException::withMessages([
+                        "items.{$idx}.unit_id" => 'Satuan koli belum dikonfigurasi untuk item ini. Atur satuan kemasan di Master Item terlebih dahulu.',
+                    ]);
+                }
+
                 if (
-                    Warehouse::whereKey($validated['warehouse_id'])->value('type') === Warehouse::TYPE_FULFILLMENT
+                    $warehouseType === Warehouse::TYPE_FULFILLMENT
                     && $row['unit_id']
                     && !ItemUnit::whereKey($row['unit_id'])->where('is_base', true)->exists()
                 ) {

@@ -369,6 +369,34 @@ class MultiWarehouseStockTest extends TestCase
         $this->assertSame(1, (int) $outbound->items()->firstOrFail()->qty_input);
     }
 
+    public function test_inbound_to_bulk_warehouse_requires_a_configured_package_unit(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $item = Item::create(['sku' => 'FLOW-NO-PACKAGE', 'name' => 'Flow No Package', 'category_id' => null]);
+        ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'PCS',
+            'conversion_qty' => 1,
+            'is_base' => true,
+        ]);
+        $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
+
+        $this->actingAs($user)
+            ->postJson(route('admin.inbound.receipts.store'), [
+                'warehouse_id' => $bulk->id,
+                'transacted_at' => now()->format('Y-m-d H:i:s'),
+                'items' => [[
+                    'item_id' => $item->id,
+                    'qty' => 34,
+                ]],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['items.0.unit_id'])
+            ->assertJsonPath('errors.items.0.unit_id.0', 'Satuan koli belum dikonfigurasi untuk item ini. Atur satuan kemasan di Master Item terlebih dahulu.');
+
+        $this->assertDatabaseCount('inbound_transactions', 0);
+    }
+
     public function test_outbound_manual_bulk_warehouse_uses_package_unit_when_unit_id_is_missing(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);

@@ -733,6 +733,26 @@
             return !hasDuplicate;
         };
 
+        const validateInboundBulkUnits = () => {
+            if (defaultTypeFilter !== 'receipt' || !itemsContainer) return true;
+            const isBulkWarehouse = warehouseEl?.selectedOptions?.[0]?.dataset?.type === 'bulk';
+            if (!isBulkWarehouse) return true;
+
+            let valid = true;
+            itemsContainer.querySelectorAll('.flow-item-row').forEach(row => {
+                const itemId = row.querySelector('.flow-item-select')?.value;
+                const unitEl = row.querySelector('.flow-unit-select');
+                if (!itemId || (unitEl && !unitEl.disabled && unitEl.value)) return;
+
+                valid = false;
+                if (unitEl) unitEl.classList.add('is-invalid');
+                const errorEl = row.querySelector('[data-error-for="unit_id"]');
+                if (errorEl) errorEl.textContent = 'Satuan koli belum dikonfigurasi. Atur satuan kemasan di Master Item.';
+            });
+
+            return valid;
+        };
+
         const validateReturnBalances = () => {
             if (!isInboundReturnFlow || !itemsContainer) return true;
             let valid = true;
@@ -1585,6 +1605,10 @@
             clearErrors();
             if (!validateUniqueItems()) {
                 if (typeof Swal !== 'undefined') Swal.fire('Error', 'Item tidak boleh duplikat', 'error');
+                return;
+            }
+            if (!validateInboundBulkUnits()) {
+                if (typeof Swal !== 'undefined') Swal.fire('Error', 'Lengkapi satuan koli untuk setiap item Gudang Besar.', 'error');
                 return;
             }
             if (!validateReturnBalances()) {
