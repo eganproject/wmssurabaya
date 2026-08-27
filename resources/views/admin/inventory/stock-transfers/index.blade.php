@@ -310,15 +310,18 @@ document.addEventListener('DOMContentLoaded', () => {
             ? '<i class="fa-solid fa-boxes-stacked fs-2 text-info me-4"></i><div><div class="fw-bold text-gray-800">Input menggunakan satuan koli</div><div class="text-gray-700 fs-7">Karena transfer melibatkan Gudang Besar, jumlah kirim wajib berupa koli/kemasan utuh seperti DUS, BOX, atau KOLI. Input bukan dalam PCS.</div></div>'
             : '<i class="fa-solid fa-box fs-2 text-info me-4"></i><div><div class="fw-bold text-gray-800">Input menggunakan satuan dasar</div><div class="text-gray-700 fs-7">Transfer antar Gudang Kecil dapat menggunakan PCS atau SET.</div></div>';
     }
-    function refreshTransferRow(row, selectedUnitId = null) {
+    function refreshTransferRow(row, selectedUnitId = undefined) {
         const item = items.find(value => String(value.id) === String(row.querySelector('.item').value));
         const requiresPackage = currentWarehouseType(transfer_source) === 'bulk' || currentWarehouseType(transfer_destination) === 'bulk';
         const units = (item?.units || []).filter(unit => !requiresPackage || !unit.is_base);
         const unitSelect = row.querySelector('.unit');
+        // Simpan pilihan satuan ketika hanya qty/gudang/satuan yang berubah.
+        // SKU mengirim null secara eksplisit agar satuan lama tidak terbawa ke item baru.
+        const unitIdToKeep = selectedUnitId === undefined ? unitSelect.value : selectedUnitId;
         unitSelect.innerHTML = units.length
             ? units.map(unit => `<option value="${unit.id}">${escapeHtml(unit.name)} (1 = ${unit.conversion_qty})</option>`).join('')
             : '<option value="">Satuan koli belum dikonfigurasi</option>';
-        if (selectedUnitId && units.some(unit => String(unit.id) === String(selectedUnitId))) unitSelect.value = String(selectedUnitId);
+        if (unitIdToKeep && units.some(unit => String(unit.id) === String(unitIdToKeep))) unitSelect.value = String(unitIdToKeep);
         const selected = units.find(unit => String(unit.id) === String(unitSelect.value));
         const qty = Number(row.querySelector('.qty').value || 0);
         const baseUnit = (item?.units || []).find(unit => unit.is_base);
@@ -346,7 +349,7 @@ document.addEventListener('DOMContentLoaded', () => {
         transfer_items.appendChild(row);
         if (data.item_id) row.querySelector('.item').value = String(data.item_id);
         if (data.qty_input) row.querySelector('.qty').value = data.qty_input;
-        row.querySelector('.item').addEventListener('change', () => refreshTransferRow(row));
+        row.querySelector('.item').addEventListener('change', () => refreshTransferRow(row, null));
         row.querySelector('.unit').addEventListener('change', () => refreshTransferRow(row));
         row.querySelector('.qty').addEventListener('input', () => refreshTransferRow(row));
         row.querySelector('.remove').addEventListener('click', () => row.remove());
