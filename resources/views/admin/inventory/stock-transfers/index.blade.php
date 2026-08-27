@@ -310,19 +310,13 @@ document.addEventListener('DOMContentLoaded', () => {
             ? '<i class="fa-solid fa-boxes-stacked fs-2 text-info me-4"></i><div><div class="fw-bold text-gray-800">Input menggunakan satuan koli</div><div class="text-gray-700 fs-7">Karena transfer melibatkan Gudang Besar, jumlah kirim wajib berupa koli/kemasan utuh seperti DUS, BOX, atau KOLI. Input bukan dalam PCS.</div></div>'
             : '<i class="fa-solid fa-box fs-2 text-info me-4"></i><div><div class="fw-bold text-gray-800">Input menggunakan satuan dasar</div><div class="text-gray-700 fs-7">Transfer antar Gudang Kecil dapat menggunakan PCS atau SET.</div></div>';
     }
-    function refreshTransferRow(row, selectedUnitId = undefined) {
+    function refreshTransferRow(row) {
         const item = items.find(value => String(value.id) === String(row.querySelector('.item').value));
         const requiresPackage = currentWarehouseType(transfer_source) === 'bulk' || currentWarehouseType(transfer_destination) === 'bulk';
-        const units = (item?.units || []).filter(unit => !requiresPackage || !unit.is_base);
-        const unitSelect = row.querySelector('.unit');
-        // Simpan pilihan satuan ketika hanya qty/gudang/satuan yang berubah.
-        // SKU mengirim null secara eksplisit agar satuan lama tidak terbawa ke item baru.
-        const unitIdToKeep = selectedUnitId === undefined ? unitSelect.value : selectedUnitId;
-        unitSelect.innerHTML = units.length
-            ? units.map(unit => `<option value="${unit.id}">${escapeHtml(unit.name)} (1 = ${unit.conversion_qty})</option>`).join('')
-            : '<option value="">Satuan koli belum dikonfigurasi</option>';
-        if (unitIdToKeep && units.some(unit => String(unit.id) === String(unitIdToKeep))) unitSelect.value = String(unitIdToKeep);
-        const selected = units.find(unit => String(unit.id) === String(unitSelect.value));
+        const selected = (item?.units || []).find(unit => requiresPackage ? !unit.is_base : unit.is_base);
+        const unitInput = row.querySelector('.unit');
+        const unitDisplay = row.querySelector('.unit-display');
+        unitInput.value = selected?.id || '';
         const qty = Number(row.querySelector('.qty').value || 0);
         const baseUnit = (item?.units || []).find(unit => unit.is_base);
         const unitName = selected?.name || 'KOLI';
@@ -331,17 +325,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const unitLabel = row.querySelector('.unit-label');
         if (unitLabel) unitLabel.textContent = requiresPackage ? 'Satuan Koli' : 'Satuan Kirim';
         if (qtyLabel) qtyLabel.textContent = requiresPackage ? `Jumlah Koli (${unitName})` : `Qty Kirim (${unitName})`;
+        if (unitDisplay) unitDisplay.textContent = conversion > 0
+            ? `${unitName} (1 = ${conversion.toLocaleString('id-ID')} ${baseUnit?.name || 'dasar'})`
+            : requiresPackage ? 'Satuan koli belum dikonfigurasi' : 'Satuan dasar belum dikonfigurasi';
         row.querySelector('.base-preview').textContent = conversion > 0
             ? `1 ${unitName} = ${conversion.toLocaleString('id-ID')} ${baseUnit?.name || 'dasar'}; total ${(qty * conversion).toLocaleString('id-ID')} ${baseUnit?.name || 'dasar'}`
             : 'Satuan koli belum dikonfigurasi pada master item';
-        if ($(unitSelect).hasClass('select2-hidden-accessible')) $(unitSelect).trigger('change.select2');
     }
     function addRow(data = {}) {
         const row = document.createElement('div');
         row.className = 'border border-gray-300 border-dashed rounded p-5 mb-5 transfer-row';
         row.innerHTML = `<div class="row g-3 align-items-end">
             <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Item</label><select class="form-select form-select-solid item">${itemOptions}</select></div>
-            <div class="col-md-2"><label class="required fs-6 fw-bold form-label mb-2 unit-label">Satuan Kirim</label><select class="form-select form-select-solid unit"></select></div>
+            <div class="col-md-2"><label class="required fs-6 fw-bold form-label mb-2 unit-label">Satuan Kirim</label><div class="form-control form-control-solid unit-display"></div><input type="hidden" class="unit"></div>
             <div class="col-md-2"><label class="required fs-6 fw-bold form-label mb-2 qty-label">Qty Kirim</label><input type="number" min="1" step="1" value="1" class="form-control form-control-solid qty"><div class="text-primary fs-8 fw-semibold mt-1 base-preview"></div></div>
             <div class="col-md-3"><label class="fs-6 fw-bold form-label mb-2">Catatan Item</label><input class="form-control form-control-solid item-note" value="${escapeHtml(data.note || '')}"></div>
             <div class="col-md-1 text-end"><button type="button" class="btn btn-icon btn-light-danger remove" title="Hapus item"><i class="fa-solid fa-trash"></i></button></div>
@@ -349,13 +345,11 @@ document.addEventListener('DOMContentLoaded', () => {
         transfer_items.appendChild(row);
         if (data.item_id) row.querySelector('.item').value = String(data.item_id);
         if (data.qty_input) row.querySelector('.qty').value = data.qty_input;
-        row.querySelector('.item').addEventListener('change', () => refreshTransferRow(row, null));
-        row.querySelector('.unit').addEventListener('change', () => refreshTransferRow(row));
+        row.querySelector('.item').addEventListener('change', () => refreshTransferRow(row));
         row.querySelector('.qty').addEventListener('input', () => refreshTransferRow(row));
         row.querySelector('.remove').addEventListener('click', () => row.remove());
-        refreshTransferRow(row, data.unit_id);
+        refreshTransferRow(row);
         initSelect2(row.querySelector('.item'), document.getElementById('transfer_modal'), 'Pilih item');
-        initSelect2(row.querySelector('.unit'), document.getElementById('transfer_modal'), 'Pilih satuan');
     }
     [transfer_source, transfer_destination].forEach(select => select.addEventListener('change', () => {
         document.querySelectorAll('.transfer-row').forEach(row => refreshTransferRow(row));

@@ -21,7 +21,7 @@ class StockTransferController extends Controller
     {
         $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get();
         $items = Item::where('is_bundle', false)
-            ->with(['units' => fn ($q) => $q->orderByDesc('is_base')->orderBy('conversion_qty')])
+            ->with(['units' => fn ($q) => $q->orderBy('id')])
             ->orderBy('name')
             ->get(['id', 'sku', 'name']);
 
@@ -159,7 +159,6 @@ class StockTransferController extends Controller
             'note' => ['nullable', 'string'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_id' => ['required', 'integer', 'exists:items,id'],
-            'items.*.unit_id' => ['required', 'integer', 'exists:item_units,id'],
             'items.*.qty_input' => ['required', 'integer', 'min:1'],
             'items.*.note' => ['nullable', 'string'],
         ]);
@@ -170,6 +169,28 @@ class StockTransferController extends Controller
         ])->where('is_active', true)->pluck('id');
         if ($activeWarehouseIds->count() !== 2) {
             throw ValidationException::withMessages(['warehouse_id' => 'Gudang asal dan tujuan harus aktif']);
+        }
+
+        // Satuan kirim ditentukan oleh master item, bukan nilai yang dikirim browser.
+        // Transfer yang menyentuh Gudang Besar selalu memakai satuan koli; antar
+        // Gudang Kecil memakai satuan dasar.
+        $requiresPackage = Warehouse::whereIn('id', [
+            $validated['source_warehouse_id'],
+            $validated['destination_warehouse_id'],
+        ])->where('type', Warehouse::TYPE_BULK)->exists();
+        foreach ($validated['items'] as $index => $row) {
+            $unit = ItemUnit::where('item_id', $row['item_id'])
+                ->where('is_base', !$requiresPackage)
+                ->orderBy('id')
+                ->first();
+            if (!$unit) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.item_id" => $requiresPackage
+                        ? 'Satuan koli belum dikonfigurasi pada master item.'
+                        : 'Satuan dasar belum dikonfigurasi pada master item.',
+                ]);
+            }
+            $validated['items'][$index]['unit_id'] = $unit->id;
         }
 
         $rows = collect($validated['items'])->groupBy('item_id');

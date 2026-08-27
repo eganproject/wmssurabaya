@@ -302,6 +302,28 @@ class MultiWarehouseStockTest extends TestCase
         $this->assertSame('update', Permission::actionFromRoute('admin.inventory.stock-transfers.receive'));
     }
 
+    public function test_transfer_uses_the_item_master_package_unit_for_bulk_warehouse(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $item = Item::create(['sku' => 'TRF-MASTER-UNIT', 'name' => 'Transfer Master Unit', 'category_id' => null]);
+        $base = ItemUnit::create(['item_id' => $item->id, 'name' => 'PCS', 'conversion_qty' => 1, 'is_base' => true]);
+        $package = ItemUnit::create(['item_id' => $item->id, 'name' => 'KOLI', 'conversion_qty' => 12, 'is_base' => false]);
+        $small = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
+        $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
+
+        $response = $this->actingAs($user)->postJson(route('admin.inventory.stock-transfers.store'), [
+            'source_warehouse_id' => $bulk->id,
+            'destination_warehouse_id' => $small->id,
+            'transacted_at' => now(),
+            // Nilai dari klien tidak boleh dapat mengganti satuan master.
+            'items' => [['item_id' => $item->id, 'unit_id' => $base->id, 'qty_input' => 2]],
+        ])->assertOk();
+
+        $transfer = StockTransfer::with('items')->findOrFail($response->json('id'));
+        $this->assertSame($package->id, (int) $transfer->items->first()->unit_id);
+        $this->assertSame(24, (int) $transfer->items->first()->qty_base);
+    }
+
     public function test_inbound_and_outbound_accept_package_units_while_posting_base_stock(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);
