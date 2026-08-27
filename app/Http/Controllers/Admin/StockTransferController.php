@@ -23,7 +23,15 @@ class StockTransferController extends Controller
         $items = Item::where('is_bundle', false)
             ->with(['units' => fn ($q) => $q->orderBy('id')])
             ->orderBy('name')
-            ->get(['id', 'sku', 'name']);
+            ->get(['id', 'sku', 'name'])
+            ->map(fn (Item $item) => [
+                'id' => $item->id,
+                'sku' => $item->sku,
+                'name' => $item->name,
+                'base_unit' => $item->units->firstWhere('is_base', true),
+                'package_unit' => $item->units->firstWhere('is_base', false),
+            ])
+            ->values();
 
         return view('admin.inventory.stock-transfers.index', compact('warehouses', 'items'));
     }

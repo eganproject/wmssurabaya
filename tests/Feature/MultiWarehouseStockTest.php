@@ -324,6 +324,20 @@ class MultiWarehouseStockTest extends TestCase
         $this->assertSame(24, (int) $transfer->items->first()->qty_base);
     }
 
+    public function test_transfer_form_includes_each_items_explicit_master_units(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $item = Item::create(['sku' => 'TRF-FORM-UNIT', 'name' => 'Transfer Form Unit', 'category_id' => null]);
+        $base = ItemUnit::create(['item_id' => $item->id, 'name' => 'PCS', 'conversion_qty' => 1, 'is_base' => true]);
+        $package = ItemUnit::create(['item_id' => $item->id, 'name' => 'KOLI', 'conversion_qty' => 24, 'is_base' => false]);
+
+        $this->actingAs($user)
+            ->get(route('admin.inventory.stock-transfers.index'))
+            ->assertOk()
+            ->assertSee('"base_unit":{"id":'.$base->id, false)
+            ->assertSee('"package_unit":{"id":'.$package->id, false);
+    }
+
     public function test_inbound_and_outbound_accept_package_units_while_posting_base_stock(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);

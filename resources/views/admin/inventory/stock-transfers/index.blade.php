@@ -313,12 +313,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function refreshTransferRow(row) {
         const item = items.find(value => String(value.id) === String(row.querySelector('.item').value));
         const requiresPackage = currentWarehouseType(transfer_source) === 'bulk' || currentWarehouseType(transfer_destination) === 'bulk';
-        const selected = (item?.units || []).find(unit => requiresPackage ? !unit.is_base : unit.is_base);
+        // Gunakan satuan master yang eksplisit, bukan daftar opsi form.
+        const selected = requiresPackage ? item?.package_unit : item?.base_unit;
         const unitInput = row.querySelector('.unit');
         const unitDisplay = row.querySelector('.unit-display');
         unitInput.value = selected?.id || '';
         const qty = Number(row.querySelector('.qty').value || 0);
-        const baseUnit = (item?.units || []).find(unit => unit.is_base);
+        const baseUnit = item?.base_unit;
         const unitName = selected?.name || 'KOLI';
         const conversion = Number(selected?.conversion_qty || 0);
         const qtyLabel = row.querySelector('.qty-label');
@@ -345,11 +346,17 @@ document.addEventListener('DOMContentLoaded', () => {
         transfer_items.appendChild(row);
         if (data.item_id) row.querySelector('.item').value = String(data.item_id);
         if (data.qty_input) row.querySelector('.qty').value = data.qty_input;
-        row.querySelector('.item').addEventListener('change', () => refreshTransferRow(row));
+        const itemSelect = row.querySelector('.item');
+        const refreshForSelectedItem = () => requestAnimationFrame(() => refreshTransferRow(row));
+        itemSelect.addEventListener('change', refreshForSelectedItem);
         row.querySelector('.qty').addEventListener('input', () => refreshTransferRow(row));
         row.querySelector('.remove').addEventListener('click', () => row.remove());
         refreshTransferRow(row);
-        initSelect2(row.querySelector('.item'), document.getElementById('transfer_modal'), 'Pilih item');
+        initSelect2(itemSelect, document.getElementById('transfer_modal'), 'Pilih item');
+        // Select2 mengirim event ini saat SKU dipilih dari hasil pencarian.
+        if (typeof $ !== 'undefined' && $.fn.select2) {
+            $(itemSelect).on('select2:select.transfer-row', refreshForSelectedItem);
+        }
     }
     [transfer_source, transfer_destination].forEach(select => select.addEventListener('change', () => {
         document.querySelectorAll('.transfer-row').forEach(row => refreshTransferRow(row));
