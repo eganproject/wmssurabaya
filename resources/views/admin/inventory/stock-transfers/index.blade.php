@@ -105,8 +105,8 @@
                 <form class="form" id="transfer_form">
                     @csrf
                     <div class="row g-4 mb-7">
-                        <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Gudang Asal</label><select class="form-select form-select-solid" id="transfer_source" required>@foreach($warehouses as $w)<option value="{{ $w->id }}">{{ $w->name }}</option>@endforeach</select></div>
-                        <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Gudang Tujuan</label><select class="form-select form-select-solid" id="transfer_destination" required>@foreach($warehouses as $w)<option value="{{ $w->id }}">{{ $w->name }}</option>@endforeach</select></div>
+                        <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Gudang Asal</label><select class="form-select form-select-solid" id="transfer_source" required disabled><option value="{{ $sourceWarehouse->id }}" selected>{{ $sourceWarehouse->name }}</option></select></div>
+                        <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Gudang Tujuan</label><select class="form-select form-select-solid" id="transfer_destination" required disabled><option value="{{ $destinationWarehouse->id }}" selected>{{ $destinationWarehouse->name }}</option></select></div>
                         <div class="col-md-4"><label class="required fs-6 fw-bold form-label mb-2">Tanggal Transfer</label><input type="text" class="form-control form-control-solid" id="transfer_date" required></div>
                     </div>
                     <div class="notice d-flex bg-light-info rounded border-info border border-dashed p-4 mb-7" id="transfer_unit_info"></div>
@@ -166,6 +166,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const csrf = '{{ csrf_token() }}';
     const items = @json($items);
     const warehouses = @json($warehouses);
+    const defaultSourceWarehouseId = {{ $sourceWarehouse->id }};
+    const defaultDestinationWarehouseId = {{ $destinationWarehouse->id }};
     const canUpdate = {{ $canUpdate ? 'true' : 'false' }};
     const canDelete = {{ $canDelete ? 'true' : 'false' }};
     const urls = {
@@ -247,6 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof flatpickr !== 'undefined' && transferDate) {
         transferDatePicker = flatpickr(transferDate, {
             enableTime: true,
+            time_24hr: true,
             dateFormat: 'Y-m-d H:i',
             allowInput: true,
         });
@@ -368,6 +371,8 @@ document.addEventListener('DOMContentLoaded', () => {
         editId = null;
         transfer_modal_title.textContent = 'Buat Transfer';
         transfer_form.reset();
+        transfer_source.value = String(defaultSourceWarehouseId);
+        transfer_destination.value = String(defaultDestinationWarehouseId);
         $('#transfer_source, #transfer_destination').trigger('change.select2');
         transfer_items.innerHTML = '';
         if (transferDatePicker) transferDatePicker.setDate(new Date(), true);

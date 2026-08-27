@@ -278,6 +278,9 @@ class MultiWarehouseStockTest extends TestCase
         ])->assertOk();
 
         $transferId = $create->json('id');
+        // Menyimpan draft belum memindahkan stok pada gudang mana pun.
+        $this->assertSame(120, (int) ItemStock::where('warehouse_id', $bulk->id)->where('item_id', $item->id)->value('stock'));
+        $this->assertNull(ItemStock::where('warehouse_id', $small->id)->where('item_id', $item->id)->value('stock'));
         $this->actingAs($user)
             ->postJson(route('admin.inventory.stock-transfers.ship', $transferId))
             ->assertOk();
@@ -607,7 +610,7 @@ class MultiWarehouseStockTest extends TestCase
         $this->assertSame(0, (int) ItemStock::where('warehouse_id', $bulk->id)->where('item_id', $item->id)->value('stock'));
     }
 
-    public function test_transfer_to_bulk_warehouse_must_be_received_in_whole_packages(): void
+    public function test_transfer_route_is_locked_from_bulk_to_default_fulfillment_warehouse(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);
         $item = Item::create(['sku' => 'TRF-TO-BULK', 'name' => 'Transfer To Bulk', 'category_id' => null]);
@@ -615,31 +618,14 @@ class MultiWarehouseStockTest extends TestCase
         $package = ItemUnit::create(['item_id' => $item->id, 'name' => 'KOLI', 'conversion_qty' => 12, 'is_base' => false]);
         $small = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
         $bulk = Warehouse::where('code', 'WH-BULK')->firstOrFail();
-        StockService::mutate([
-            'warehouse_id' => $small->id,
-            'item_id' => $item->id,
-            'direction' => 'in',
-            'qty' => 24,
-            'source_type' => 'test',
-            'source_id' => 201,
-        ]);
 
-        $create = $this->actingAs($user)->postJson(route('admin.inventory.stock-transfers.store'), [
+        $this->actingAs($user)->postJson(route('admin.inventory.stock-transfers.store'), [
             'source_warehouse_id' => $small->id,
             'destination_warehouse_id' => $bulk->id,
             'transacted_at' => now(),
             'items' => [['item_id' => $item->id, 'unit_id' => $package->id, 'qty_input' => 2]],
-        ])->assertOk();
-        $id = $create->json('id');
-        $this->actingAs($user)->postJson(route('admin.inventory.stock-transfers.ship', $id))->assertOk();
-        $this->actingAs($user)->postJson(route('admin.inventory.stock-transfers.receive', $id), [
-            'items' => [['item_id' => $item->id, 'qty_received' => 1, 'discrepancy_note' => 'Satu koli belum tiba']],
-        ])->assertOk();
-
-        $transferItem = StockTransfer::with('items')->findOrFail($id)->items->first();
-        $this->assertSame(12, (int) $transferItem->qty_received_base);
-        $this->assertSame(12, (int) $transferItem->qty_discrepancy_base);
-        $this->assertSame(12, (int) ItemStock::where('warehouse_id', $bulk->id)->where('item_id', $item->id)->value('stock'));
+        ])->assertStatus(422)->assertJsonValidationErrors(['warehouse_id']);
+        $this->assertDatabaseCount('stock_transfers', 0);
     }
 
     public function test_bulk_inventory_forms_use_packages_while_damaged_flows_are_forced_to_small_warehouse(): void

@@ -12,6 +12,7 @@ class Warehouse extends Model
     public const TYPE_BULK = 'bulk';
     public const TYPE_FULFILLMENT = 'fulfillment';
     public const DEFAULT_CODE = 'WH-SMALL';
+    public const BULK_CODE = 'WH-BULK';
 
     protected $fillable = [
         'code',

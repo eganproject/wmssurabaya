@@ -20,6 +20,12 @@ class StockTransferController extends Controller
     public function index()
     {
         $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get();
+        $sourceWarehouse = Warehouse::where('code', Warehouse::BULK_CODE)
+            ->where('is_active', true)
+            ->firstOrFail();
+        $destinationWarehouse = Warehouse::where('code', Warehouse::DEFAULT_CODE)
+            ->where('is_active', true)
+            ->firstOrFail();
         $items = Item::where('is_bundle', false)
             ->with(['units' => fn ($q) => $q->orderBy('id')])
             ->orderBy('name')
@@ -33,7 +39,7 @@ class StockTransferController extends Controller
             ])
             ->values();
 
-        return view('admin.inventory.stock-transfers.index', compact('warehouses', 'items'));
+        return view('admin.inventory.stock-transfers.index', compact('warehouses', 'items', 'sourceWarehouse', 'destinationWarehouse'));
     }
 
     public function data(Request $request)
@@ -177,6 +183,17 @@ class StockTransferController extends Controller
         ])->where('is_active', true)->pluck('id');
         if ($activeWarehouseIds->count() !== 2) {
             throw ValidationException::withMessages(['warehouse_id' => 'Gudang asal dan tujuan harus aktif']);
+        }
+
+        $sourceWarehouseId = (int) Warehouse::where('code', Warehouse::BULK_CODE)->value('id');
+        $destinationWarehouseId = Warehouse::defaultId();
+        if (
+            (int) $validated['source_warehouse_id'] !== $sourceWarehouseId
+            || (int) $validated['destination_warehouse_id'] !== $destinationWarehouseId
+        ) {
+            throw ValidationException::withMessages([
+                'warehouse_id' => 'Rute transfer terkunci: Gudang Besar ke Gudang Kecil.',
+            ]);
         }
 
         // Satuan kirim ditentukan oleh master item, bukan nilai yang dikirim browser.
