@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Workflow WMS Surabaya</title>
+<style>
+  @page { size: A4 portrait; margin: 13mm 14mm 12mm 14mm; }
+  *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:"Segoe UI",Arial,Helvetica,sans-serif;
+    color:#0f172a; background:#fff; font-size:9pt;
+  }
+  .page{ page-break-after:always; position:relative; min-height:262mm; display:flex; flex-direction:column; }
+  .page:last-of-type{ page-break-after:auto; break-after:auto; }
+
+  /* ---------- header ---------- */
+  .head{ border-bottom:2.5px solid var(--c); padding-bottom:6px; margin-bottom:12px; }
+  .head .kicker{ font-size:7pt; letter-spacing:.14em; text-transform:uppercase; color:var(--c); font-weight:700; }
+  .head h2{ margin:2px 0 3px; font-size:14pt; letter-spacing:-.2px; }
+  .head p{ margin:0; font-size:8pt; color:#475569; }
+  .actors{ margin-top:6px; display:flex; flex-wrap:wrap; gap:5px; }
+  .chip{ font-size:6.8pt; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+         padding:2.5px 8px; border-radius:999px; background:var(--tint); color:var(--c); border:1px solid var(--c2); }
+
+  .flow{ flex:1; padding-top:2px; }
+  .foot{ margin-top:8px; border-top:1px solid #e2e8f0; padding-top:5px;
+         display:flex; justify-content:space-between; font-size:7pt; color:#94a3b8; }
+
+  /* ---------- rows & nodes ---------- */
+  .row{ display:grid; grid-template-columns:1fr 330px 1fr; align-items:center; }
+  .row > .center{ grid-column:2; }
+  .row > .right{ grid-column:3; display:flex; align-items:center; }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; column-gap:16px; }
+  .row2 > div{ justify-self:center; width:100%; max-width:275px; }
+
+  .node{ border:1.6px solid var(--c2); border-radius:8px; background:#fff; padding:6px 10px; text-align:center; }
+  .node .who{ font-size:6.2pt; font-weight:800; letter-spacing:.11em; text-transform:uppercase; color:var(--c); margin-bottom:2px; }
+  .node .t{ font-size:8.2pt; font-weight:700; line-height:1.28; }
+  .node .d{ font-size:7.1pt; line-height:1.3; color:#475569; margin-top:2.5px; }
+
+  .term{ border-radius:999px; background:#1e293b; border-color:#1e293b; color:#fff; padding:7px 14px; }
+  .term .t{ font-size:8.4pt; }
+  .term .d{ color:#cbd5e1; }
+
+  .sys{ background:var(--tint); border-style:dashed; }
+
+  .bad{ border-color:#dc2626; background:#fef2f2; }
+  .bad .t{ color:#991b1b; }
+  .bad .d{ color:#b91c1c; }
+
+  .side{ font-size:7.6pt; }
+  .loop{ display:block; margin-top:3px; font-size:6.8pt; font-weight:700; color:#b45309; }
+
+  /* diamond */
+  .dec{ background:var(--c); clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%); padding:2px; }
+  .dec > i{ display:block; background:#fff; clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);
+            padding:17px 58px; font-style:normal; text-align:center; }
+  .dec .t{ font-size:8pt; font-weight:800; line-height:1.25; }
+  .note{ text-align:center; font-size:6.9pt; color:#64748b; margin:3px auto 0; line-height:1.3; max-width:400px; }
+
+  /* ---------- connectors ---------- */
+  .conn{ position:relative; height:26px; }
+  .conn::before{ content:''; position:absolute; left:50%; top:0; bottom:7px; border-left:1.6px solid #94a3b8; }
+  .conn::after{ content:''; position:absolute; left:50%; bottom:0; margin-left:-4.5px;
+                border-top:7px solid #94a3b8; border-left:4.5px solid transparent; border-right:4.5px solid transparent; }
+  .conn .lab{ position:absolute; left:calc(50% + 7px); top:3px; font-size:6.9pt; font-weight:800; color:#334155;
+              background:#fff; padding:0 2px; }
+  .conn.sm{ height:18px; }
+  .tight .conn{ height:17px; }
+  .tight .node{ padding:5px 10px; }
+
+  .split{ position:relative; height:24px; }
+  .split::before{ content:''; position:absolute; left:50%; top:0; height:11px; border-left:1.6px solid #94a3b8; }
+  .split::after{ content:''; position:absolute; top:11px; left:25%; right:25%; border-top:1.6px solid #94a3b8; }
+  .split i, .split b{ position:absolute; top:11px; bottom:7px; border-left:1.6px solid #94a3b8; }
+  .split i{ left:25%; }
+  .split b{ left:75%; }
+  .split i::after, .split b::after{ content:''; position:absolute; left:-4.5px; bottom:-7px;
+            border-top:7px solid #94a3b8; border-left:4.5px solid transparent; border-right:4.5px solid transparent; }
+
+  .hconn{ position:relative; flex:0 0 40px; height:1.6px; background:#94a3b8; }
+  .hconn::after{ content:''; position:absolute; right:0; top:-4.5px;
+                 border-left:7px solid #94a3b8; border-top:4.5px solid transparent; border-bottom:4.5px solid transparent; }
+  .hconn .lab{ position:absolute; left:50%; transform:translateX(-50%); top:-13px; font-size:6.9pt; font-weight:800; color:#334155; }
+  .right .node{ flex:1; }
+
+  .merge{ position:relative; height:28px; }
+  .merge::before{ content:''; position:absolute; top:0; left:25%; right:25%; border-top:1.6px solid #94a3b8; }
+  .merge::after{ content:''; position:absolute; left:50%; top:0; bottom:7px; border-left:1.6px solid #94a3b8; }
+  .merge i{ position:absolute; left:50%; bottom:0; margin-left:-4.5px;
+            border-top:7px solid #94a3b8; border-left:4.5px solid transparent; border-right:4.5px solid transparent; }
+
+  /* ---------- cover ---------- */
+  .cover{ --c:#0f172a; --c2:#cbd5e1; --tint:#f1f5f9; }
+  .cover .brand{ font-size:7.5pt; letter-spacing:.2em; text-transform:uppercase; color:#64748b; font-weight:700; }
+  .cover h1{ font-size:26pt; margin:8px 0 6px; letter-spacing:-.6px; line-height:1.1; }
+  .cover .sub{ font-size:10pt; color:#475569; margin:0 0 16px; }
+  .rule{ height:4px; background:linear-gradient(90deg,#2563eb 0 25%,#059669 25% 50%,#d97706 50% 75%,#7c3aed 75% 100%); border-radius:2px; }
+  .toc{ margin-top:20px; }
+  .toc h3, .lg h3{ font-size:9pt; text-transform:uppercase; letter-spacing:.12em; color:#64748b; margin:0 0 8px; }
+  .toc ol{ margin:0; padding-left:0; list-style:none; counter-reset:t; }
+  .toc li{ counter-increment:t; display:flex; align-items:baseline; gap:8px; padding:6px 0; border-bottom:1px dotted #e2e8f0; font-size:9.5pt; }
+  .toc li::before{ content:counter(t); font-size:7.5pt; font-weight:800; color:#fff; background:#1e293b;
+                   width:16px; height:16px; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; flex:0 0 16px; }
+  .toc .pg{ margin-left:auto; color:#94a3b8; font-size:8pt; }
+  .lg{ margin-top:22px; }
+  .lgrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px 14px; }
+  .lgitem{ display:flex; align-items:center; gap:9px; font-size:7.8pt; color:#475569; }
+  .sh{ flex:0 0 58px; height:26px; border:1.6px solid #94a3b8; border-radius:7px; background:#fff; }
+  .sh.t1{ border-radius:999px; background:#1e293b; border-color:#1e293b; }
+  .sh.t2{ border-style:dashed; background:#f1f5f9; }
+  .sh.t3{ background:#94a3b8; clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%); border:0; border-radius:0; }
+  .sh.t4{ border-color:#dc2626; background:#fef2f2; }
+  .sh.t5{ border:0; border-radius:0; background:linear-gradient(#94a3b8,#94a3b8) center/1.6px 100% no-repeat; }
+  .meta{ margin-top:auto; display:flex; justify-content:space-between;
+         font-size:7.5pt; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:6px; }
+</style>
+</head>
+<body>
+
+<!-- =============== COVER =============== -->
+<section class="page cover">
+  <div class="brand">Dokumentasi Proses Operasional</div>
+  <h1>Workflow Aplikasi<br>WMS Surabaya</h1>
+  <p class="sub">Diagram alur proses gudang: Inbound, Outbound Marketplace, Outbound Manual, dan Stock Opname</p>
+  <div class="rule"></div>
+
+  <div class="toc">
+    <h3>Daftar Flowchart</h3>
+    <ol>
+      <li>Inbound &mdash; Penerimaan Barang <span class="pg">hal. 2</span></li>
+      <li>Inbound &mdash; Retur <span class="pg">hal. 3</span></li>
+      <li>Outbound Marketplace &mdash; Import Resi &amp; QC Scan <span class="pg">hal. 4</span></li>
+      <li>Outbound Marketplace &mdash; Scan Out &amp; Serah Terima Kurir <span class="pg">hal. 5</span></li>
+      <li>Outbound Manual <span class="pg">hal. 6</span></li>
+      <li>Stock Opname <span class="pg">hal. 7</span></li>
+    </ol>
+  </div>
+
+  <div class="lg">
+    <h3>Keterangan Simbol</h3>
+    <div class="lgrid">
+      <div class="lgitem"><span class="sh t1"></span><span><b>Mulai / Selesai</b><br>titik awal &amp; akhir proses</span></div>
+      <div class="lgitem"><span class="sh"></span><span><b>Proses manual</b><br>dikerjakan oleh petugas</span></div>
+      <div class="lgitem"><span class="sh t2"></span><span><b>Proses otomatis</b><br>dijalankan oleh sistem</span></div>
+      <div class="lgitem"><span class="sh t3"></span><span><b>Keputusan / validasi</b><br>alur bercabang Ya / Tidak</span></div>
+      <div class="lgitem"><span class="sh t4"></span><span><b>Ditolak / exception</b><br>proses gagal, perlu perbaikan</span></div>
+      <div class="lgitem"><span class="sh t5"></span><span><b>Arah alur</b><br>urutan langkah proses</span></div>
+    </div>
+  </div>
+
+  <div class="meta">
+    <span>WMS Surabaya &mdash; Warehouse Management System</span>
+    <span>Halaman 1 dari 7</span>
+  </div>
+</section>
+
+<!-- =============== 1. INBOUND PENERIMAAN =============== -->
+<section class="page" style="--c:#2563eb;--c2:#bfdbfe;--tint:#eff6ff">
+  <div class="head">
+    <div class="kicker">Flowchart 1 &middot; Inbound</div>
+    <h2>Penerimaan Barang</h2>
+    <p>Alur barang masuk dari supplier / pusat sampai stok bertambah di gudang.</p>
+    <div class="actors"><span class="chip">Admin Gudang</span><span class="chip">Kepala Gudang</span><span class="chip">Sistem</span></div>
+  </div>
+
+  <div class="flow">
+    <div class="row"><div class="center node term"><div class="t">MULAI &mdash; Barang tiba di gudang</div><div class="d">Kiriman dari supplier atau gudang pusat</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Admin Gudang</div><div class="t">Pilih gudang tujuan penerimaan</div><div class="d">Gudang Besar (bulk) atau Gudang Kecil (fulfillment)</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center dec"><i><div class="t">Cara input data?</div></i></div></div>
+    <div class="split"><i></i><b></b></div>
+
+    <div class="row2">
+      <div class="node"><div class="t">Import Excel</div><div class="d">Unduh template &rarr; isi &rarr; upload file (.xlsx)</div></div>
+      <div class="node"><div class="t">Input manual per SKU</div><div class="d">Pilih item, satuan (PCS / KARTON) &amp; qty</div></div>
+    </div>
+    <div class="merge"><i></i></div>
+
+    <div class="row"><div class="center node sys"><div class="who">Sistem</div><div class="t">Transaksi <b>INB-RCV</b> dibuat &mdash; status PENDING</div><div class="d">Stok belum bertambah. Qty dikonversi: qty input &times; isi per satuan</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">Data sudah benar?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Tidak</span></span>
+        <div class="node side"><div class="t">Edit / hapus transaksi</div><div class="d">Diizinkan selama status masih PENDING</div><span class="loop">&#8630; kembali ke pengecekan</span></div></div>
+    </div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row"><div class="center node"><div class="who">Kepala Gudang / Admin</div><div class="t">Approve penerimaan barang</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node sys"><div class="who">Sistem &mdash; Otomatis</div><div class="t">Stok masuk ke gudang tujuan</div><div class="d">Qty barang bagus ditambahkan ke Item Stock &bull; dicatat di Stock Mutation &bull; status menjadi APPROVED dan transaksi terkunci</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Opsional</div><div class="t">Transfer Antar Gudang</div><div class="d">Gudang Besar &rarr; Gudang Kecil (kirim &rarr; terima)</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node term"><div class="t">SELESAI &mdash; Stok siap dipakai untuk outbound</div></div></div>
+  </div>
+
+  <div class="foot"><span>WMS Surabaya &middot; Workflow Inbound &mdash; Penerimaan Barang</span><span>Halaman 2 dari 7</span></div>
+</section>
+
+<!-- =============== 2. INBOUND RETUR =============== -->
+<section class="page" style="--c:#2563eb;--c2:#bfdbfe;--tint:#eff6ff">
+  <div class="head">
+    <div class="kicker">Flowchart 2 &middot; Inbound</div>
+    <h2>Retur Barang Masuk</h2>
+    <p>Alur paket retur dari marketplace / pembeli sampai stok bagus &amp; stok rusak diperbarui.</p>
+    <div class="actors"><span class="chip">Admin Retur</span><span class="chip">Kepala Gudang</span><span class="chip">Sistem</span></div>
+  </div>
+
+  <div class="flow">
+    <div class="row"><div class="center node term"><div class="t">MULAI &mdash; Paket retur diterima</div><div class="d">Retur dari marketplace / pembeli</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Admin Retur</div><div class="t">Scan / ketik No Resi atau ID Pesanan</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">Resi ada di<br>database import?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Tidak</span></span>
+        <div class="node side"><div class="t">Input SKU &amp; qty manual</div></div></div>
+    </div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row"><div class="center node sys"><div class="who">Sistem</div><div class="t">SKU &amp; qty otomatis terisi dari data resi</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Admin Retur</div><div class="t">Isi kondisi barang per SKU</div><div class="d">Qty diterima &bull; qty bagus &bull; qty rusak &bull; qty hilang = qty resi &minus; qty diterima</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">Qty bagus + rusak<br>= qty diterima?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Tidak</span></span>
+        <div class="node bad side"><div class="t">Ditolak sistem</div><div class="d">Perbaiki rincian qty</div><span class="loop">&#8630; ulangi pengisian</span></div></div>
+    </div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row"><div class="center node sys"><div class="who">Sistem</div><div class="t">Transaksi <b>INB-RET</b> tersimpan &mdash; status APPROVED</div><div class="d">Barang masuk Area Retur Gudang Kecil. Stok belum berubah dan data masih bisa diperbaiki</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Kepala Gudang / Admin</div><div class="t">Finalisasi retur</div><div class="d">Langkah terakhir yang mengunci transaksi</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node sys"><div class="who">Sistem &mdash; Otomatis</div><div class="t">Posting stok hasil retur</div><div class="d">Qty bagus &rarr; stok reguler bertambah &nbsp;&bull;&nbsp; Qty rusak &rarr; dokumen <b>DMG-RET</b> + stok barang rusak bertambah &nbsp;&bull;&nbsp; Qty hilang &rarr; tidak menambah stok (tercatat sebagai selisih)</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node term"><div class="t">SELESAI &mdash; Status FINALIZED</div><div class="d">Barang bagus siap dijual &bull; barang rusak menunggu Alokasi Barang Rusak</div></div></div>
+  </div>
+
+  <div class="foot"><span>WMS Surabaya &middot; Workflow Inbound &mdash; Retur</span><span>Halaman 3 dari 7</span></div>
+</section>
+
+<!-- =============== 3. OUTBOUND MARKETPLACE (1) =============== -->
+<section class="page" style="--c:#059669;--c2:#a7f3d0;--tint:#ecfdf5">
+  <div class="head">
+    <div class="kicker">Flowchart 3 &middot; Outbound Marketplace &mdash; Bagian 1 dari 2</div>
+    <h2>Import Resi, Picking List &amp; QC Scan</h2>
+    <p>Dari pesanan marketplace masuk sampai barang siap di area QC Transit.</p>
+    <div class="actors"><span class="chip">Admin Resi</span><span class="chip">Petugas Picking</span><span class="chip">Petugas QC Scan</span><span class="chip">Sistem</span></div>
+  </div>
+
+  <div class="flow">
+    <div class="row"><div class="center node term"><div class="t">MULAI &mdash; Pesanan masuk dari marketplace</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Admin Resi</div><div class="t">Import file resi (Excel)</div><div class="d">Unduh template &rarr; isi ID pesanan, no resi, kurir, SKU &amp; qty &rarr; upload</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node sys"><div class="who">Sistem &mdash; Otomatis</div><div class="t">Resi tersimpan dalam batch import</div><div class="d">Resi dengan ID pesanan sama akan diperbarui &bull; <b>Picking List harian</b> terbentuk per SKU (qty &amp; sisa) untuk tanggal upload</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Petugas Picking</div><div class="t">Ambil barang dari rak sesuai Picking List</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Petugas QC Scan</div><div class="t">Scan No Resi / ID Pesanan pada menu QC Scan</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">Resi valid?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Tidak</span></span>
+        <div class="node bad side"><div class="t">Scan ditolak</div><div class="d">Resi tidak ditemukan, dibatalkan, atau sudah dipegang petugas lain</div></div></div>
+    </div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row"><div class="center node"><div class="who">Petugas QC Scan</div><div class="t">Scan SKU barang satu per satu</div><div class="d">Daftar SKU yang harus discan ditampilkan sistem</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">Scan lolos validasi?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Tidak</span></span>
+        <div class="node bad side"><div class="t">Scan ditolak + alasan</div><div class="d">SKU di luar resi, qty melebihi resi, atau sisa picking list kurang</div><span class="loop">&#8630; ulangi scan</span></div></div>
+    </div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row"><div class="center node sys"><div class="who">Sistem &mdash; Otomatis</div><div class="t">Stok keluar &amp; barang pindah ke QC Transit</div><div class="d">Stok gudang berkurang (item bundle memotong stok komponennya) &bull; qty masuk <b>QC Transit</b> &bull; sisa Picking List berkurang</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">Semua SKU resi<br>sudah lengkap?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Belum</span></span>
+        <div class="node side"><div class="t">Lanjutkan scan SKU berikutnya</div><span class="loop">&#8630; kembali ke langkah scan SKU</span></div></div>
+    </div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row"><div class="center node term"><div class="t">QC resi COMPLETED &mdash; barang menunggu di QC Transit</div><div class="d">Lanjut ke Bagian 2: Scan Out</div></div></div>
+  </div>
+
+  <div class="foot"><span>WMS Surabaya &middot; Workflow Outbound Marketplace (1/2)</span><span>Halaman 4 dari 7</span></div>
+</section>
+
+<!-- =============== 4. OUTBOUND MARKETPLACE (2) =============== -->
+<section class="page" style="--c:#059669;--c2:#a7f3d0;--tint:#ecfdf5">
+  <div class="head">
+    <div class="kicker">Flowchart 4 &middot; Outbound Marketplace &mdash; Bagian 2 dari 2</div>
+    <h2>Scan Out &amp; Serah Terima Kurir</h2>
+    <p>Dari area QC Transit sampai paket diserahkan ke kurir dan pesanan dinyatakan selesai.</p>
+    <div class="actors"><span class="chip">Petugas Scan Out</span><span class="chip">Admin Resi</span><span class="chip">Sistem</span></div>
+  </div>
+
+  <div class="flow">
+    <div class="row"><div class="center node term"><div class="t">MULAI &mdash; Paket siap di area QC Transit</div><div class="d">Lanjutan dari Bagian 1</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Petugas Scan Out</div><div class="t">Scan No Resi / ID Pesanan saat paket akan diserahkan</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">Resi belum pernah<br>scan out?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Tidak</span></span>
+        <div class="node bad side"><div class="t">Ditolak</div><div class="d">&ldquo;Resi sudah discan keluar&rdquo;</div></div></div>
+    </div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">QC resi sudah<br>COMPLETED?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Tidak</span></span>
+        <div class="node bad side"><div class="t">Ditolak</div><div class="d">Selesaikan QC scan resi terlebih dahulu</div></div></div>
+    </div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">Sisa QC Transit<br>cukup semua SKU?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Tidak</span></span>
+        <div class="node bad side"><div class="t">Ditolak + daftar SKU bermasalah</div><div class="d">Koordinasi ulang dengan QC / picking</div><span class="loop">&#8630; scan ulang setelah dibereskan</span></div></div>
+    </div>
+    <div class="note">SKU yang terdaftar sebagai <b>SKU Exception Scan Out</b> dikecualikan dari pengecekan ini</div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row"><div class="center node sys"><div class="who">Sistem &mdash; Otomatis</div><div class="t">Barang keluar dari QC Transit</div><div class="d">Sisa QC Transit dikurangi mulai dari tanggal terlama (FIFO) &bull; dibuat catatan <b>Scan Out</b> berisi kurir, waktu &amp; petugas</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Petugas Scan Out</div><div class="t">Paket diserahkan ke kurir</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node term"><div class="t">SELESAI &mdash; Pesanan terkirim</div><div class="d">Terpantau di Laporan QC Scan, Laporan Scan Out &amp; History Scan Out</div></div></div>
+
+    <div style="margin-top:14px;border:1.4px dashed #cbd5e1;border-radius:8px;padding:8px 12px;background:#f8fafc">
+      <div style="font-size:6.6pt;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:3px">Jalur khusus &mdash; Admin Resi</div>
+      <div style="font-size:7.6pt;line-height:1.4;color:#334155"><b>Pembatalan resi:</b> jika pesanan dibatalkan, Admin Resi menandai resi sebagai <i>cancel</i>. Sistem otomatis membatalkan Scan Out, mengembalikan qty ke QC Transit, dan menyesuaikan kembali Picking List. Resi yang sudah dibatalkan tidak bisa di-QC maupun di-scan out.</div>
+    </div>
+  </div>
+
+  <div class="foot"><span>WMS Surabaya &middot; Workflow Outbound Marketplace (2/2)</span><span>Halaman 5 dari 7</span></div>
+</section>
+
+<!-- =============== 5. OUTBOUND MANUAL =============== -->
+<section class="page" style="--c:#d97706;--c2:#fcd34d;--tint:#fffbeb">
+  <div class="head">
+    <div class="kicker">Flowchart 5 &middot; Outbound</div>
+    <h2>Outbound Manual</h2>
+    <p>Pengeluaran barang di luar marketplace (kirim ke toko / cabang / customer langsung) dengan verifikasi scan sebelum approve.</p>
+    <div class="actors"><span class="chip">Admin Gudang</span><span class="chip">Petugas Scan</span><span class="chip">Kepala Gudang</span><span class="chip">Sistem</span></div>
+  </div>
+
+  <div class="flow tight">
+    <div class="row"><div class="center node term"><div class="t">MULAI &mdash; Permintaan barang keluar</div><div class="d">Kiriman ke toko, cabang, atau customer langsung</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center dec"><i><div class="t">Cara input data?</div></i></div></div>
+    <div class="split"><i></i><b></b></div>
+
+    <div class="row2">
+      <div class="node"><div class="t">Import Excel</div><div class="d">Unduh template &rarr; isi &rarr; upload file</div></div>
+      <div class="node"><div class="t">Input manual per SKU</div><div class="d">Pilih gudang asal, item, satuan &amp; qty</div></div>
+    </div>
+    <div class="merge"><i></i></div>
+
+    <div class="row"><div class="center node sys"><div class="who">Sistem</div><div class="t">Transaksi <b>OUT-MNL</b> dibuat</div><div class="d">Status PENDING &bull; status scan: BELUM MULAI &bull; stok belum berkurang</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Petugas Scan</div><div class="t">Buka halaman Scan &rarr; scan SKU barang fisik</div><div class="d">Gudang Besar: 1 scan = 1 karton (sesuai isi) &bull; Gudang Kecil: 1 scan = 1 pcs</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">Scan valid?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Tidak</span></span>
+        <div class="node bad side"><div class="t">Scan ditolak</div><div class="d">SKU tidak ada di dokumen, atau qty melebihi sisa rencana</div><span class="loop">&#8630; ulangi scan</span></div></div>
+    </div>
+    <div class="note">Qty tercatat oleh sistem &bull; status scan menjadi <b>SEDANG BERJALAN</b></div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">Semua qty scan =<br>qty rencana?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Belum</span></span>
+        <div class="node side"><div class="t">Lanjutkan scan SKU berikutnya</div><span class="loop">&#8630; kembali ke langkah scan</span></div></div>
+    </div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row"><div class="center node"><div class="who">Petugas Scan</div><div class="t">Klik &ldquo;Selesaikan Scan&rdquo; &rarr; status scan COMPLETE</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Kepala Gudang / Admin</div><div class="t">Approve outbound manual</div><div class="d">Sistem menolak approve bila status scan belum COMPLETE</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node sys"><div class="who">Sistem &mdash; Otomatis</div><div class="t">Stok keluar dari gudang</div><div class="d">Item bundle memotong stok komponennya &bull; sumber stok reguler atau barang rusak &bull; dicatat di Stock Mutation &bull; status APPROVED</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Admin Gudang</div><div class="t">Buat &amp; cetak Surat Jalan</div><div class="d">Hanya tersedia setelah transaksi disetujui</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node term"><div class="t">SELESAI &mdash; Barang dikirim</div></div></div>
+  </div>
+
+  <div class="foot"><span>WMS Surabaya &middot; Workflow Outbound Manual</span><span>Halaman 6 dari 7</span></div>
+</section>
+
+<!-- =============== 6. STOCK OPNAME =============== -->
+<section class="page" style="--c:#7c3aed;--c2:#ddd6fe;--tint:#f5f3ff">
+  <div class="head">
+    <div class="kicker">Flowchart 6 &middot; Inventory</div>
+    <h2>Stock Opname</h2>
+    <p>Perhitungan stok fisik, review selisih, sampai penyesuaian stok diposting ke sistem.</p>
+    <div class="actors"><span class="chip">Admin Gudang</span><span class="chip">Petugas Hitung</span><span class="chip">Kepala Gudang</span><span class="chip">Sistem</span></div>
+  </div>
+
+  <div class="flow tight">
+    <div class="row"><div class="center node term"><div class="t">MULAI &mdash; Jadwal stock opname</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node"><div class="who">Admin Gudang</div><div class="t">Buat batch opname di web</div><div class="d">Pilih gudang &amp; tanggal &rarr; kode <b>OPN-xxxx</b>, status OPEN. Pembuatan batch dari aplikasi mobile dinonaktifkan</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center dec"><i><div class="t">Metode penghitungan?</div></i></div></div>
+    <div class="split"><i></i><b></b></div>
+
+    <div class="row2">
+      <div class="node"><div class="t">Mobile &mdash; petugas hitung</div><div class="d">Buka batch &rarr; cari / scan SKU &rarr; isi qty fisik</div></div>
+      <div class="node"><div class="t">Web &mdash; admin</div><div class="d">Input manual atau import Excel, per satuan PCS / KARTON</div></div>
+    </div>
+    <div class="merge"><i></i></div>
+
+    <div class="row"><div class="center node sys"><div class="who">Sistem</div><div class="t">Data hitung tersimpan per SKU</div><div class="d">Stok Sistem (saat input) &bull; Qty Fisik &bull; <b>Selisih = fisik &minus; sistem</b>. Satu SKU hanya boleh muncul sekali per batch</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">Semua SKU sudah<br>dihitung?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Belum</span></span>
+        <div class="node side"><div class="t">Lanjutkan penghitungan SKU berikutnya</div><span class="loop">&#8630; kembali ke input qty fisik</span></div></div>
+    </div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row"><div class="center node"><div class="who">Admin / Kepala Gudang</div><div class="t">Review hasil &amp; selisih</div><div class="d">Cek SKU selisih plus / minus dan total penyesuaian. Status masih OPEN: stok belum berubah, data masih bisa diperbaiki atau dihapus</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row">
+      <div class="center dec"><i><div class="t">Selisih sudah<br>diverifikasi?</div></i></div>
+      <div class="right"><span class="hconn"><span class="lab">Tidak</span></span>
+        <div class="node side"><div class="t">Hitung ulang / perbaiki data</div><span class="loop">&#8630; kembali ke review</span></div></div>
+    </div>
+    <div class="conn"><span class="lab">Ya</span></div>
+
+    <div class="row"><div class="center node"><div class="who">Kepala Gudang / Admin</div><div class="t">Approve &mdash; selesaikan stock opname</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node sys"><div class="who">Sistem &mdash; Otomatis</div><div class="t">Posting penyesuaian stok</div><div class="d">Selisih positif &rarr; stok masuk &nbsp;&bull;&nbsp; selisih negatif &rarr; stok keluar &nbsp;&bull;&nbsp; selisih nol &rarr; dilewati. Tercatat di Stock Mutation, status COMPLETED dan batch terkunci</div></div></div>
+    <div class="conn"></div>
+
+    <div class="row"><div class="center node term"><div class="t">SELESAI &mdash; Stok sistem sama dengan stok fisik</div><div class="d">Hasil dapat diunduh melalui Laporan Stock Opname</div></div></div>
+  </div>
+
+  <div class="foot"><span>WMS Surabaya &middot; Workflow Stock Opname</span><span>Halaman 7 dari 7</span></div>
+</section>
+
+</body>
+</html>
