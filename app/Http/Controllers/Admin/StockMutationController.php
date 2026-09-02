@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exports\StockMutationReportExport;
 use App\Http\Controllers\Controller;
 use App\Models\DamagedGood;
 use App\Models\InboundTransaction;
@@ -12,45 +13,24 @@ use App\Models\StockMutation;
 use App\Models\StockOpname;
 use App\Models\StockTransfer;
 use App\Models\Warehouse;
+use App\Support\StockMutationReport;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
+use Maatwebsite\Excel\Facades\Excel;
 
 class StockMutationController extends Controller
 {
     public function index()
     {
         $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name']);
+
         return view('admin.inventory.stock-mutations.index', compact('warehouses'));
     }
 
     public function data(Request $request)
     {
-        $query = StockMutation::query()
-            ->with(['item', 'creator', 'warehouse', 'unit'])
-            ->orderBy('occurred_at', 'desc');
-
-        if ($warehouseId = $request->integer('warehouse_id')) {
-            $query->where('warehouse_id', $warehouseId);
-        }
-
-        $search = trim((string) $request->input('q', ''));
-        if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('source_code', 'like', "%{$search}%")
-                    ->orWhere('source_type', 'like', "%{$search}%")
-                    ->orWhere('source_subtype', 'like', "%{$search}%")
-                    ->orWhereHas('creator', function ($userQ) use ($search) {
-                        $userQ->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
-                    })
-                    ->orWhereHas('item', function ($itemQ) use ($search) {
-                        $itemQ->where('sku', 'like', "%{$search}%")
-                            ->orWhere('name', 'like', "%{$search}%");
-                    });
-            });
-        }
-
-        $this->applyDateFilter($query, $request);
+        $query = StockMutationReport::query($this->filters($request))
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id');
 
         $recordsTotal = StockMutation::count();
         $recordsFiltered = (clone $query)->count();
@@ -63,27 +43,8 @@ class StockMutationController extends Controller
 
         $data = $query->get()->map(function ($m) {
             $itemLabel = trim(($m->item?->sku ?? '').' - '.($m->item?->name ?? ''));
-            $ts = $m->occurred_at ? Carbon::parse($m->occurred_at)->format('d/m/Y H:i') : '';
+            $ts = $m->occurred_at?->format('d/m/Y H:i') ?? '';
             $direction = $m->direction === 'in' ? 'IN' : 'OUT';
-            $sourceType = match ($m->source_type) {
-                'inbound' => 'Penerimaan Barang',
-                'outbound' => 'Pengeluaran Barang',
-                'transfer' => 'Transfer Gudang',
-                'adjustment' => 'Penyesuaian Stok',
-                'opname' => 'Stock Opname',
-                'damaged' => 'Barang Rusak',
-                'picker', 'qc' => 'QC Scan',
-                'qc_resi' => 'QC Scan Resi',
-                default => ucfirst((string) ($m->source_type ?: '-')),
-            };
-            $sourceSubtype = match ($m->source_subtype) {
-                'receipt' => 'Penerimaan',
-                'return' => 'Retur',
-                'manual' => 'Manual',
-                'picker' => 'Picker',
-                default => $m->source_subtype ? ucfirst($m->source_subtype) : null,
-            };
-            $source = $sourceType.($sourceSubtype ? ' / '.$sourceSubtype : '');
 
             return [
                 'id' => $m->id,
@@ -97,7 +58,7 @@ class StockMutationController extends Controller
                 'unit' => $m->unit?->name ?? '',
                 'stock_before' => $m->stock_before,
                 'stock_after' => $m->stock_after,
-                'source' => trim($source),
+                'source' => StockMutationReport::sourceLabel($m->source_type, $m->source_subtype),
                 'source_code' => $m->source_code ?? '',
                 'note' => $m->note ?? '',
             ];
@@ -111,23 +72,24 @@ class StockMutationController extends Controller
         ]);
     }
 
-    private function applyDateFilter($query, Request $request): void
+    public function export(Request $request)
     {
-        $dateFrom = $request->input('date_from');
-        $dateTo = $request->input('date_to');
+        $filename = 'laporan-mutasi-stok-'.now()->format('Ymd-His').'.xlsx';
 
-        try {
-            if ($dateFrom) {
-                $from = Carbon::parse($dateFrom)->startOfDay();
-                $query->where('occurred_at', '>=', $from);
-            }
-            if ($dateTo) {
-                $to = Carbon::parse($dateTo)->endOfDay();
-                $query->where('occurred_at', '<=', $to);
-            }
-        } catch (\Throwable) {
-            // ignore invalid date filters
-        }
+        return Excel::download(
+            new StockMutationReportExport($this->filters($request), $request->user()?->name),
+            $filename,
+        );
+    }
+
+    private function filters(Request $request): array
+    {
+        return [
+            'q' => trim((string) $request->input('q', '')),
+            'warehouse_id' => $request->integer('warehouse_id') ?: null,
+            'date_from' => $request->input('date_from'),
+            'date_to' => $request->input('date_to'),
+        ];
     }
 
     public function show(int $id, Request $request)
@@ -264,6 +226,7 @@ class StockMutationController extends Controller
                     ];
                     $sourceItems = $adjustment->items->map(function ($row) {
                         $dir = $row->direction === 'in' ? 'IN' : 'OUT';
+
                         return [
                             'label' => trim(($row->item?->sku ?? '').' - '.($row->item?->name ?? '')).' ('.$dir.')',
                             'qty' => (int) $row->qty,

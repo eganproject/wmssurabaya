@@ -55,6 +55,9 @@
                 <i class="fas fa-filter me-1"></i>Terapkan
             </button>
             <button type="button" class="btn btn-light" id="filter_reset">Reset</button>
+            <button type="button" class="btn btn-success" id="export_excel">
+                <i class="fas fa-file-excel me-1"></i>Export Excel
+            </button>
         </div>
 
         <div class="table-responsive">
@@ -79,6 +82,7 @@
 @push('scripts')
 <script>
     const dataUrl = '{{ route('admin.inventory.stock-mutations.data') }}';
+    const exportUrl = '{{ route('admin.inventory.stock-mutations.export') }}';
     const detailUrlTpl = '{{ route('admin.inventory.stock-mutations.show', ':id') }}';
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -88,6 +92,7 @@
         const dateToEl = document.getElementById('filter_date_to');
         const filterApplyBtn = document.getElementById('filter_apply');
         const filterResetBtn = document.getElementById('filter_reset');
+        const exportExcelBtn = document.getElementById('export_excel');
         const warehouseEl = document.getElementById('filter_warehouse');
         let fpFrom = null;
         let fpTo = null;
@@ -212,6 +217,15 @@
         });
         filterApplyBtn?.addEventListener('click', reloadTable);
         warehouseEl?.addEventListener('change', reloadTable);
+        exportExcelBtn?.addEventListener('click', () => {
+            const params = new URLSearchParams();
+            if (searchInput?.value) params.set('q', searchInput.value);
+            if (warehouseEl?.value) params.set('warehouse_id', warehouseEl.value);
+            if (dateFromEl?.value) params.set('date_from', dateFromEl.value);
+            if (dateToEl?.value) params.set('date_to', dateToEl.value);
+
+            window.location.href = `${exportUrl}${params.toString() ? `?${params.toString()}` : ''}`;
+        });
         filterResetBtn?.addEventListener('click', () => {
             if (fpFrom) fpFrom.clear(); else if (dateFromEl) dateFromEl.value = '';
             if (fpTo) fpTo.clear(); else if (dateToEl) dateToEl.value = '';
