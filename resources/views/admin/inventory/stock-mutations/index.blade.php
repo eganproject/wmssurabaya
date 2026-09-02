@@ -18,6 +18,9 @@
     .stock-balance-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
     .stock-balance-row + .stock-balance-row { margin-top: .45rem; padding-top: .45rem; border-top: 1px dashed #e4e6ef; }
     .source-info { min-width: 210px; max-width: 300px; }
+    #export_excel .export-loading { display: none; }
+    #export_excel.is-loading .export-default { display: none; }
+    #export_excel.is-loading .export-loading { display: inline-flex; align-items: center; }
     @media (max-width: 991.98px) {
         .mutation-filters > * { flex: 1 1 210px; }
     }
@@ -56,7 +59,13 @@
             </button>
             <button type="button" class="btn btn-light" id="filter_reset">Reset</button>
             <button type="button" class="btn btn-success" id="export_excel">
-                <i class="fas fa-file-excel me-1"></i>Export Excel
+                <span class="export-default">
+                    <i class="fas fa-file-excel me-1"></i>Export Excel
+                </span>
+                <span class="export-loading">
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    Menyiapkan Excel...
+                </span>
             </button>
         </div>
 
@@ -217,14 +226,105 @@
         });
         filterApplyBtn?.addEventListener('click', reloadTable);
         warehouseEl?.addEventListener('change', reloadTable);
-        exportExcelBtn?.addEventListener('click', () => {
+        const exportErrorMessage = async response => {
+            if (response.status === 401 || response.status === 419 || response.redirected) {
+                return 'Sesi Anda telah berakhir. Silakan muat ulang halaman dan login kembali.';
+            }
+
+            try {
+                const payload = await response.clone().json();
+                if (payload?.message) return payload.message;
+            } catch (error) {
+                // Respons bukan JSON; gunakan pesan berdasarkan status HTTP.
+            }
+
+            if (response.status === 403) return 'Anda tidak memiliki akses untuk export laporan ini.';
+            if (response.status >= 500) return 'Server gagal menyiapkan file Excel. Silakan coba kembali.';
+
+            return `Export gagal diproses (HTTP ${response.status}).`;
+        };
+
+        const showExportError = message => {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Export Excel gagal',
+                    text: message,
+                    confirmButtonText: 'Tutup',
+                });
+                return;
+            }
+
+            window.alert(message);
+        };
+
+        const downloadBlob = (blob, filename) => {
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        };
+
+        const responseFilename = response => {
+            const disposition = response.headers.get('Content-Disposition') || '';
+            const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+            const regularMatch = disposition.match(/filename="?([^";]+)"?/i);
+            const encodedName = utf8Match?.[1] || regularMatch?.[1];
+
+            if (!encodedName) return 'laporan-mutasi-stok.xlsx';
+
+            try {
+                return decodeURIComponent(encodedName.trim());
+            } catch (error) {
+                return encodedName.trim();
+            }
+        };
+
+        exportExcelBtn?.addEventListener('click', async () => {
+            if (exportExcelBtn.classList.contains('is-loading')) return;
+
             const params = new URLSearchParams();
             if (searchInput?.value) params.set('q', searchInput.value);
             if (warehouseEl?.value) params.set('warehouse_id', warehouseEl.value);
             if (dateFromEl?.value) params.set('date_from', dateFromEl.value);
             if (dateToEl?.value) params.set('date_to', dateToEl.value);
 
-            window.location.href = `${exportUrl}${params.toString() ? `?${params.toString()}` : ''}`;
+            exportExcelBtn.classList.add('is-loading');
+            exportExcelBtn.disabled = true;
+            exportExcelBtn.setAttribute('aria-busy', 'true');
+
+            try {
+                const query = params.toString();
+                const response = await fetch(`${exportUrl}${query ? `?${query}` : ''}`, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    headers: {
+                        Accept: 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+
+                const contentType = response.headers.get('Content-Type') || '';
+                const isExcel = contentType.includes('spreadsheetml') || contentType.includes('application/octet-stream');
+                if (!response.ok || !isExcel) {
+                    throw new Error(await exportErrorMessage(response));
+                }
+
+                const blob = await response.blob();
+                if (!blob.size) throw new Error('File Excel yang diterima kosong.');
+
+                downloadBlob(blob, responseFilename(response));
+            } catch (error) {
+                showExportError(error?.message || 'Export Excel gagal. Silakan coba kembali.');
+            } finally {
+                exportExcelBtn.classList.remove('is-loading');
+                exportExcelBtn.disabled = false;
+                exportExcelBtn.removeAttribute('aria-busy');
+            }
         });
         filterResetBtn?.addEventListener('click', () => {
             if (fpFrom) fpFrom.clear(); else if (dateFromEl) dateFromEl.value = '';

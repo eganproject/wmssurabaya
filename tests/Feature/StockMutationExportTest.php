@@ -17,6 +17,21 @@ class StockMutationExportTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_stock_mutation_export_returns_a_real_downloadable_xlsx_response(): void
+    {
+        Carbon::setTestNow('2026-09-02 10:11:12');
+        $user = User::factory()->create(['email_verified_at' => now()]);
+
+        $this->withHeaders([
+            'Accept' => 'application/json',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ])->actingAs($user)
+            ->get(route('admin.inventory.stock-mutations.export'))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->assertDownload('laporan-mutasi-stok-20260902-101112.xlsx');
+    }
+
     public function test_stock_mutation_export_uses_active_filters_and_contains_complete_report_sheets(): void
     {
         Carbon::setTestNow('2026-09-02 10:11:12');
