@@ -45,6 +45,7 @@ class ItemController extends Controller
             'name' => $item->name,
             'category_id' => $item->category_id,
             'description' => $item->description ?? '',
+            'is_active' => (bool) $item->is_active,
             'warehouse_settings' => $item->warehouseSettings->map(fn ($setting) => [
                 'warehouse_id' => $setting->warehouse_id,
                 'safety_stock' => (int) $setting->safety_stock,
@@ -95,6 +96,11 @@ class ItemController extends Controller
             }
         }
 
+        $statusFilter = $request->input('is_active');
+        if (in_array((string) $statusFilter, ['0', '1'], true)) {
+            $query->where('is_active', (int) $statusFilter === 1);
+        }
+
         $recordsTotal = Item::count();
         $recordsFiltered = (clone $query)->count();
 
@@ -115,6 +121,7 @@ class ItemController extends Controller
                 'description' => $i->description ?? '',
                 'default_safety_stock' => (int) ($i->warehouseSettings->first()?->safety_stock ?? 0),
                 'is_bundle' => (bool) $i->is_bundle,
+                'is_active' => (bool) $i->is_active,
                 'base_unit' => $i->units->firstWhere('is_base', true)?->name ?? 'PCS',
                 'package_unit' => $i->units->firstWhere('is_base', false)?->name,
             ];
@@ -166,6 +173,7 @@ class ItemController extends Controller
         $catId = $request->input('category_id');
         $validated['category_id'] = ($catId === null || (int)$catId === 0) ? null : (int) $catId;
         $validated['is_bundle'] = $isBundle;
+        $validated['is_active'] = true;
         $warehouseSettings = $validated['warehouse_settings'] ?? [];
         $unitPayload = $this->unitPayload($validated);
         unset($validated['components'], $validated['base_unit_name'], $validated['base_uom_id'], $validated['package_unit_name'], $validated['package_uom_id'], $validated['package_conversion_qty'], $validated['warehouse_settings']);
@@ -192,6 +200,7 @@ class ItemController extends Controller
                     'name' => $item->name,
                     'category_id' => $item->category_id,
                     'is_bundle' => $item->is_bundle,
+                    'is_active' => $item->is_active,
                 ]
             ]);
         } catch (ValidationException $e) {
@@ -279,6 +288,7 @@ class ItemController extends Controller
                     'name' => $item->name,
                     'category_id' => $item->category_id,
                     'is_bundle' => $item->is_bundle,
+                    'is_active' => $item->is_active,
                 ]
             ]);
         } catch (ValidationException $e) {
@@ -314,6 +324,30 @@ class ItemController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function updateStatus(Request $request, Item $item)
+    {
+        $validated = $request->validate([
+            'is_active' => ['required', 'boolean'],
+        ]);
+
+        $isActive = filter_var($validated['is_active'], FILTER_VALIDATE_BOOLEAN);
+        if ((bool) $item->is_active === $isActive) {
+            return response()->json([
+                'message' => $isActive ? 'Item sudah aktif.' : 'Item sudah nonaktif.',
+                'is_active' => $isActive,
+            ]);
+        }
+
+        $item->update(['is_active' => $isActive]);
+
+        return response()->json([
+            'message' => $isActive
+                ? "Item {$item->sku} berhasil diaktifkan."
+                : "Item {$item->sku} berhasil dinonaktifkan.",
+            'is_active' => $isActive,
+        ]);
     }
 
     public function import(Request $request)

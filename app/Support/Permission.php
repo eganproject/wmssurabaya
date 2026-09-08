@@ -16,7 +16,7 @@ class Permission
             return $base;
         }
 
-        $base = preg_replace('/\.(create|store|edit|update|destroy|show|data|stocks|import|detail|approve|ship|receive|cancel)$/', '.index', $routeName);
+        $base = preg_replace('/\.(create|store|edit|update|status|destroy|show|data|stocks|import|detail|approve|ship|receive|cancel)$/', '.index', $routeName);
         return $base;
     }
 
@@ -24,7 +24,7 @@ class Permission
     {
         if (preg_match('/\.scan\.(store|finish)$/', $routeName)) return 'update';
         if (preg_match('/\.(create|store|import)$/', $routeName)) return 'create';
-        if (preg_match('/\.(edit|update|approve|ship|receive|scan|finish)$/', $routeName)) return 'update';
+        if (preg_match('/\.(edit|update|status|approve|ship|receive|scan|finish)$/', $routeName)) return 'update';
         if (preg_match('/\.(destroy|cancel)$/', $routeName)) return 'delete';
         // index, show, data, others default to view
         return 'view';

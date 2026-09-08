@@ -41,6 +41,12 @@
                 @endforeach
             </select>
 
+            <select class="form-select form-select-solid w-175px" id="filter_item_status" aria-label="Status produk">
+                <option value="1" selected>Produk Aktif</option>
+                <option value="0">Produk Nonaktif</option>
+                <option value="">Semua Produk</option>
+            </select>
+
             <button type="button" class="btn btn-light-primary" id="btn_export_item_stocks">
                 <i class="fas fa-file-excel me-2"></i>Export Excel
             </button>
@@ -84,6 +90,7 @@
         const searchInput = document.querySelector('[data-kt-filter="search"]');
         const exportBtn = document.getElementById('btn_export_item_stocks');
         const warehouseEl = document.getElementById('filter_warehouse');
+        const statusEl = document.getElementById('filter_item_status');
         const hintTitle = document.getElementById('warehouse_hint_title');
         const hintText = document.getElementById('warehouse_hint_text');
 
@@ -118,6 +125,7 @@
                 data: params => {
                     params.q = searchInput?.value || '';
                     params.warehouse_id = warehouseEl?.value || '';
+                    params.is_active = statusEl?.value ?? '1';
                 }
             },
             columns: [
@@ -127,6 +135,7 @@
                         <div class="d-flex flex-column">
                             <span class="fw-bolder text-gray-900">${escapeHtml(value)}</span>
                             <span class="text-muted fs-7">${escapeHtml(row.sku)} · ${row.is_bundle ? 'Bundle' : 'Item reguler'}</span>
+                            <span class="badge ${row.is_active ? 'badge-light-success' : 'badge-light-danger'} align-self-start mt-1">${row.is_active ? 'Produk Aktif' : 'Produk Nonaktif'}</span>
                         </div>`
                 },
                 {
@@ -194,8 +203,12 @@
             updateWarehouseHint();
             dt.ajax.reload();
         });
+        statusEl?.addEventListener('change', () => dt.ajax.reload());
         exportBtn?.addEventListener('click', () => {
-            const params = new URLSearchParams({ warehouse_id: warehouseEl?.value || '' });
+            const params = new URLSearchParams({
+                warehouse_id: warehouseEl?.value || '',
+                is_active: statusEl?.value ?? '1',
+            });
             const query = searchInput?.value?.trim() || '';
             if (query) params.set('q', query);
             window.location.href = `${exportUrl}?${params.toString()}`;

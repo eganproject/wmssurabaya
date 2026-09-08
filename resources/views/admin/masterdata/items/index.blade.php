@@ -68,6 +68,14 @@
                             @endforeach
                         </select>
                     </div>
+                    <div class="mb-7">
+                        <label class="form-label fs-6 fw-bold">Status Produk</label>
+                        <select id="filter_item_status" class="form-select form-select-solid fw-bolder">
+                            <option value="">Semua Status</option>
+                            <option value="1">Aktif</option>
+                            <option value="0">Nonaktif</option>
+                        </select>
+                    </div>
                     <div class="d-flex justify-content-end">
                         <button type="button" class="btn btn-light btn-active-light-primary me-2" id="filter_items_reset">Reset</button>
                         <button type="button" class="btn btn-primary" id="filter_items_apply">Terapkan</button>
@@ -279,6 +287,7 @@
     const storeUrl   = '{{ route('admin.masterdata.items.store') }}';
     const updateTpl  = '{{ route('admin.masterdata.items.update', ':id') }}';
     const deleteTpl  = '{{ route('admin.masterdata.items.destroy', ':id') }}';
+    const statusTpl  = '{{ route('admin.masterdata.items.status', ':id') }}';
     const showTpl    = '{{ route('admin.masterdata.items.show', ':id') }}';
     const importUrl  = '{{ route('admin.masterdata.items.import') }}';
     const itemSearchUrl = '{{ route('admin.masterdata.items.data') }}';
@@ -292,6 +301,7 @@
         const resetBtn       = document.getElementById('filter_items_reset');
         const limitSelect    = document.getElementById('filter_items_limit');
         const categoryFilter = document.getElementById('filter_item_category');
+        const statusFilter   = document.getElementById('filter_item_status');
         const form           = document.getElementById('item_form');
         const modalEl        = document.getElementById('modal_item_form');
         const modal          = modalEl ? new bootstrap.Modal(modalEl) : null;
@@ -361,7 +371,7 @@
                         url: itemSearchUrl,
                         dataType: 'json',
                         delay: 250,
-                        data: params => ({ q: params.term || '', length: 20, start: 0 }),
+                        data: params => ({ q: params.term || '', is_active: '1', length: 20, start: 0 }),
                         processResults: resp => ({
                             results: (resp.data || [])
                                 .filter(i => !i.is_bundle)
@@ -567,6 +577,8 @@
         if (typeof $ !== 'undefined' && $.fn.select2) {
             $(categoryFilter).select2({ placeholder: 'Semua', allowClear: true, width: '100%' })
                 .on('select2:opening select2:closing select2:close', e => e.stopPropagation());
+            $(statusFilter).select2({ placeholder: 'Semua Status', allowClear: true, width: '100%' })
+                .on('select2:opening select2:closing select2:close', e => e.stopPropagation());
             $(formCategory).select2({ placeholder: 'Pilih kategori', allowClear: true, width: '100%' });
         }
 
@@ -584,6 +596,7 @@
                 data: params => {
                     params.q = searchInput?.value || '';
                     params.category_id = categoryFilter?.value || '';
+                    params.is_active = statusFilter?.value ?? '';
                 },
             },
             columns: [
@@ -597,6 +610,9 @@
                                 <span class="badge badge-light-dark">${escapeHtml(row.sku)}</span>
                                 <span class="badge ${row.is_bundle ? 'badge-light-primary' : 'badge-light-secondary'}">
                                     ${row.is_bundle ? 'Bundle / Set' : 'Item Reguler'}
+                                </span>
+                                <span class="badge ${row.is_active ? 'badge-light-success' : 'badge-light-danger'}">
+                                    ${row.is_active ? 'Aktif' : 'Nonaktif'}
                                 </span>
                             </div>
                         </div>`
@@ -629,8 +645,9 @@
                 { data: 'id', orderable: false, searchable: false, className: 'text-end', render: (id, t, row) => {
                     const qrItem = `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-download-qr" data-sku="${escapeAttr(row.sku)}"><i class="fas fa-qrcode me-2"></i>Download QR</a></div>`;
                     const editItem = canUpdate ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${id}"><i class="fas fa-edit me-2"></i>Edit Item</a></div>` : '';
+                    const statusItem = canUpdate ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 ${row.is_active ? 'text-danger' : 'text-success'} btn-toggle-status" data-id="${id}" data-active="${row.is_active ? '1' : '0'}"><i class="fas ${row.is_active ? 'fa-ban' : 'fa-check-circle'} me-2"></i>${row.is_active ? 'Nonaktifkan' : 'Aktifkan'}</a></div>` : '';
                     const delItem  = canDelete ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-danger btn-delete" data-id="${id}">Hapus</a></div>` : '';
-                    const actions = `${qrItem}${editItem}${delItem}`;
+                    const actions = `${qrItem}${editItem}${statusItem}${delItem}`;
                     if (!actions) return '';
                     return `<div class="text-end">
                         <a href="#" class="btn btn-sm btn-light-primary table-action-button" data-kt-menu-trigger="click" data-kt-menu-placement="bottom-end">
@@ -655,6 +672,7 @@
         });
         applyBtn?.addEventListener('click', reloadTable);
         categoryFilter?.addEventListener('change', reloadTable);
+        statusFilter?.addEventListener('change', reloadTable);
         limitSelect?.addEventListener('change', () => {
             dt.page.len(Number(limitSelect.value || 10)).draw();
         });
@@ -662,6 +680,10 @@
             if (categoryFilter) {
                 categoryFilter.value = '';
                 typeof $ !== 'undefined' && $(categoryFilter).data('select2') && $(categoryFilter).val('').trigger('change.select2');
+            }
+            if (statusFilter) {
+                statusFilter.value = '';
+                typeof $ !== 'undefined' && $(statusFilter).data('select2') && $(statusFilter).val('').trigger('change.select2');
             }
             if (limitSelect) { limitSelect.value = '10'; dt.page.len(10).draw(); }
             reloadTable();
@@ -771,6 +793,48 @@
             } catch (err) {
                 console.error(err);
                 Swal?.fire('Error', 'Gagal menghapus item', 'error');
+            }
+        });
+
+        tableEl.on('click', '.btn-toggle-status', async function(e) {
+            e.preventDefault();
+            const id = this.getAttribute('data-id');
+            const currentlyActive = this.getAttribute('data-active') === '1';
+            const actionLabel = currentlyActive ? 'menonaktifkan' : 'mengaktifkan';
+            let confirmed = true;
+            if (typeof Swal !== 'undefined') {
+                const result = await Swal.fire({
+                    title: currentlyActive ? 'Nonaktifkan item?' : 'Aktifkan item?',
+                    text: currentlyActive
+                        ? 'Item disembunyikan dari daftar stok dan laporan aktif secara default, tetapi saldo serta histori tetap tersimpan.'
+                        : 'Item akan kembali tampil pada daftar stok dan laporan aktif.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: currentlyActive ? 'Ya, nonaktifkan' : 'Ya, aktifkan',
+                    cancelButtonText: 'Batal',
+                    buttonsStyling: false,
+                    customClass: { confirmButton: `btn ${currentlyActive ? 'btn-danger' : 'btn-success'}`, cancelButton: 'btn btn-light' },
+                });
+                confirmed = result.isConfirmed;
+            }
+            if (!confirmed) return;
+
+            try {
+                const res = await fetch(statusTpl.replace(':id', id), {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+                    body: new URLSearchParams({ _method: 'PATCH', is_active: currentlyActive ? '0' : '1' }),
+                });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    Swal?.fire('Error', Object.values(json.errors || {}).flat().join('\n') || json.message || `Gagal ${actionLabel} item.`, 'error');
+                    return;
+                }
+                Swal?.fire('Berhasil', json.message || 'Status item berhasil diperbarui.', 'success');
+                reloadTable(true);
+            } catch (err) {
+                console.error(err);
+                Swal?.fire('Error', `Gagal ${actionLabel} item.`, 'error');
             }
         });
 

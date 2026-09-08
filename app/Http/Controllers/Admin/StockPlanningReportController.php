@@ -80,6 +80,7 @@ class StockPlanningReportController extends Controller
                     ->where('package_unit.is_base', '=', false);
             })
             ->where('i.is_bundle', false)
+            ->where('i.is_active', true)
             ->select([
                 'i.id',
                 'i.sku',
@@ -201,7 +202,7 @@ class StockPlanningReportController extends Controller
 
         return response()->json([
             'draw' => (int) $request->input('draw'),
-            'recordsTotal' => DB::table('items')->where('is_bundle', false)->count(),
+            'recordsTotal' => DB::table('items')->where('is_bundle', false)->where('is_active', true)->count(),
             'recordsFiltered' => $recordsFiltered,
             'summary' => array_merge($summary, [
                 'period_days' => $periodDays,

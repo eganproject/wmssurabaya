@@ -90,6 +90,14 @@
                     <option value="has_stock">Ada Stok</option>
                 </select>
             </div>
+            <div class="col-xl-2 col-md-4">
+                <label>Status Produk</label>
+                <select id="filter_item_status" class="form-select form-select-solid">
+                    <option value="1" selected>Produk Aktif</option>
+                    <option value="0">Produk Nonaktif</option>
+                    <option value="">Semua Produk</option>
+                </select>
+            </div>
             <div class="col-xl-3 col-md-6">
                 <label>Cari SKU, nama, gudang, kategori, atau lokasi</label>
                 <input id="filter_search" class="form-control form-control-solid" placeholder="Tekan Enter untuk mencari">
@@ -195,6 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
         warehouse: document.getElementById('filter_warehouse'),
         category: document.getElementById('filter_category'),
         status: document.getElementById('filter_status'),
+        itemStatus: document.getElementById('filter_item_status'),
         search: document.getElementById('filter_search'),
         limit: document.getElementById('filter_limit'),
     };
@@ -216,13 +225,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if ($.fn.select2) {
-        [filters.warehouse, filters.category, filters.status].forEach(el => $(el).select2({width: '100%', allowClear: el !== filters.warehouse}));
+        [filters.warehouse, filters.category, filters.status, filters.itemStatus].forEach(el => $(el).select2({width: '100%', allowClear: el !== filters.warehouse && el !== filters.itemStatus}));
     }
 
     function requestData(params) {
         params.warehouse_id = filters.warehouse.value;
         params.category_id = filters.category.value;
         params.status = filters.status.value;
+        params.is_active = filters.itemStatus.value;
         params.q = filters.search.value;
     }
 
@@ -253,7 +263,8 @@ document.addEventListener('DOMContentLoaded', () => {
         columns: [
             {data: null, className: 'stock-report-item', render: row => {
                 const bundle = row.is_bundle ? '<span class="badge badge-light-info ms-2">Bundle</span>' : '';
-                return `<div class="fw-bold">${escapeHtml(row.sku)}${bundle}</div><div>${escapeHtml(row.name)}</div>`;
+                const active = `<span class="badge ${row.is_active ? 'badge-light-success' : 'badge-light-danger'} ms-2">${row.is_active ? 'Aktif' : 'Nonaktif'}</span>`;
+                return `<div class="fw-bold">${escapeHtml(row.sku)}${bundle}${active}</div><div>${escapeHtml(row.name)}</div>`;
             }},
             {data: null, render: row => `<div class="fw-bold">${escapeHtml(row.warehouse)}</div><div class="text-muted fs-8">${escapeHtml(row.warehouse_type)}</div>`},
             {data: 'category', render: value => escapeHtml(value)},
@@ -278,16 +289,17 @@ document.addEventListener('DOMContentLoaded', () => {
     filters.search.addEventListener('keyup', event => {
         if (event.key === 'Enter') reload();
     });
-    [filters.warehouse, filters.category, filters.status].forEach(el => el?.addEventListener('change', reload));
+    [filters.warehouse, filters.category, filters.status, filters.itemStatus].forEach(el => el?.addEventListener('change', reload));
     filters.limit?.addEventListener('change', () => dt.page.len(Number(filters.limit.value || 10)).draw());
     document.getElementById('filter_reset').addEventListener('click', () => {
         filters.warehouse.value = '';
         filters.category.value = '';
         filters.status.value = '';
+        filters.itemStatus.value = '1';
         filters.search.value = '';
         filters.limit.value = '10';
-        [filters.warehouse, filters.category, filters.status].forEach(el => {
-            if ($(el).data('select2')) $(el).val('').trigger('change.select2');
+        [filters.warehouse, filters.category, filters.status, filters.itemStatus].forEach(el => {
+            if ($(el).data('select2')) $(el).val(el === filters.itemStatus ? '1' : '').trigger('change.select2');
         });
         dt.page.len(10).draw();
         reload();

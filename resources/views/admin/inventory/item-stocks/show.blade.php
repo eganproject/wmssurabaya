@@ -96,6 +96,10 @@
                     <tr><td>SKU</td><td class="fw-semibold">: {{ $item->sku }}</td></tr>
                     <tr><td>Kategori</td><td>: {{ $item->category?->name ?? '-' }}</td></tr>
                     <tr><td>Jenis Item</td><td>: {{ $isBundle ? 'Bundle / Set' : 'Item Reguler' }}</td></tr>
+                    <tr>
+                        <td>Status Produk</td>
+                        <td>: <span class="badge {{ $item->is_active ? 'badge-light-success' : 'badge-light-danger' }}">{{ $item->is_active ? 'Aktif' : 'Nonaktif' }}</span></td>
+                    </tr>
                     <tr><td>Lokasi Rak</td><td>: {{ $warehouseLocation ?: 'Belum ditentukan' }}</td></tr>
                     <tr><td>Satuan Dasar</td><td>: {{ $baseUnitName }}</td></tr>
                     @if($packageUnit)

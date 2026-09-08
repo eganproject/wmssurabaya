@@ -102,6 +102,7 @@ class ActivityLogMessage
             'profile.destroy' => 'menghapus akun sendiri',
             'verification.send' => 'mengirim ulang email verifikasi',
             'admin.masterdata.permissions.update' => 'memperbarui permission role '.$this->entityText($snapshot, $payload['role'] ?? null),
+            'admin.masterdata.items.status' => ((string) ($payload['is_active'] ?? '0') === '1' ? 'mengaktifkan' : 'menonaktifkan').' master item '.$this->entityText($snapshot),
             'picker.start' => 'memulai sesi picker',
             'picker.items.store' => 'menambahkan SKU '.$this->value($payload, 'sku', 'item_id').' ke sesi picker sebanyak '.max(1, (int) ($payload['qty'] ?? 1)).' item',
             'picker.items.update' => 'memperbarui item sesi picker menjadi qty '.(int) ($payload['qty'] ?? 0),

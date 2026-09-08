@@ -30,7 +30,7 @@ class StockAsOfDateReportExport implements FromCollection, WithHeadings, WithMap
     public function headings(): array
     {
         return [
-            'Per Tanggal', 'Gudang', 'SKU', 'Nama Item', 'Kategori', 'Lokasi',
+            'Per Tanggal', 'Gudang', 'SKU', 'Nama Item', 'Status Produk Saat Ini', 'Kategori', 'Lokasi',
             'Stok Akhir', 'Satuan', 'Qty Kemasan', 'Sisa Kemasan', 'Satuan Kemasan',
             'Safety Stock', 'Gap Safety', 'Status',
         ];
@@ -43,6 +43,7 @@ class StockAsOfDateReportExport implements FromCollection, WithHeadings, WithMap
             $row['warehouse'],
             $row['sku'],
             $row['name'],
+            $row['is_active'] ? 'Aktif' : 'Nonaktif',
             $row['category'],
             $row['location'],
             (int) $row['stock'],
@@ -59,8 +60,8 @@ class StockAsOfDateReportExport implements FromCollection, WithHeadings, WithMap
     public function styles(Worksheet $sheet): array
     {
         $sheet->freezePane('A2');
-        $sheet->setAutoFilter('A1:N1');
-        $sheet->getStyle('A1:N1')->getAlignment()->setHorizontal('center');
+        $sheet->setAutoFilter('A1:O1');
+        $sheet->getStyle('A1:O1')->getAlignment()->setHorizontal('center');
         $sheet->getColumnDimension('D')->setWidth(34);
         $sheet->getColumnDimension('E')->setWidth(20);
         $sheet->getColumnDimension('F')->setWidth(16);

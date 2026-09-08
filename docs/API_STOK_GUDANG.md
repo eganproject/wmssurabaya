@@ -58,3 +58,5 @@ Format respons tetap:
 `per_page` maksimum 500. Tanpa `as_of`, data dapat diambil inkremental dengan `updated_since`/`updated_until` dan diurutkan `updated_at ASC, sku ASC`. Gunakan `meta.server_time` dari halaman pertama sebagai `updated_until` di halaman berikutnya.
 
 `as_of` memakai WIB dan mengembalikan saldo penutup tanggal tersebut. Parameter ini tidak dapat digabung dengan `updated_since` atau `updated_until`. Stok rusak tidak termasuk; bundle dihitung virtual per gudang lalu dijumlahkan.
+
+Item yang dinonaktifkan dari Master Item dikirim sebagai `status: deleted` dengan `qty: 0`. Jika item diaktifkan kembali, status API kembali menjadi `active` dengan saldo berjalan terbaru.

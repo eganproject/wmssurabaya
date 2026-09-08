@@ -30,7 +30,9 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('stock-api', fn (Request $request) => Limit::perMinute(config('stock_api.rate_limit_per_minute'))
             ->by(hash('sha256', (string) $request->bearerToken().'|'.$request->ip())));
 
-        Item::saved(fn (Item $item) => StockApiSyncService::syncItemInAllActiveWarehouses($item->id));
+        Item::saved(fn (Item $item) => ($item->is_active ?? true)
+            ? StockApiSyncService::syncItemInAllActiveWarehouses($item->id)
+            : StockApiSyncService::markInactive($item));
         Item::deleting(fn (Item $item) => StockApiSyncService::markDeleted($item));
         ItemUnit::saved(fn (ItemUnit $unit) => StockApiSyncService::syncItemInAllActiveWarehouses($unit->item_id));
         ItemUnit::deleted(fn (ItemUnit $unit) => StockApiSyncService::syncItemInAllActiveWarehouses($unit->item_id));

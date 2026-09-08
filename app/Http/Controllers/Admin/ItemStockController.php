@@ -98,6 +98,13 @@ class ItemStockController extends Controller
             'warehouseSettings' => fn ($q) => $q->where('warehouse_id', $warehouseId),
         ])->orderBy('name');
 
+        $activeStatus = (string) $request->input('is_active', '1');
+        if (in_array($activeStatus, ['0', '1'], true)) {
+            $query->where('is_active', (int) $activeStatus === 1);
+        }
+
+        $recordsTotal = (clone $query)->count();
+
         $search = trim((string) $request->input('q', ''));
         if ($search !== '') {
             $query->where(function ($q) use ($search, $warehouseId) {
@@ -110,7 +117,6 @@ class ItemStockController extends Controller
             });
         }
 
-        $recordsTotal = Item::count();
         $recordsFiltered = (clone $query)->count();
 
         $start = (int) $request->input('start', 0);
@@ -146,6 +152,7 @@ class ItemStockController extends Controller
                 'location' => $setting?->location ?? '',
                 'safety_stock' => $safetyStock,
                 'is_bundle' => $isBundle,
+                'is_active' => (bool) $i->is_active,
                 'base_unit' => $baseUnit?->name ?? 'PCS',
                 'package_unit' => $packageUnit?->name,
                 'package_conversion' => $packageConversion,
@@ -169,8 +176,9 @@ class ItemStockController extends Controller
     {
         $search = trim((string) $request->input('q', ''));
         $warehouseId = $request->integer('warehouse_id') ?: Warehouse::defaultId();
+        $activeStatus = (string) $request->input('is_active', '1');
         $filename = 'item-stocks-'.now()->format('YmdHis').'.xlsx';
 
-        return Excel::download(new ItemStocksExport($search, $warehouseId), $filename);
+        return Excel::download(new ItemStocksExport($search, $warehouseId, $activeStatus), $filename);
     }
 }

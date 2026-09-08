@@ -25,15 +25,16 @@ class StockApiSyncService
         $setting = $item->warehouseSettings->first();
         $unit = $item->baseUnit;
 
+        $isActive = (bool) $item->is_active;
         $attributes = [
             'item_id' => $item->id,
             'sku' => $item->sku,
             'name' => $item->name,
             'category' => $item->category?->name,
             'uom' => $unit?->uom?->name ?? $unit?->name ?? 'PCS',
-            'qty' => max(0, $qty),
-            'min_qty' => (int) ($setting?->safety_stock ?? 0) ?: null,
-            'status' => 'active',
+            'qty' => $isActive ? max(0, $qty) : 0,
+            'min_qty' => $isActive ? ((int) ($setting?->safety_stock ?? 0) ?: null) : null,
+            'status' => $isActive ? 'active' : 'deleted',
             'source_updated_at' => $changedAt ?? now(),
         ];
         $record = StockApiSyncRecord::where('warehouse_id', $warehouseId)
@@ -57,6 +58,18 @@ class StockApiSyncService
     {
         Warehouse::where('is_active', true)->pluck('id')
             ->each(fn ($warehouseId) => self::syncItem((int) $warehouseId, $itemId, $changedAt));
+    }
+
+    public static function markInactive(Item $item, ?Carbon $changedAt = null): void
+    {
+        StockApiSyncRecord::where('item_id', $item->id)->update([
+            'name' => $item->name,
+            'category' => $item->category?->name,
+            'status' => 'deleted',
+            'qty' => 0,
+            'min_qty' => null,
+            'source_updated_at' => $changedAt ?? now(),
+        ]);
     }
 
     public static function markDeleted(Item $item, ?Carbon $changedAt = null): void

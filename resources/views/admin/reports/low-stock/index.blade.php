@@ -45,6 +45,14 @@
                         <option value="low">Low Stock</option>
                     </select>
                 </div>
+                <div class="min-w-200px">
+                    <label class="text-muted fs-7 mb-1">Status Produk</label>
+                    <select id="filter_item_status" class="form-select form-select-solid w-200px">
+                        <option value="1" selected>Produk Aktif</option>
+                        <option value="0">Produk Nonaktif</option>
+                        <option value="">Semua Produk</option>
+                    </select>
+                </div>
                 <div class="min-w-100px">
                     <label class="text-muted fs-7 mb-1">Limit</label>
                     <select id="filter_limit" class="form-select form-select-solid w-100px">
@@ -130,6 +138,7 @@
         const categoryFilter = document.getElementById('filter_category');
         const warehouseFilter = document.getElementById('filter_warehouse');
         const statusFilter = document.getElementById('filter_status');
+        const itemStatusFilter = document.getElementById('filter_item_status');
         const limitFilter = document.getElementById('filter_limit');
         const resetBtn = document.getElementById('filter_reset');
         const summaryTotalEl = document.getElementById('summary_total_low');
@@ -141,10 +150,13 @@
             return;
         }
 
+        const escapeHtml = value => $('<div>').text(value ?? '').html();
+
         if (typeof $ !== 'undefined' && $.fn.select2) {
             $(categoryFilter).select2({ placeholder: 'Semua', allowClear: true, width: '100%' });
             $(warehouseFilter).select2({ width: '100%' });
             $(statusFilter).select2({ placeholder: 'Semua', allowClear: true, width: '100%' });
+            $(itemStatusFilter).select2({ width: '100%' });
         }
 
         const dt = tableEl.DataTable({
@@ -167,13 +179,14 @@
                     params.warehouse_id = warehouseFilter?.value || '';
                     params.category_id = categoryFilter?.value || '';
                     params.status = statusFilter?.value || '';
+                    params.is_active = itemStatusFilter?.value ?? '1';
                 }
             },
             columns: [
                 { data: null, orderable: false, searchable: false, render: (data, type, row, meta) => meta.row + meta.settings._iDisplayStart + 1 },
-                { data: 'sku' },
-                { data: 'name' },
-                { data: 'category' },
+                { data: 'sku', render: escapeHtml },
+                { data: 'name', render: (data, type, row) => `${escapeHtml(data || '-')} <span class="badge ${row.is_active ? 'badge-light-success' : 'badge-light-danger'} ms-1">${row.is_active ? 'Aktif' : 'Nonaktif'}</span>` },
+                { data: 'category', render: escapeHtml },
                 { data: 'stock', className: 'text-end', render: (data) => data ?? 0 },
                 { data: 'safety_stock', className: 'text-end', render: (data) => data ?? 0 },
                 { data: 'gap', className: 'text-end', render: (data) => data ?? 0 },
@@ -182,7 +195,7 @@
                     const badge = isOut ? 'badge-light-danger' : 'badge-light-warning';
                     return `<span class="badge ${badge}">${data || '-'}</span>`;
                 }},
-                { data: 'address' },
+                { data: 'address', render: escapeHtml },
             ],
             language: {
                 emptyTable: 'Tidak ada item di bawah stok pengaman',
@@ -197,6 +210,7 @@
         });
         categoryFilter?.addEventListener('change', reloadTable);
         statusFilter?.addEventListener('change', reloadTable);
+        itemStatusFilter?.addEventListener('change', reloadTable);
         warehouseFilter?.addEventListener('change', reloadTable);
         limitFilter?.addEventListener('change', () => {
             const val = Number(limitFilter.value || 10);
@@ -221,6 +235,12 @@
                 statusFilter.value = '';
                 if (typeof $ !== 'undefined' && $(statusFilter).data('select2')) {
                     $(statusFilter).val('').trigger('change.select2');
+                }
+            }
+            if (itemStatusFilter) {
+                itemStatusFilter.value = '1';
+                if (typeof $ !== 'undefined' && $(itemStatusFilter).data('select2')) {
+                    $(itemStatusFilter).val('1').trigger('change.select2');
                 }
             }
             if (limitFilter) {

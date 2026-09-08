@@ -11,7 +11,11 @@ use Maatwebsite\Excel\Concerns\WithMapping;
 
 class ItemStocksExport implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize
 {
-    public function __construct(private string $search = '', private ?int $warehouseId = null)
+    public function __construct(
+        private string $search = '',
+        private ?int $warehouseId = null,
+        private string $activeStatus = '1'
+    )
     {
     }
 
@@ -22,6 +26,9 @@ class ItemStocksExport implements FromCollection, WithHeadings, WithMapping, Sho
             'stocks' => fn ($q) => $q->where('warehouse_id', $warehouseId),
             'warehouseSettings' => fn ($q) => $q->where('warehouse_id', $warehouseId),
         ])->orderBy('name');
+        if (in_array($this->activeStatus, ['0', '1'], true)) {
+            $query->where('is_active', (int) $this->activeStatus === 1);
+        }
         $search = trim($this->search);
         if ($search !== '') {
             $query->where(function ($q) use ($search, $warehouseId) {
@@ -38,7 +45,7 @@ class ItemStocksExport implements FromCollection, WithHeadings, WithMapping, Sho
 
     public function headings(): array
     {
-        return ['ID', 'SKU', 'Nama', 'Lokasi', 'Safety Stock', 'Stok'];
+        return ['ID', 'SKU', 'Nama', 'Status Produk', 'Lokasi', 'Safety Stock', 'Stok'];
     }
 
     public function map($row): array
@@ -47,6 +54,7 @@ class ItemStocksExport implements FromCollection, WithHeadings, WithMapping, Sho
             $row->id,
             $row->sku,
             $row->name,
+            $row->is_active ? 'Aktif' : 'Nonaktif',
             $row->warehouseSettings->first()?->location,
             (int) ($row->warehouseSettings->first()?->safety_stock ?? 0),
             (int) ($row->stocks->first()?->stock ?? 0),

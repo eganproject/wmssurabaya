@@ -61,6 +61,11 @@ class StockReportController extends Controller
                     ->where('package_unit.is_base', '=', false);
             });
 
+        $activeStatus = (string) $request->input('is_active', '1');
+        if (in_array($activeStatus, ['0', '1'], true)) {
+            $baseQuery->where('i.is_active', (int) $activeStatus === 1);
+        }
+
         $categoryId = $request->input('category_id');
         if ($categoryId !== null && $categoryId !== '') {
             if ((int) $categoryId === 0) {
@@ -114,6 +119,7 @@ class StockReportController extends Controller
                 'i.sku',
                 'i.name',
                 'i.is_bundle',
+                'i.is_active',
                 DB::raw("COALESCE(c.name, 'Tanpa Kategori') as category"),
                 DB::raw("COALESCE(w.name, '-') as warehouse"),
                 DB::raw("COALESCE(w.type, '-') as warehouse_type"),
@@ -165,6 +171,7 @@ class StockReportController extends Controller
                 'package_qty' => $packageUnit ? intdiv($stock, $packageConversion) : null,
                 'package_remainder' => $packageUnit ? $stock % $packageConversion : null,
                 'is_bundle' => (bool) $row->is_bundle,
+                'is_active' => (bool) $row->is_active,
                 'status_key' => $statusKey,
                 'status_label' => $statusLabel,
             ];

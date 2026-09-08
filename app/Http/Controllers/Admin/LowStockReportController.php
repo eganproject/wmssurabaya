@@ -37,6 +37,11 @@ class LowStockReportController extends Controller
             ->whereRaw('COALESCE(ws.safety_stock, 0) > 0')
             ->whereRaw('COALESCE(s.stock, 0) < COALESCE(ws.safety_stock, 0)');
 
+        $activeStatus = (string) $request->input('is_active', '1');
+        if (in_array($activeStatus, ['0', '1'], true)) {
+            $baseQuery->where('i.is_active', (int) $activeStatus === 1);
+        }
+
         $catFilter = $request->input('category_id');
         if ($catFilter !== null && $catFilter !== '') {
             if ((int) $catFilter === 0) {
@@ -85,6 +90,7 @@ class LowStockReportController extends Controller
             'i.id',
             'i.sku',
             'i.name',
+            'i.is_active',
             DB::raw('ws.location as address'),
             DB::raw('COALESCE(ws.safety_stock, 0) as safety_stock'),
             DB::raw('COALESCE(s.stock, 0) as stock'),
@@ -106,6 +112,7 @@ class LowStockReportController extends Controller
                 'id' => $row->id,
                 'sku' => $row->sku ?? '-',
                 'name' => $row->name ?? '-',
+                'is_active' => (bool) $row->is_active,
                 'category' => $row->category ?? '-',
                 'address' => $row->address ?? '-',
                 'stock' => $stock,

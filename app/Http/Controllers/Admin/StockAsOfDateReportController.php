@@ -78,6 +78,11 @@ class StockAsOfDateReportController extends Controller
                 $join->on('package_unit.item_id', '=', 'i.id')->where('package_unit.is_base', false);
             });
 
+        $activeStatus = (string) $request->input('is_active', '');
+        if (in_array($activeStatus, ['0', '1'], true)) {
+            $baseQuery->where('i.is_active', (int) $activeStatus === 1);
+        }
+
         $categoryId = $request->input('category_id');
         if ($categoryId !== null && $categoryId !== '') {
             (int) $categoryId === 0
@@ -123,7 +128,7 @@ class StockAsOfDateReportController extends Controller
         $length = (int) $request->input('length', 10);
         $dataQuery = (clone $baseQuery)
             ->select([
-                'i.id', 'i.sku', 'i.name', 'i.is_bundle',
+                'i.id', 'i.sku', 'i.name', 'i.is_bundle', 'i.is_active',
                 DB::raw("COALESCE(c.name, 'Tanpa Kategori') as category"),
                 DB::raw("COALESCE(w.name, '-') as warehouse"),
                 DB::raw("COALESCE(w.type, '-') as warehouse_type"),
@@ -212,6 +217,7 @@ class StockAsOfDateReportController extends Controller
             'package_qty' => $packageUnit ? intdiv($stock, $packageConversion) : null,
             'package_remainder' => $packageUnit ? $stock % $packageConversion : null,
             'is_bundle' => (bool) $row->is_bundle, 'status_key' => $statusKey,
+            'is_active' => (bool) $row->is_active,
             'status_label' => $statusKey === 'empty' ? 'Stok Habis' : ($statusKey === 'low' ? 'Stok Menipis' : 'Aman'),
         ];
     }
