@@ -547,6 +547,169 @@ document.addEventListener('DOMContentLoaded', () => {
         dt.page.len(10).draw();
         reload();
     });
+
+    const movementDataUrl = @json($movementDataUrl);
+    const movementTableEl = $('#stock_movement_table');
+    const movementFilters = {
+        warehouse: document.getElementById('movement_warehouse'),
+        category: document.getElementById('movement_category'),
+        movement: document.getElementById('movement_class'),
+        itemStatus: document.getElementById('movement_item_status'),
+        dateFrom: document.getElementById('movement_date_from'),
+        dateTo: document.getElementById('movement_date_to'),
+        search: document.getElementById('movement_search'),
+        limit: document.getElementById('movement_limit'),
+    };
+    const movementDefaults = {
+        warehouse: movementFilters.warehouse.value,
+        dateFrom: movementFilters.dateFrom.value,
+        dateTo: movementFilters.dateTo.value,
+    };
+    const movementMap = {
+        fast: ['Fast moving', 'primary'],
+        medium: ['Medium moving', 'success'],
+        slow: ['Slow moving', 'warning'],
+        non_moving: ['Non-moving', 'danger'],
+    };
+    let movementDt = null;
+
+    function movementRequestData(params) {
+        params.warehouse_id = movementFilters.warehouse.value;
+        params.category_id = movementFilters.category.value;
+        params.movement = movementFilters.movement.value;
+        params.is_active = movementFilters.itemStatus.value;
+        params.date_from = movementFilters.dateFrom.value;
+        params.date_to = movementFilters.dateTo.value;
+        params.q = movementFilters.search.value;
+    }
+
+    function updateMovementSummary(summary = {}) {
+        document.getElementById('movement_kpi_total').textContent = number(summary.total_sku);
+        document.getElementById('movement_kpi_outbound').textContent = number(summary.total_outbound_qty);
+        document.getElementById('movement_kpi_fast').textContent = number(summary.fast_sku);
+        document.getElementById('movement_kpi_medium').textContent = number(summary.medium_sku);
+        document.getElementById('movement_kpi_slow').textContent = number(summary.slow_sku);
+        document.getElementById('movement_kpi_non_moving').textContent = number(summary.non_moving_sku);
+        document.getElementById('movement_period_hint').textContent = `${number(summary.period_days)} hari (${summary.date_from || '-'} s/d ${summary.date_to || '-'})`;
+    }
+
+    function movementBadge(row) {
+        const [label, color] = movementMap[row.movement_key] || [row.movement_label || '-', 'secondary'];
+        return `<span class="badge badge-light-${color}">${escapeHtml(label)}</span>`;
+    }
+
+    function formatDate(value) {
+        if (!value) return '<span class="text-muted">Tidak ada</span>';
+        const date = new Date(String(value).replace(' ', 'T'));
+        if (Number.isNaN(date.getTime())) return escapeHtml(value);
+        return date.toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'});
+    }
+
+    function initializeMovementTable() {
+        if (movementDt || !movementTableEl.length) {
+            movementDt?.columns.adjust();
+            return;
+        }
+
+        if ($.fn.select2) {
+            [movementFilters.warehouse, movementFilters.category, movementFilters.movement, movementFilters.itemStatus]
+                .forEach(el => $(el).select2({
+                    width: '100%',
+                    allowClear: el !== movementFilters.warehouse && el !== movementFilters.itemStatus,
+                }));
+        }
+
+        movementDt = movementTableEl.DataTable({
+            processing: true,
+            serverSide: true,
+            dom: 'rtip',
+            order: [],
+            pageLength: Number(movementFilters.limit.value || 10),
+            ajax: {
+                url: movementDataUrl,
+                data: movementRequestData,
+                dataSrc: json => {
+                    updateMovementSummary(json.summary || {});
+                    return json.data || [];
+                },
+                error: xhr => window.AppSwal?.error(Object.values(xhr.responseJSON?.errors || {}).flat().join('\n') || 'Gagal memuat analisis pergerakan stok.'),
+            },
+            columns: [
+                {data: null, className: 'stock-report-item', render: row => {
+                    const active = `<span class="badge ${row.is_active ? 'badge-light-success' : 'badge-light-danger'} ms-2">${row.is_active ? 'Aktif' : 'Nonaktif'}</span>`;
+                    return `<div class="fw-bold">${escapeHtml(row.sku)}${active}</div><div>${escapeHtml(row.name)}</div><div class="text-muted fs-8">${escapeHtml(row.category)}</div>`;
+                }},
+                {data: null, className: 'movement-meta', render: row => `<div class="fw-bold">${escapeHtml(row.warehouse)}</div><div class="text-muted fs-8">${escapeHtml(row.warehouse_type)} · ${escapeHtml(row.location || '-')}</div>`},
+                {data: null, render: movementBadge},
+                {data: 'stock', className: 'text-end', render: (value, type, row) => {
+                    const low = Number(row.safety_stock) > 0 && Number(value) <= Number(row.safety_stock);
+                    return `<div class="fw-bolder ${low ? 'text-danger' : ''}">${number(value)} <span class="text-muted fw-normal">${escapeHtml(row.base_unit)}</span></div><div class="text-muted fs-8">Safety ${number(row.safety_stock)}</div>`;
+                }},
+                {data: 'outbound_qty', className: 'text-end', render: (value, type, row) => `<span class="fw-bolder">${number(value)}</span> <span class="text-muted">${escapeHtml(row.base_unit)}</span>`},
+                {data: 'average_daily_outbound', className: 'text-end', render: value => Number(value || 0).toLocaleString('id-ID', {maximumFractionDigits: 2})},
+                {data: 'contribution_percent', className: 'text-end', render: value => `${Number(value || 0).toLocaleString('id-ID', {maximumFractionDigits: 2})}%`},
+                {data: null, className: 'text-end', render: row => `<div>${number(row.outbound_transactions)} transaksi</div><div class="text-muted fs-8">${number(row.active_days)} hari aktif</div>`},
+                {data: 'days_cover', className: 'text-end', render: value => value === null ? '<span class="text-muted">-</span>' : `${Number(value).toLocaleString('id-ID', {maximumFractionDigits: 1})} hari`},
+                {data: 'last_outbound_at', render: formatDate},
+            ],
+            language: {
+                processing: 'Menghitung pergerakan stok...',
+                emptyTable: 'Tidak ada data pergerakan sesuai filter.',
+                zeroRecords: 'Data pergerakan tidak ditemukan.',
+            },
+        });
+    }
+
+    const reloadMovement = () => {
+        if (movementDt) {
+            movementDt.ajax.reload();
+        } else {
+            initializeMovementTable();
+        }
+    };
+    document.getElementById('movement_apply').addEventListener('click', reloadMovement);
+    movementFilters.search.addEventListener('keyup', event => {
+        if (event.key === 'Enter') reloadMovement();
+    });
+    [movementFilters.warehouse, movementFilters.category, movementFilters.movement, movementFilters.itemStatus]
+        .forEach(el => el?.addEventListener('change', () => movementDt?.ajax.reload()));
+    movementFilters.limit.addEventListener('change', () => {
+        initializeMovementTable();
+        movementDt.page.len(Number(movementFilters.limit.value || 10)).draw();
+    });
+    document.getElementById('movement_reset').addEventListener('click', () => {
+        movementFilters.warehouse.value = movementDefaults.warehouse;
+        movementFilters.category.value = '';
+        movementFilters.movement.value = '';
+        movementFilters.itemStatus.value = '1';
+        movementFilters.dateFrom.value = movementDefaults.dateFrom;
+        movementFilters.dateTo.value = movementDefaults.dateTo;
+        movementFilters.search.value = '';
+        movementFilters.limit.value = '10';
+        [movementFilters.warehouse, movementFilters.category, movementFilters.movement, movementFilters.itemStatus].forEach(el => {
+            if ($(el).data('select2')) $(el).val(el === movementFilters.warehouse ? movementDefaults.warehouse : (el === movementFilters.itemStatus ? '1' : '')).trigger('change.select2');
+        });
+        if (movementDt) {
+            movementDt.page.len(10).draw();
+        } else {
+            initializeMovementTable();
+        }
+    });
+
+    document.getElementById('stock-movement-tab').addEventListener('shown.bs.tab', () => {
+        window.history.replaceState(null, '', '#stock-movement-pane');
+        initializeMovementTable();
+    });
+    document.getElementById('stock-position-tab').addEventListener('shown.bs.tab', () => {
+        window.history.replaceState(null, '', '#stock-position-pane');
+        dt.columns.adjust();
+    });
+
+    initializeMovementTable();
+
+    if (window.location.hash === '#stock-movement-pane' && window.bootstrap?.Tab) {
+        window.bootstrap.Tab.getOrCreateInstance(document.getElementById('stock-movement-tab')).show();
+    }
 });
 </script>
 @endpush

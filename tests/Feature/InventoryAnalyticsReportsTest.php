@@ -19,6 +19,75 @@ class InventoryAnalyticsReportsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_stock_movement_report_classifies_operational_outbound_contribution(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $warehouse = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
+        $quantities = [
+            'MOVE-FAST' => 70,
+            'MOVE-MEDIUM' => 20,
+            'MOVE-SLOW' => 10,
+            'MOVE-NONE' => 0,
+        ];
+
+        foreach ($quantities as $sku => $qty) {
+            $item = Item::create(['sku' => $sku, 'name' => "Item {$sku}", 'category_id' => null]);
+            $unit = ItemUnit::create([
+                'item_id' => $item->id,
+                'name' => 'PCS',
+                'conversion_qty' => 1,
+                'is_base' => true,
+            ]);
+            ItemStock::create([
+                'warehouse_id' => $warehouse->id,
+                'item_id' => $item->id,
+                'stock' => 100,
+            ]);
+
+            if ($qty > 0) {
+                StockMutation::create([
+                    'warehouse_id' => $warehouse->id,
+                    'item_id' => $item->id,
+                    'unit_id' => $unit->id,
+                    'direction' => 'out',
+                    'qty' => $qty,
+                    'qty_input' => $qty,
+                    'conversion_qty' => 1,
+                    'stock_before' => 100 + $qty,
+                    'stock_after' => 100,
+                    'source_type' => 'outbound',
+                    'source_subtype' => 'manual',
+                    'source_id' => 8000 + $item->id,
+                    'occurred_at' => now()->subDay(),
+                    'created_by' => $user->id,
+                ]);
+            }
+        }
+
+        $response = $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', [
+                'draw' => 1,
+                'start' => 0,
+                'length' => -1,
+                'warehouse_id' => $warehouse->id,
+                'date_from' => now()->subDays(29)->toDateString(),
+                'date_to' => now()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertJsonPath('summary.total_sku', 4)
+            ->assertJsonPath('summary.total_outbound_qty', 100)
+            ->assertJsonPath('summary.fast_sku', 1)
+            ->assertJsonPath('summary.medium_sku', 1)
+            ->assertJsonPath('summary.slow_sku', 1)
+            ->assertJsonPath('summary.non_moving_sku', 1);
+
+        $classes = collect($response->json('data'))->pluck('movement_key', 'sku');
+        $this->assertSame('fast', $classes['MOVE-FAST']);
+        $this->assertSame('medium', $classes['MOVE-MEDIUM']);
+        $this->assertSame('slow', $classes['MOVE-SLOW']);
+        $this->assertSame('non_moving', $classes['MOVE-NONE']);
+    }
+
     public function test_stock_as_of_date_report_returns_closing_stock_for_selected_day(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);
