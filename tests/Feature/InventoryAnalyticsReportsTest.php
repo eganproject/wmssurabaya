@@ -86,6 +86,23 @@ class InventoryAnalyticsReportsTest extends TestCase
         $this->assertSame('medium', $classes['MOVE-MEDIUM']);
         $this->assertSame('slow', $classes['MOVE-SLOW']);
         $this->assertSame('non_moving', $classes['MOVE-NONE']);
+
+        $sortedResponse = $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', [
+                'draw' => 2,
+                'start' => 0,
+                'length' => 2,
+                'warehouse_id' => $warehouse->id,
+                'date_from' => now()->subDays(29)->toDateString(),
+                'date_to' => now()->toDateString(),
+                'order' => [
+                    ['column' => 4, 'dir' => 'asc'],
+                ],
+            ]))
+            ->assertOk()
+            ->assertJsonPath('recordsFiltered', 4);
+
+        $this->assertSame([0, 10], collect($sortedResponse->json('data'))->pluck('outbound_qty')->all());
     }
 
     public function test_stock_as_of_date_report_returns_closing_stock_for_selected_day(): void

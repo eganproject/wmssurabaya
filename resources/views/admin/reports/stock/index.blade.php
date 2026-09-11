@@ -408,7 +408,7 @@
         <div class="card-header border-0 pt-6">
             <div>
                 <h3 class="fw-bolder mb-1">Detail Pergerakan SKU</h3>
-                <div class="text-muted fs-7">Diurutkan dari klasifikasi dan kontribusi qty keluar terbesar.</div>
+                <div class="text-muted fs-7">Klik judul kolom untuk mengurutkan data naik atau turun.</div>
             </div>
         </div>
         <div class="card-body py-5">

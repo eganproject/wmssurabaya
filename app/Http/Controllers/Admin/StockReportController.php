@@ -35,6 +35,9 @@ class StockReportController extends Controller
             'movement' => ['nullable', 'in:fast,medium,slow,non_moving'],
             'is_active' => ['nullable', 'in:0,1'],
             'q' => ['nullable', 'string', 'max:150'],
+            'order' => ['nullable', 'array'],
+            'order.0.column' => ['nullable', 'integer', 'between:0,9'],
+            'order.0.dir' => ['nullable', 'in:asc,desc'],
         ]);
 
         $warehouseId = isset($validated['warehouse_id']) ? (int) $validated['warehouse_id'] : null;
@@ -168,11 +171,35 @@ class StockReportController extends Controller
             $rows = $rows->where('movement_key', $movement)->values();
         }
 
-        $rows = $rows->sortBy([
-            ['movement_order', 'asc'],
-            ['outbound_qty', 'desc'],
-            ['sku', 'asc'],
-        ])->values();
+        $movementSorts = [
+            0 => ['sku', 'name'],
+            1 => ['warehouse', 'location'],
+            2 => ['movement_order'],
+            3 => ['stock'],
+            4 => ['outbound_qty'],
+            5 => ['average_daily_outbound'],
+            6 => ['contribution_percent'],
+            7 => ['outbound_transactions', 'active_days'],
+            8 => ['days_cover'],
+            9 => ['last_outbound_at'],
+        ];
+
+        if ($request->has('order.0.column')) {
+            $orderColumn = (int) $request->input('order.0.column');
+            $orderDirection = $request->input('order.0.dir') === 'desc' ? 'desc' : 'asc';
+            $sorts = collect($movementSorts[$orderColumn] ?? ['sku'])
+                ->map(fn (string $key) => [$key, $orderDirection])
+                ->push(['sku', 'asc'])
+                ->all();
+        } else {
+            $sorts = [
+                ['movement_order', 'asc'],
+                ['outbound_qty', 'desc'],
+                ['sku', 'asc'],
+            ];
+        }
+
+        $rows = $rows->sortBy($sorts)->values();
 
         $recordsFiltered = $rows->count();
         $start = max(0, (int) $request->input('start', 0));
