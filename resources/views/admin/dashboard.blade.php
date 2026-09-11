@@ -488,6 +488,59 @@
         box-shadow: inset 0 -3px 0 var(--dash-blue);
     }
 
+    /* ---------- Resi report ---------- */
+    .resi-report-filter {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #f8fafc;
+    }
+    .resi-report-filter-group {
+        min-width: 150px;
+    }
+    .resi-report-filter-group label {
+        display: block;
+        margin-bottom: 5px;
+        color: #64748b;
+        font-size: 10.5px;
+        font-weight: 800;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+    }
+    .resi-report-filter-group input {
+        width: 100%;
+        height: 36px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #fff;
+        padding: 0 10px;
+        color: #334155;
+        font-size: 13px;
+    }
+    .resi-report-average {
+        color: var(--dash-blue);
+    }
+    .resi-report-bar {
+        display: inline-block;
+        width: 80px;
+        height: 6px;
+        margin-right: 8px;
+        overflow: hidden;
+        vertical-align: middle;
+        border-radius: 999px;
+        background: #e2e8f0;
+    }
+    .resi-report-bar > span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #60a5fa, #2563eb);
+    }
+
     /* ---------- Status control ---------- */
     .status-control-hero {
         display: flex;
@@ -751,6 +804,11 @@
         .inventory-filter-link {
             justify-content: center;
         }
+        .resi-report-filter,
+        .resi-report-filter-group,
+        .resi-report-filter .btn {
+            width: 100%;
+        }
         .status-control-hero {
             align-items: flex-start;
             flex-direction: column;
@@ -779,6 +837,7 @@
     @php
         $requestedDashboardTab = request('dashboard_tab');
         $activeDashboardTab = match (true) {
+            $requestedDashboardTab === 'laporan-resi' => 'laporan-resi',
             $requestedDashboardTab === 'kontrol-status' => 'kontrol-status',
             $requestedDashboardTab === 'aktivitas-stok' => 'aktivitas-stok',
             $requestedDashboardTab === 'inventori' || request()->has('inventory_warehouse_id') => 'inventori',
@@ -789,6 +848,11 @@
         <li class="nav-item" role="presentation">
             <button class="nav-link {{ $activeDashboardTab === 'operasional' ? 'active' : '' }}" id="tab-operasional" data-bs-toggle="tab" data-bs-target="#pane-operasional" type="button" role="tab" aria-controls="pane-operasional" aria-selected="{{ $activeDashboardTab === 'operasional' ? 'true' : 'false' }}">
                 <i class="fa-solid fa-truck-fast"></i> Operasional Resi
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {{ $activeDashboardTab === 'laporan-resi' ? 'active' : '' }}" id="tab-laporan-resi" data-bs-toggle="tab" data-bs-target="#pane-laporan-resi" type="button" role="tab" aria-controls="pane-laporan-resi" aria-selected="{{ $activeDashboardTab === 'laporan-resi' ? 'true' : 'false' }}">
+                <i class="fa-solid fa-chart-column"></i> Laporan Resi
             </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -998,6 +1062,131 @@
             @endif
         </div>
     </div>
+        </div>
+
+        <div class="tab-pane fade {{ $activeDashboardTab === 'laporan-resi' ? 'show active' : '' }}" id="pane-laporan-resi" role="tabpanel" aria-labelledby="tab-laporan-resi">
+            @php
+                $reportAverage = (float) ($resiReportAverage ?? 0);
+                $reportTotalActive = (int) ($resiReportTotalActive ?? 0);
+                $reportTotalCanceled = (int) ($resiReportTotalCanceled ?? 0);
+                $reportDays = (int) ($resiReportDays ?? 0);
+                $reportActiveDays = (int) ($resiReportActiveDays ?? 0);
+                $reportPeak = $resiReportPeakDay ?? null;
+                $reportPeakCount = (int) ($reportPeak['active_count'] ?? 0);
+            @endphp
+
+            <div class="card mb-6">
+                <div class="card-body">
+                    <div class="dash-section-head mb-5">
+                        <div>
+                            <div class="dash-section-title"><i class="fa-solid fa-chart-column"></i> Laporan Resi Harian</div>
+                            <div class="dash-section-sub">Ringkasan resi berdasarkan tanggal upload {{ $resiReportDateFrom ?? '-' }} s/d {{ $resiReportDateTo ?? '-' }}</div>
+                            <div class="dash-legend">Rata-rata = total resi aktif dibagi seluruh hari kalender dalam periode, termasuk hari tanpa resi. Resi cancel ditampilkan terpisah.</div>
+                        </div>
+                        <form class="resi-report-filter" method="GET" action="{{ url()->current() }}">
+                            <input type="hidden" name="dashboard_tab" value="laporan-resi">
+                            <div class="resi-report-filter-group">
+                                <label for="resi_report_date_from">Tanggal Mulai</label>
+                                <input type="text" name="report_date_from" id="resi_report_date_from" value="{{ $resiReportDateFrom ?? '' }}" autocomplete="off" required>
+                            </div>
+                            <div class="resi-report-filter-group">
+                                <label for="resi_report_date_to">Tanggal Selesai</label>
+                                <input type="text" name="report_date_to" id="resi_report_date_to" value="{{ $resiReportDateTo ?? '' }}" autocomplete="off" required>
+                            </div>
+                            <button type="submit" class="btn btn-sm btn-primary"><i class="fa-solid fa-filter me-1"></i>Terapkan</button>
+                            <a href="{{ url()->current() }}?dashboard_tab=laporan-resi" class="btn btn-sm btn-light">Reset</a>
+                        </form>
+                    </div>
+
+                    @if(!empty($resiReportRangeLimited))
+                        <div class="alert alert-warning d-flex align-items-center mb-5">
+                            <i class="fa-solid fa-triangle-exclamation me-3"></i>
+                            <div>Rentang laporan dibatasi maksimal 366 hari agar halaman tetap ringan.</div>
+                        </div>
+                    @endif
+
+                    <div class="stats-grid">
+                        <div class="stat-card stat-card--blue">
+                            <div class="stat-icon"><i class="fa-solid fa-calculator"></i></div>
+                            <div class="stat-body">
+                                <div class="stat-label">Rata-rata Resi Aktif / Hari</div>
+                                <div class="stat-value resi-report-average">{{ number_format($reportAverage, 2, ',', '.') }}</div>
+                                <div class="stat-meta">{{ number_format($reportTotalActive) }} resi &divide; {{ number_format($reportDays) }} hari kalender</div>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card--green">
+                            <div class="stat-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
+                            <div class="stat-body">
+                                <div class="stat-label">Total Resi Aktif</div>
+                                <div class="stat-value">{{ number_format($reportTotalActive) }}</div>
+                                <div class="stat-meta">Akumulasi resi aktif dalam periode</div>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card--amber">
+                            <div class="stat-icon"><i class="fa-regular fa-calendar-check"></i></div>
+                            <div class="stat-body">
+                                <div class="stat-label">Hari Berisi Resi</div>
+                                <div class="stat-value">{{ number_format($reportActiveDays) }}</div>
+                                <div class="stat-meta">Dari {{ number_format($reportDays) }} hari kalender</div>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card--red">
+                            <div class="stat-icon"><i class="fa-solid fa-ban"></i></div>
+                            <div class="stat-body">
+                                <div class="stat-label">Total Resi Cancel</div>
+                                <div class="stat-value text-danger">{{ number_format($reportTotalCanceled) }}</div>
+                                <div class="stat-meta">Tidak masuk perhitungan rata-rata</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dash-table-card">
+                <div class="dash-table-card-head">
+                    <div>
+                        <div class="dash-table-title"><i class="fa-solid fa-table-list text-primary me-2"></i>Rincian Resi per Hari</div>
+                        <div class="dash-table-sub">
+                            @if($reportPeakCount > 0)
+                                Tertinggi: {{ number_format($reportPeakCount) }} resi aktif pada {{ $reportPeak['date_label'] }}
+                            @else
+                                Belum ada resi pada periode ini.
+                            @endif
+                        </div>
+                    </div>
+                </div>
+                <div class="table-responsive mt-4">
+                    <table class="table table-row-dashed align-middle">
+                        <thead>
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>Hari</th>
+                                <th class="text-end">Resi Aktif</th>
+                                <th class="text-end">Resi Cancel</th>
+                                <th class="text-end">Total Import</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach(($resiReportDaily ?? collect()) as $row)
+                                @php
+                                    $activeCount = (int) ($row['active_count'] ?? 0);
+                                    $barWidth = $reportPeakCount > 0 ? round($activeCount / $reportPeakCount * 100) : 0;
+                                @endphp
+                                <tr>
+                                    <td class="mono fw-semibold text-gray-800">{{ $row['date_label'] ?? '-' }}</td>
+                                    <td class="text-muted">{{ $row['day_name'] ?? '-' }}</td>
+                                    <td class="text-end fw-bolder">
+                                        <span class="resi-report-bar" aria-hidden="true"><span style="width: {{ $barWidth }}%"></span></span>
+                                        {{ number_format($activeCount) }}
+                                    </td>
+                                    <td class="text-end text-danger">{{ number_format((int) ($row['canceled_count'] ?? 0)) }}</td>
+                                    <td class="text-end">{{ number_format((int) ($row['total_count'] ?? 0)) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <div class="tab-pane fade {{ $activeDashboardTab === 'inventori' ? 'show active' : '' }}" id="pane-inventori" role="tabpanel" aria-labelledby="tab-inventori">
@@ -1439,6 +1628,12 @@
         const dateInput = document.getElementById('filter_date');
         if (typeof flatpickr !== 'undefined' && dateInput) {
             flatpickr(dateInput, { dateFormat: 'Y-m-d', allowInput: true });
+        }
+        if (typeof flatpickr !== 'undefined') {
+            ['resi_report_date_from', 'resi_report_date_to'].forEach((id) => {
+                const input = document.getElementById(id);
+                if (input) flatpickr(input, { dateFormat: 'Y-m-d', allowInput: true });
+            });
         }
 
         const detailModalEl = document.getElementById('modal_kurir_detail');

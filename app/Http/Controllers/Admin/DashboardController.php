@@ -118,6 +118,57 @@ class DashboardController extends Controller
                 ];
             });
 
+        $reportDateTo = $this->parseDate($request->query('report_date_to'), $selectedDate);
+        $reportDateFrom = $this->parseDate(
+            $request->query('report_date_from'),
+            $reportDateTo->copy()->startOfMonth()->toDateString()
+        );
+
+        if ($reportDateFrom->greaterThan($reportDateTo)) {
+            [$reportDateFrom, $reportDateTo] = [$reportDateTo, $reportDateFrom];
+        }
+
+        $resiReportRangeLimited = false;
+        if ($reportDateFrom->diffInDays($reportDateTo) > 365) {
+            $reportDateFrom = $reportDateTo->copy()->subDays(365);
+            $resiReportRangeLimited = true;
+        }
+
+        $reportCountsByDate = Resi::query()
+            ->selectRaw('tanggal_upload, COUNT(*) as total_count')
+            ->selectRaw("SUM(CASE WHEN status = 'canceled' THEN 0 ELSE 1 END) as active_count")
+            ->selectRaw("SUM(CASE WHEN status = 'canceled' THEN 1 ELSE 0 END) as canceled_count")
+            ->whereBetween('tanggal_upload', [$reportDateFrom->toDateString(), $reportDateTo->toDateString()])
+            ->groupBy('tanggal_upload')
+            ->get()
+            ->keyBy(fn ($row) => Carbon::parse($row->tanggal_upload)->toDateString());
+
+        $resiReportDaily = collect();
+        for ($date = $reportDateFrom->copy(); $date->lte($reportDateTo); $date->addDay()) {
+            $dateKey = $date->toDateString();
+            $counts = $reportCountsByDate->get($dateKey);
+
+            $resiReportDaily->push([
+                'date' => $dateKey,
+                'date_label' => $date->format('d/m/Y'),
+                'day_name' => $date->copy()->locale('id')->translatedFormat('l'),
+                'active_count' => (int) ($counts->active_count ?? 0),
+                'canceled_count' => (int) ($counts->canceled_count ?? 0),
+                'total_count' => (int) ($counts->total_count ?? 0),
+            ]);
+        }
+
+        $resiReportDays = $resiReportDaily->count();
+        $resiReportTotalActive = (int) $resiReportDaily->sum('active_count');
+        $resiReportTotalCanceled = (int) $resiReportDaily->sum('canceled_count');
+        $resiReportActiveDays = $resiReportDaily->where('active_count', '>', 0)->count();
+        $resiReportAverage = $resiReportDays > 0
+            ? round($resiReportTotalActive / $resiReportDays, 2)
+            : 0;
+        $resiReportPeakDay = $resiReportDaily
+            ->sortByDesc('active_count')
+            ->first();
+
         $lowStockLimit = 5;
         $stockWindowStart = Carbon::parse($selectedDate)->subDays(29)->startOfDay();
         $stockWindowEnd = Carbon::parse($selectedDate)->endOfDay();
@@ -422,6 +473,16 @@ class DashboardController extends Controller
             'totalQcScanUpdated' => $totalQcScanUpdated,
             'totalScanUpdated' => $totalScanUpdated,
             'kurirs' => $kurirs,
+            'resiReportDateFrom' => $reportDateFrom->toDateString(),
+            'resiReportDateTo' => $reportDateTo->toDateString(),
+            'resiReportRangeLimited' => $resiReportRangeLimited,
+            'resiReportDaily' => $resiReportDaily->sortByDesc('date')->values(),
+            'resiReportDays' => $resiReportDays,
+            'resiReportTotalActive' => $resiReportTotalActive,
+            'resiReportTotalCanceled' => $resiReportTotalCanceled,
+            'resiReportActiveDays' => $resiReportActiveDays,
+            'resiReportAverage' => $resiReportAverage,
+            'resiReportPeakDay' => $resiReportPeakDay,
             'inventoryWarehouses' => $inventoryWarehouses,
             'selectedInventoryWarehouseId' => $selectedInventoryWarehouseId,
             'selectedInventoryWarehouse' => $selectedInventoryWarehouse,
@@ -437,6 +498,19 @@ class DashboardController extends Controller
             'statusControlSections' => $statusControlSections,
             'totalOpenStatus' => $totalOpenStatus,
         ]);
+    }
+
+    private function parseDate(mixed $value, string $fallback): Carbon
+    {
+        if (!is_string($value) || trim($value) === '') {
+            return Carbon::parse($fallback)->startOfDay();
+        }
+
+        try {
+            return Carbon::parse($value)->startOfDay();
+        } catch (\Throwable) {
+            return Carbon::parse($fallback)->startOfDay();
+        }
     }
 
     public function kurirDetail(Request $request)
