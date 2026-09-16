@@ -4,6 +4,9 @@
 @section('page_title', 'Laporan QC Scan')
 
 @section('page_actions')
+    <button type="button" class="btn btn-sm btn-light-success" id="btn_export_report">
+        <i class="bi bi-file-earmark-excel me-1"></i>Export Excel
+    </button>
     <button type="button" class="btn btn-sm btn-light-primary" id="btn_print_report">
         <i class="bi bi-printer me-1"></i>Cetak Laporan
     </button>
@@ -151,6 +154,15 @@
         border-bottom: 1.5px solid #e2e8f0 !important;
     }
     #qc_report_table tbody td { vertical-align: middle; }
+    #qc_performer_table thead th,
+    #detail_hourly_table thead th {
+        background: #f8fafc;
+        color: #64748b;
+        font-size: 10.5px;
+        white-space: nowrap;
+    }
+    .pr-metric-main { font-size: 14px; font-weight: 800; color: var(--pr-ink); }
+    .pr-metric-sub { margin-top: 2px; color: #94a3b8; font-size: 10.5px; }
     .pr-num { font-variant-numeric: tabular-nums; }
     .pr-chip {
         display: inline-flex;
@@ -306,6 +318,16 @@
         </div>
     </div>
 
+    <div class="notice d-flex bg-light-primary rounded border-primary border border-dashed p-5 mb-5">
+        <i class="bi bi-info-circle-fill fs-2 text-primary me-4"></i>
+        <div>
+            <div class="fw-bold text-gray-800">Cara membaca produktivitas per jam</div>
+            <div class="text-gray-700 fs-7">
+                Resi/jam dihitung dari total resi dibagi jumlah <b>jam aktif</b>, yaitu jam yang memiliki minimal satu aktivitas QC. Angka ini bukan durasi shift atau data absensi.
+            </div>
+        </div>
+    </div>
+
     {{-- ============ Dokumen Laporan ============ --}}
     <div class="card pr-doc">
         <div class="card-body p-8">
@@ -341,29 +363,64 @@
                     </div>
                 </div>
                 <div class="pr-tile pr-tile--indigo">
+                    <div class="pr-tile-icon"><i class="bi bi-speedometer2"></i></div>
+                    <div>
+                        <div class="pr-tile-label">Rata-rata Resi/Jam</div>
+                        <div class="pr-tile-value" id="sum_resi_hour">0</div>
+                        <div class="pr-tile-sub" id="sum_active_hours">0 jam aktif</div>
+                    </div>
+                </div>
+                <div class="pr-tile pr-tile--blue">
                     <div class="pr-tile-icon"><i class="bi bi-clipboard-data"></i></div>
                     <div>
                         <div class="pr-tile-label">Total Resi Discan</div>
                         <div class="pr-tile-value" id="sum_resi">0</div>
-                        <div class="pr-tile-sub">resi diproses QC</div>
+                        <div class="pr-tile-sub">resi mulai diproses</div>
                     </div>
                 </div>
                 <div class="pr-tile pr-tile--green">
                     <div class="pr-tile-icon"><i class="bi bi-check2-circle"></i></div>
                     <div>
-                        <div class="pr-tile-label">QC Selesai</div>
-                        <div class="pr-tile-value" id="sum_completed">0</div>
-                        <div class="pr-tile-sub" id="sum_completed_pct">0% dari total</div>
+                        <div class="pr-tile-label">Completion Rate</div>
+                        <div class="pr-tile-value" id="sum_completion_pct">0%</div>
+                        <div class="pr-tile-sub" id="sum_completed">0 QC selesai</div>
                     </div>
                 </div>
                 <div class="pr-tile pr-tile--amber">
                     <div class="pr-tile-icon"><i class="bi bi-box-seam"></i></div>
+                    <div><div class="pr-tile-label">Total Qty Discan</div><div class="pr-tile-value" id="sum_qty">0</div><div class="pr-tile-sub" id="sum_scan_pct">0% dari qty wajib</div></div>
+                </div>
+                <div class="pr-tile pr-tile--blue">
+                    <div class="pr-tile-icon"><i class="bi bi-box-arrow-up-right"></i></div>
+                    <div><div class="pr-tile-label">Rata-rata Qty/Jam</div><div class="pr-tile-value" id="sum_qty_hour">0</div><div class="pr-tile-sub">qty per jam aktif</div></div>
+                </div>
+                <div class="pr-tile pr-tile--indigo">
+                    <div class="pr-tile-icon"><i class="bi bi-stopwatch"></i></div>
+                    <div><div class="pr-tile-label">Rata-rata Durasi QC</div><div class="pr-tile-value" id="sum_cycle">-</div><div class="pr-tile-sub">per resi selesai</div></div>
+                </div>
+                <div class="pr-tile pr-tile--amber">
+                    <div class="pr-tile-icon"><i class="bi bi-bar-chart-line"></i></div>
+                    <div><div class="pr-tile-label">Jam Tersibuk</div><div class="pr-tile-value" id="sum_peak_hour">-</div><div class="pr-tile-sub" id="sum_peak_resi">0 resi</div></div>
+                </div>
+            </div>
+
+            <div class="border rounded p-4 mb-6">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                     <div>
-                        <div class="pr-tile-label">Total Qty Discan</div>
-                        <div class="pr-tile-value" id="sum_qty">0</div>
-                        <div class="pr-tile-sub">qty SKU terverifikasi</div>
+                        <h5 class="fw-bold mb-1">Performa per Akun QC</h5>
+                        <div class="text-muted fs-8">Diurutkan berdasarkan rata-rata resi per jam aktif pada periode terpilih.</div>
                     </div>
                 </div>
+                <div class="table-responsive">
+                    <table class="table table-row-dashed align-middle fs-7 mb-0" id="qc_performer_table">
+                        <thead><tr><th>#</th><th>Petugas QC</th><th>Hari / Jam Aktif</th><th class="text-end">Total Resi</th><th class="text-end">Resi/Jam</th><th class="text-end">Qty/Jam</th><th class="text-end">Completion</th><th class="text-end">Rata-rata Durasi</th></tr></thead>
+                        <tbody id="qc_performer_body"><tr><td colspan="8" class="text-center text-muted py-4">Memuat analisis...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+                <div><h5 class="fw-bold mb-1">Rincian Harian per Petugas</h5><div class="text-muted fs-8">Klik detail untuk melihat distribusi resi pada setiap jam aktif.</div></div>
             </div>
 
             {{-- Tabel --}}
@@ -375,12 +432,13 @@
                             <th>Tanggal</th>
                             <th>Petugas QC</th>
                             <th class="text-center">Total Resi</th>
-                            <th class="text-center">Selesai</th>
-                            <th class="text-center">Belum</th>
+                            <th class="text-center">Selesai / Belum</th>
                             <th width="150">Penyelesaian</th>
-                            <th class="text-center">SKU</th>
-                            <th class="text-center">Qty (Scan/Wajib)</th>
-                            <th>Jam Kerja</th>
+                            <th>SKU &amp; Qty</th>
+                            <th>Produktivitas</th>
+                            <th>Jam Terbaik</th>
+                            <th>Rata-rata Durasi</th>
+                            <th>Rentang Aktivitas</th>
                             <th class="text-end pr-no-print" width="80">Aksi</th>
                         </tr>
                     </thead>
@@ -424,7 +482,7 @@
                 <div class="pr-summary-grid mb-4">
                     <div class="pr-tile pr-tile--indigo">
                         <div class="pr-tile-icon"><i class="bi bi-clipboard-data"></i></div>
-                        <div><div class="pr-tile-label">Total Resi</div><div class="pr-tile-value fs-3" id="detail_total">0</div></div>
+                        <div><div class="pr-tile-label">Total Resi</div><div class="pr-tile-value fs-3" id="detail_total">0</div><div class="pr-tile-sub" id="detail_productivity">0 resi/jam</div></div>
                     </div>
                     <div class="pr-tile pr-tile--green">
                         <div class="pr-tile-icon"><i class="bi bi-check2-circle"></i></div>
@@ -438,6 +496,17 @@
                         <div class="pr-tile-icon"><i class="bi bi-box-seam"></i></div>
                         <div><div class="pr-tile-label">Qty Discan</div><div class="pr-tile-value fs-3" id="detail_qty">0</div></div>
                     </div>
+                </div>
+
+                <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+                    <h6 class="fw-bold text-gray-700 mb-0"><i class="bi bi-clock-history me-1 text-primary"></i>Performa Setiap Jam Aktif</h6>
+                    <span class="text-muted fs-8">Dikelompokkan berdasarkan jam mulai scan</span>
+                </div>
+                <div class="table-responsive mb-6">
+                    <table class="table table-row-dashed align-middle fs-7" id="detail_hourly_table">
+                        <thead><tr><th>Jam</th><th class="text-end">Resi</th><th class="text-end">Selesai</th><th class="text-end">SKU Lines</th><th class="text-end">Qty Scan</th><th class="text-end">Completion</th><th class="text-end">Rata-rata Durasi</th></tr></thead>
+                        <tbody id="detail_hourly_body"><tr><td colspan="7" class="text-center text-muted py-4">Belum ada data.</td></tr></tbody>
+                    </table>
                 </div>
 
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
@@ -474,6 +543,7 @@
 @push('scripts')
 <script>
     const dataUrl   = '{{ $dataUrl }}';
+    const exportUrl = '{{ $exportUrl }}';
     const detailUrl = '{{ route('admin.outbound.picker-reports.detail') }}';
     const todayStr  = '{{ $today ?? '' }}';
 
@@ -487,6 +557,7 @@
         const applyBtn = document.getElementById('filter_apply');
         const resetBtn = document.getElementById('filter_reset');
         const printBtn = document.getElementById('btn_print_report');
+        const exportBtn = document.getElementById('btn_export_report');
         const presetGroup = document.getElementById('pr_preset_group');
         const periodText = document.getElementById('pr_period_text');
         const printedAtEl = document.getElementById('pr_printed_at');
@@ -494,10 +565,13 @@
         const detailModal = detailModalEl ? new bootstrap.Modal(detailModalEl) : null;
         const detailSearchEl = document.getElementById('detail_search');
         const detailBody = document.getElementById('detail_body');
+        const detailHourlyBody = document.getElementById('detail_hourly_body');
+        const performerBody = document.getElementById('qc_performer_body');
 
         const ID_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
         const esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
         const num = v => Number(v || 0).toLocaleString('id-ID');
+        const decimal = v => Number(v || 0).toLocaleString('id-ID', {minimumFractionDigits: 0, maximumFractionDigits: 2});
         const pad = n => String(n).padStart(2, '0');
         const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value ?? '-'; };
 
@@ -579,15 +653,38 @@
 
         const updateSummary = (s) => {
             if (!s) return;
-            const total = Number(s.resi_total || 0);
-            const completed = Number(s.completed_total || 0);
-            const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
             setText('sum_petugas', num(s.petugas_count));
             setText('sum_days', `${num(s.day_count)} hari aktif`);
-            setText('sum_resi', num(total));
-            setText('sum_completed', num(completed));
-            setText('sum_completed_pct', `${pct}% dari total`);
+            setText('sum_resi_hour', decimal(s.resi_per_hour));
+            setText('sum_active_hours', `${num(s.active_hours)} jam aktif`);
+            setText('sum_resi', num(s.resi_total));
+            setText('sum_completion_pct', `${decimal(s.completion_pct)}%`);
+            setText('sum_completed', `${num(s.completed_total)} QC selesai`);
             setText('sum_qty', num(s.qty_total));
+            setText('sum_scan_pct', `${decimal(s.scan_pct)}% dari qty wajib`);
+            setText('sum_qty_hour', decimal(s.qty_per_hour));
+            setText('sum_cycle', s.avg_cycle_minutes === null ? '-' : `${decimal(s.avg_cycle_minutes)} mnt`);
+            setText('sum_peak_hour', s.peak_hour || '-');
+            setText('sum_peak_resi', `${num(s.peak_hour_resi)} resi`);
+        };
+
+        const renderPerformers = (rows) => {
+            if (!performerBody) return;
+            if (!Array.isArray(rows) || !rows.length) {
+                performerBody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Belum ada data pada periode ini.</td></tr>';
+                return;
+            }
+            performerBody.innerHTML = rows.map((row, index) => `
+                <tr>
+                    <td class="text-muted">${index + 1}</td>
+                    <td><div class="fw-bold text-gray-800">${esc(row.petugas)}</div><div class="text-muted fs-8">${esc(row.divisi || '-')}</div></td>
+                    <td><span class="fw-semibold">${num(row.active_days)} hari</span><div class="text-muted fs-8">${num(row.active_hours)} jam aktif</div></td>
+                    <td class="text-end fw-bold">${num(row.total_resi)}</td>
+                    <td class="text-end"><span class="pr-chip pr-chip--blue">${decimal(row.resi_per_hour)}</span></td>
+                    <td class="text-end fw-semibold">${decimal(row.qty_per_hour)}</td>
+                    <td class="text-end fw-semibold ${Number(row.completion_pct) >= 100 ? 'text-success' : 'text-warning'}">${decimal(row.completion_pct)}%</td>
+                    <td class="text-end">${row.avg_cycle_minutes === null ? '-' : decimal(row.avg_cycle_minutes) + ' mnt'}</td>
+                </tr>`).join('');
         };
 
         // ---------- DataTable ----------
@@ -616,6 +713,7 @@
                 },
                 dataSrc(json) {
                     updateSummary(json.summary);
+                    renderPerformers(json.performers);
                     updatePeriodText();
                     return json.data || [];
                 },
@@ -625,8 +723,7 @@
                 { data: 'date', render: d => `<span class="fw-bold">${esc(formatDateID(d)) || '-'}</span>` },
                 { data: 'petugas', render: d => `<span class="fw-semibold text-gray-800">${esc(d) || '-'}</span>` },
                 { data: 'total_resi', className: 'text-center', render: d => `<span class="pr-chip pr-chip--blue">${num(d)}</span>` },
-                { data: 'completed', className: 'text-center pr-num fw-bold text-success', render: num },
-                { data: 'pending', className: 'text-center pr-num fw-bold text-warning', render: num },
+                { data: null, className: 'text-center', render: row => `<span class="fw-bold text-success">${num(row.completed)}</span><span class="text-muted mx-1">/</span><span class="fw-bold text-warning">${num(row.pending)}</span>` },
                 {
                     data: 'completion_pct',
                     render(d) {
@@ -638,12 +735,13 @@
                                 </div>`;
                     },
                 },
-                { data: 'sku_lines', className: 'text-center pr-num', render: num },
                 {
-                    data: 'scanned_qty',
-                    className: 'text-center pr-num',
-                    render: (d, t, row) => `<span class="fw-bold">${num(d)}</span> <span class="text-muted">/ ${num(row.required_qty)}</span>`,
+                    data: null,
+                    render: row => `<div class="fw-semibold">${num(row.sku_lines)} SKU lines</div><div class="text-muted fs-8">Qty ${num(row.scanned_qty)} / ${num(row.required_qty)} (${decimal(row.scan_pct)}%)</div>`,
                 },
+                { data: null, render: row => `<div class="pr-metric-main">${decimal(row.resi_per_hour)} resi/jam</div><div class="pr-metric-sub">${decimal(row.qty_per_hour)} qty/jam • ${num(row.active_hours)} jam aktif</div>` },
+                { data: null, render: row => `<div class="fw-bold">${esc(row.peak_hour || '-')}</div><div class="text-muted fs-8">${num(row.peak_hour_resi)} resi</div>` },
+                { data: 'avg_cycle_minutes', className: 'text-end', render: d => d === null ? '<span class="text-muted">-</span>' : `<span class="fw-semibold">${decimal(d)} menit</span>` },
                 { data: 'range', render: d => `<span class="text-muted"><i class="bi bi-clock me-1"></i>${esc(d) || '-'}</span>` },
                 {
                     data: null,
@@ -682,6 +780,15 @@
         });
 
         printBtn?.addEventListener('click', () => window.print());
+        exportBtn?.addEventListener('click', () => {
+            const params = new URLSearchParams({
+                q: searchInput?.value || '',
+                divisi_id: divisiSelect?.value || '',
+                date_from: dateFromEl?.value || '',
+                date_to: dateToEl?.value || '',
+            });
+            window.location.href = `${exportUrl}?${params.toString()}`;
+        });
 
         // ---------- Detail modal ----------
         let detailRows = [];
@@ -741,7 +848,9 @@
             if (detailSearchEl) detailSearchEl.value = '';
             setText('detail_subtitle', `${petugas} • ${formatDateID(date)}`);
             ['detail_total', 'detail_completed', 'detail_pending', 'detail_qty'].forEach(id => setText(id, '0'));
+            setText('detail_productivity', '0 resi/jam');
             if (detailBody) detailBody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Memuat data...</td></tr>`;
+            if (detailHourlyBody) detailHourlyBody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Memuat analisis per jam...</td></tr>`;
             detailModal.show();
 
             try {
@@ -755,6 +864,20 @@
                 setText('detail_completed', num(json.completed));
                 setText('detail_pending', num(json.pending));
                 setText('detail_qty', `${num(json.scanned_qty)} / ${num(json.required_qty)}`);
+                setText('detail_productivity', `${decimal(json.resi_per_hour)} resi/jam • ${num(json.active_hours)} jam aktif`);
+                if (detailHourlyBody) {
+                    const hourly = Array.isArray(json.hourly) ? json.hourly : [];
+                    detailHourlyBody.innerHTML = hourly.length ? hourly.map(row => `
+                        <tr>
+                            <td class="fw-bold">${esc(row.hour)}</td>
+                            <td class="text-end"><span class="pr-chip pr-chip--blue">${num(row.total_resi)}</span></td>
+                            <td class="text-end text-success fw-semibold">${num(row.completed)}</td>
+                            <td class="text-end">${num(row.sku_lines)}</td>
+                            <td class="text-end fw-semibold">${num(row.scanned_qty)}</td>
+                            <td class="text-end">${decimal(row.completion_pct)}%</td>
+                            <td class="text-end">${row.avg_cycle_minutes === null ? '-' : decimal(row.avg_cycle_minutes) + ' menit'}</td>
+                        </tr>`).join('') : '<tr><td colspan="7" class="text-center text-muted py-4">Belum ada aktivitas per jam.</td></tr>';
+                }
                 detailRows = Array.isArray(json.resis) ? json.resis : [];
                 renderDetailRows();
             } catch (err) {
@@ -762,6 +885,7 @@
                     detailBody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-4">
                         <i class="bi bi-exclamation-triangle me-1"></i>${esc(err.message || 'Gagal memuat detail')}</td></tr>`;
                 }
+                if (detailHourlyBody) detailHourlyBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-4">${esc(err.message || 'Gagal memuat detail')}</td></tr>`;
             }
         });
 

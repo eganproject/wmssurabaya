@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exports\QcPerformanceReportExport;
 use App\Http\Controllers\Controller;
 use App\Models\Divisi;
 use App\Models\QcScanResi;
-use App\Models\QcScanResiItem;
 use App\Models\User;
+use App\Support\QcPerformanceReport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
+use Maatwebsite\Excel\Facades\Excel;
 
 class PickerReportController extends Controller
 {
@@ -24,6 +25,7 @@ class PickerReportController extends Controller
 
         return view('admin.outbound.picker-reports.index', [
             'dataUrl' => route('admin.outbound.picker-reports.data'),
+            'exportUrl' => route('admin.outbound.picker-reports.export'),
             'divisis' => $divisis,
             'today' => now()->toDateString(),
             'generatedBy' => $authUser?->name ?? '-',
@@ -33,27 +35,19 @@ class PickerReportController extends Controller
     public function data(Request $request)
     {
         $authUser = $request->user();
-        $baseQuery = $this->buildReportQuery($request, $authUser, false);
-        $query = $this->buildReportQuery($request, $authUser, true);
+        $filters = $this->filters($request);
+        $dailyRows = QcPerformanceReport::dailyRows($filters, $authUser);
+        $hourlyRows = QcPerformanceReport::hourlyRows($filters, $authUser);
+        $dailyRows = QcPerformanceReport::enrichDailyRows($dailyRows, $hourlyRows);
+        $summary = QcPerformanceReport::summary($dailyRows, $hourlyRows);
+        $performers = QcPerformanceReport::perUserRows($dailyRows);
 
-        $recordsTotal = DB::query()->fromSub($baseQuery, 't')->count();
-        $recordsFiltered = DB::query()->fromSub($query, 't')->count();
+        $recordsTotal = QcPerformanceReport::dailyGroupCount($authUser);
+        $recordsFiltered = $dailyRows->count();
 
-        $summaryRow = DB::query()->fromSub($query, 't')
-            ->selectRaw('COUNT(DISTINCT t.user_id) as petugas_count')
-            ->selectRaw('COUNT(DISTINCT t.report_date) as day_count')
-            ->selectRaw('COALESCE(SUM(t.total_resi), 0) as resi_total')
-            ->selectRaw('COALESCE(SUM(t.completed_resi), 0) as completed_total')
-            ->selectRaw('COALESCE(SUM(t.scanned_qty), 0) as qty_total')
-            ->first();
-
-        $start = (int) $request->input('start', 0);
+        $start = max(0, (int) $request->input('start', 0));
         $length = (int) $request->input('length', 10);
-        if ($length > 0) {
-            $query->skip($start)->take($length);
-        }
-
-        $rows = $query->get();
+        $rows = $length > 0 ? $dailyRows->slice($start, $length)->values() : $dailyRows;
 
         $data = $rows->map(function ($row) {
             $firstScan = $row->first_scan_at ? Carbon::parse($row->first_scan_at)->format('H:i') : '';
@@ -63,8 +57,6 @@ class PickerReportController extends Controller
             $totalResi = (int) $row->total_resi;
             $completed = (int) $row->completed_resi;
             $pending = (int) $row->pending_resi;
-            $completionPct = $totalResi > 0 ? (int) round($completed / $totalResi * 100) : 0;
-
             return [
                 'date'           => $row->report_date,
                 'user_id'        => (int) $row->user_id,
@@ -72,10 +64,17 @@ class PickerReportController extends Controller
                 'total_resi'     => $totalResi,
                 'completed'      => $completed,
                 'pending'        => $pending,
-                'completion_pct' => $completionPct,
+                'completion_pct' => (float) $row->completion_pct,
+                'scan_pct'       => (float) $row->scan_pct,
                 'sku_lines'      => (int) $row->sku_lines,
                 'required_qty'   => (int) $row->required_qty,
                 'scanned_qty'    => (int) $row->scanned_qty,
+                'active_hours'   => (int) $row->active_hours,
+                'resi_per_hour'  => (float) $row->resi_per_hour,
+                'qty_per_hour'   => (float) $row->qty_per_hour,
+                'peak_hour'      => $row->peak_hour ?: '-',
+                'peak_hour_resi' => (int) $row->peak_hour_resi,
+                'avg_cycle_minutes' => $row->avg_cycle_minutes,
                 'range'          => $range,
             ];
         });
@@ -85,14 +84,29 @@ class PickerReportController extends Controller
             'recordsTotal' => $recordsTotal,
             'recordsFiltered' => $recordsFiltered,
             'data' => $data,
-            'summary' => [
-                'petugas_count'   => (int) ($summaryRow->petugas_count ?? 0),
-                'day_count'       => (int) ($summaryRow->day_count ?? 0),
-                'resi_total'      => (int) ($summaryRow->resi_total ?? 0),
-                'completed_total' => (int) ($summaryRow->completed_total ?? 0),
-                'qty_total'       => (int) ($summaryRow->qty_total ?? 0),
-            ],
+            'summary' => $summary,
+            'performers' => $performers,
         ]);
+    }
+
+    public function export(Request $request)
+    {
+        $filters = $this->filters($request);
+        $authUser = $request->user();
+        $dailyRows = QcPerformanceReport::dailyRows($filters, $authUser);
+        $hourlyRows = QcPerformanceReport::hourlyRows($filters, $authUser);
+        $dailyRows = QcPerformanceReport::enrichDailyRows($dailyRows, $hourlyRows);
+        $detailRows = QcPerformanceReport::detailRows($filters, $authUser);
+        $summary = QcPerformanceReport::summary($dailyRows, $hourlyRows);
+        $perUserRows = QcPerformanceReport::perUserRows($dailyRows);
+
+        $from = $filters['date_from'] ?? 'awal';
+        $to = $filters['date_to'] ?? 'akhir';
+
+        return Excel::download(
+            new QcPerformanceReportExport($dailyRows, $hourlyRows, $perUserRows, $detailRows, $summary, $filters, $authUser?->name),
+            "laporan-performa-qc-{$from}-{$to}.xlsx",
+        );
     }
 
     public function detail(Request $request)
@@ -147,6 +161,23 @@ class PickerReportController extends Controller
 
         $totalResi = $resis->count();
         $completed = $qcResis->where('status', 'completed')->count();
+        $hourly = $qcResis->groupBy(fn ($qc) => $qc->scanned_at?->format('H:00') ?? '-')
+            ->map(function ($rows, $hour) {
+                $completedRows = $rows->where('status', 'completed');
+                $durations = $completedRows->filter(fn ($qc) => $qc->completed_at && $qc->scanned_at && $qc->completed_at->gte($qc->scanned_at))
+                    ->map(fn ($qc) => round($qc->scanned_at->diffInSeconds($qc->completed_at) / 60, 1));
+
+                return [
+                    'hour' => $hour,
+                    'total_resi' => $rows->count(),
+                    'completed' => $completedRows->count(),
+                    'pending' => $rows->count() - $completedRows->count(),
+                    'sku_lines' => (int) $rows->sum(fn ($qc) => $qc->items->count()),
+                    'scanned_qty' => (int) $rows->sum(fn ($qc) => $qc->items->sum('scanned_qty')),
+                    'completion_pct' => $rows->count() > 0 ? round($completedRows->count() / $rows->count() * 100, 1) : 0,
+                    'avg_cycle_minutes' => $durations->isNotEmpty() ? round($durations->avg(), 1) : null,
+                ];
+            })->sortKeys()->values();
 
         return response()->json([
             'date'         => $date,
@@ -157,89 +188,20 @@ class PickerReportController extends Controller
             'total_sku'    => (int) $resis->sum('sku_count'),
             'required_qty' => (int) $resis->sum('required_qty'),
             'scanned_qty'  => (int) $resis->sum('scanned_qty'),
+            'active_hours' => $hourly->count(),
+            'resi_per_hour' => $hourly->count() > 0 ? round($totalResi / $hourly->count(), 2) : 0,
+            'hourly' => $hourly,
             'resis'        => $resis,
         ]);
     }
 
-    private function buildReportQuery(Request $request, $authUser, bool $applyFilters)
+    private function filters(Request $request): array
     {
-        $resiAgg = QcScanResi::query()
-            ->selectRaw('DATE(qc_scan_resis.scanned_at) as report_date')
-            ->selectRaw('qc_scan_resis.scanned_by as user_id')
-            ->selectRaw('COUNT(*) as total_resi')
-            ->selectRaw("SUM(CASE WHEN qc_scan_resis.status = 'completed' THEN 1 ELSE 0 END) as completed_resi")
-            ->selectRaw("SUM(CASE WHEN qc_scan_resis.status <> 'completed' THEN 1 ELSE 0 END) as pending_resi")
-            ->selectRaw('MIN(qc_scan_resis.scanned_at) as first_scan_at')
-            ->selectRaw('MAX(qc_scan_resis.scanned_at) as last_scan_at')
-            ->whereNotNull('qc_scan_resis.scanned_at')
-            ->whereNotNull('qc_scan_resis.scanned_by')
-            ->groupByRaw('DATE(qc_scan_resis.scanned_at)')
-            ->groupBy('qc_scan_resis.scanned_by');
-
-        $itemAgg = QcScanResiItem::query()
-            ->join('qc_scan_resis', 'qc_scan_resis.id', '=', 'qc_scan_resi_items.qc_scan_resi_id')
-            ->selectRaw('DATE(qc_scan_resis.scanned_at) as report_date')
-            ->selectRaw('qc_scan_resis.scanned_by as user_id')
-            ->selectRaw('COUNT(*) as sku_lines')
-            ->selectRaw('COALESCE(SUM(qc_scan_resi_items.required_qty), 0) as required_qty')
-            ->selectRaw('COALESCE(SUM(qc_scan_resi_items.scanned_qty), 0) as scanned_qty')
-            ->whereNotNull('qc_scan_resis.scanned_at')
-            ->whereNotNull('qc_scan_resis.scanned_by')
-            ->groupByRaw('DATE(qc_scan_resis.scanned_at)')
-            ->groupBy('qc_scan_resis.scanned_by');
-
-        $query = DB::query()
-            ->fromSub($resiAgg, 'r')
-            ->join('users', 'users.id', '=', 'r.user_id')
-            ->leftJoinSub($itemAgg, 'i', function ($join) {
-                $join->on('i.report_date', '=', 'r.report_date')
-                    ->on('i.user_id', '=', 'r.user_id');
-            })
-            ->selectRaw('r.report_date, r.user_id, users.name as petugas')
-            ->selectRaw('r.total_resi, r.completed_resi, r.pending_resi')
-            ->selectRaw('r.first_scan_at, r.last_scan_at')
-            ->selectRaw('COALESCE(i.sku_lines, 0) as sku_lines')
-            ->selectRaw('COALESCE(i.required_qty, 0) as required_qty')
-            ->selectRaw('COALESCE(i.scanned_qty, 0) as scanned_qty')
-            ->orderByRaw('r.report_date desc')
-            ->orderBy('users.name');
-
-        if ($authUser) {
-            $divisiId = $authUser->divisi_id;
-            if ($divisiId !== null && (int) $divisiId !== 1) {
-                $query->where('users.divisi_id', $divisiId);
-            }
-        }
-
-        if ($applyFilters) {
-            $search = trim((string) $request->input('q', ''));
-            if ($search !== '') {
-                $query->where('users.name', 'like', "%{$search}%");
-            }
-            $divisiId = $request->integer('divisi_id');
-            if ($divisiId) {
-                $query->where('users.divisi_id', $divisiId);
-            }
-            $this->applyDateFilter($query, $request);
-        }
-
-        return $query;
-    }
-
-    private function applyDateFilter($query, Request $request): void
-    {
-        $dateFrom = $request->input('date_from');
-        $dateTo = $request->input('date_to');
-
-        try {
-            if ($dateFrom) {
-                $query->where('r.report_date', '>=', Carbon::parse($dateFrom)->toDateString());
-            }
-            if ($dateTo) {
-                $query->where('r.report_date', '<=', Carbon::parse($dateTo)->toDateString());
-            }
-        } catch (\Throwable) {
-            // ignore invalid date filters
-        }
+        return $request->validate([
+            'q' => ['nullable', 'string', 'max:150'],
+            'divisi_id' => ['nullable', 'integer', 'exists:divisis,id'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+        ]);
     }
 }

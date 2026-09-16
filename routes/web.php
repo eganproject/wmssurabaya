@@ -372,6 +372,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::get('/picker-reports', [PickerReportController::class, 'index'])->name('picker-reports.index');
         Route::get('/picker-reports/data', [PickerReportController::class, 'data'])->name('picker-reports.data');
         Route::get('/picker-reports/detail', [PickerReportController::class, 'detail'])->name('picker-reports.detail');
+        Route::get('/picker-reports/export', [PickerReportController::class, 'export'])->name('picker-reports.export');
     });
 
     Route::prefix('reports')->as('reports.')->group(function () {
