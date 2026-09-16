@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exports\StockMovementReportExport;
 use App\Models\Item;
 use App\Models\ItemStock;
 use App\Models\ItemUnit;
@@ -14,6 +15,7 @@ use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Maatwebsite\Excel\Facades\Excel;
 use Tests\TestCase;
+use ZipArchive;
 
 class InventoryAnalyticsReportsTest extends TestCase
 {
@@ -103,6 +105,56 @@ class InventoryAnalyticsReportsTest extends TestCase
             ->assertJsonPath('recordsFiltered', 4);
 
         $this->assertSame([0, 10], collect($sortedResponse->json('data'))->pluck('outbound_qty')->all());
+    }
+
+    public function test_stock_movement_report_can_be_exported_to_excel_with_active_filters(): void
+    {
+        Excel::fake();
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $warehouse = Warehouse::where('code', 'WH-SMALL')->firstOrFail();
+
+        $this->actingAs($user)
+            ->get(route('admin.reports.stock.movement-export', [
+                'warehouse_id' => $warehouse->id,
+                'movement' => 'non_moving',
+                'is_active' => '1',
+                'date_from' => '2026-08-01',
+                'date_to' => '2026-08-31',
+            ]))
+            ->assertOk();
+
+        Excel::assertDownloaded(
+            'analisis-pergerakan-stok-20260801-20260831.xlsx',
+            fn ($export) => $export instanceof StockMovementReportExport,
+        );
+    }
+
+    public function test_stock_movement_workbook_contains_dashboard_sheets_and_charts(): void
+    {
+        $summary = [
+            'total_sku' => 0, 'total_outbound_qty' => 0, 'total_stock' => 0, 'total_transactions' => 0,
+            'fast_sku' => 0, 'medium_sku' => 0, 'slow_sku' => 0, 'non_moving_sku' => 0,
+            'non_moving_stock' => 0, 'below_safety_sku' => 0, 'critical_cover_sku' => 0,
+            'out_of_stock_sku' => 0, 'period_days' => 31,
+            'date_from' => '2026-08-01', 'date_to' => '2026-08-31',
+        ];
+        $raw = Excel::raw(new StockMovementReportExport(collect(), $summary), \Maatwebsite\Excel\Excel::XLSX);
+        $path = tempnam(sys_get_temp_dir(), 'stock-movement-');
+        file_put_contents($path, $raw);
+
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($path) === true);
+
+        try {
+            $workbookXml = $zip->getFromName('xl/workbook.xml');
+            $this->assertIsString($workbookXml);
+            $this->assertSame(6, substr_count($workbookXml, '<sheet '));
+            $this->assertNotFalse($zip->locateName('xl/charts/chart1.xml'));
+            $this->assertNotFalse($zip->locateName('xl/charts/chart2.xml'));
+        } finally {
+            $zip->close();
+            unlink($path);
+        }
     }
 
     public function test_stock_as_of_date_report_returns_closing_stock_for_selected_day(): void

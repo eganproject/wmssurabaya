@@ -351,9 +351,10 @@
                         <option value="100">100</option>
                     </select>
                 </div>
-                <div class="col-xl-3 col-md-3 d-flex gap-2 stock-report-actions">
+                <div class="col-xl-3 col-md-6 d-flex gap-2 stock-report-actions flex-wrap">
                     <button id="movement_apply" class="btn btn-primary"><i class="fa-solid fa-filter"></i> Terapkan</button>
                     <button id="movement_reset" class="btn btn-light">Reset</button>
+                    <button id="movement_export" class="btn btn-success"><i class="fa-solid fa-file-excel"></i> Export Excel</button>
                 </div>
             </div>
         </div>
@@ -549,6 +550,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const movementDataUrl = @json($movementDataUrl);
+    const movementExportUrl = @json($movementExportUrl);
     const movementTableEl = $('#stock_movement_table');
     const movementFilters = {
         warehouse: document.getElementById('movement_warehouse'),
@@ -668,6 +670,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     document.getElementById('movement_apply').addEventListener('click', reloadMovement);
+    document.getElementById('movement_export').addEventListener('click', () => {
+        const params = {};
+        movementRequestData(params);
+        const query = new URLSearchParams(params).toString();
+        window.location.href = `${movementExportUrl}?${query}`;
+    });
     movementFilters.search.addEventListener('keyup', event => {
         if (event.key === 'Enter') reloadMovement();
     });

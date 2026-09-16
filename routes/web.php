@@ -389,6 +389,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::get('/stock', [StockReportController::class, 'index'])->name('stock.index');
         Route::get('/stock/data', [StockReportController::class, 'data'])->name('stock.data');
         Route::get('/stock/movement-data', [StockReportController::class, 'movementData'])->name('stock.movement-data');
+        Route::get('/stock/movement-export', [StockReportController::class, 'movementExport'])->name('stock.movement-export');
         Route::get('/stock-as-of-date', [StockAsOfDateReportController::class, 'index'])->name('stock-as-of-date.index');
         Route::get('/stock-as-of-date/data', [StockAsOfDateReportController::class, 'data'])->name('stock-as-of-date.data');
         Route::get('/stock-as-of-date/export', [StockAsOfDateReportController::class, 'export'])->name('stock-as-of-date.export');
