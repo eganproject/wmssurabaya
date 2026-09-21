@@ -71,6 +71,26 @@
     .movement-meta {
         min-width: 170px;
     }
+    .movement-chart-card {
+        border: 1px solid #edf0f5;
+        overflow: hidden;
+    }
+    .movement-chart-card .card-header {
+        min-height: auto;
+    }
+    .movement-chart-period {
+        background: #f1faff;
+        border: 1px solid #d7f0ff;
+        border-radius: 999px;
+        color: #009ef7;
+        display: inline-flex;
+        font-size: .75rem;
+        font-weight: 700;
+        padding: .45rem .8rem;
+    }
+    #movement_trend_chart {
+        min-height: 350px;
+    }
     @media (max-width: 575px) {
         .stock-report-actions {
             width: 100%;
@@ -405,6 +425,22 @@
         </div>
     </div>
 
+    <div class="card movement-chart-card mb-6">
+        <div class="card-header border-0 px-6 pt-6 pb-2 d-flex flex-wrap align-items-start justify-content-between gap-3">
+            <div>
+                <h3 class="fw-bolder mb-1">Tren Qty Keluar Harian</h3>
+                <div class="text-muted fs-7" id="movement_chart_summary">Jumlah barang keluar operasional per tanggal.</div>
+            </div>
+            <div class="movement-chart-period" id="movement_chart_period">
+                <i class="fa-regular fa-calendar me-2"></i>
+                <span>Periode aktif</span>
+            </div>
+        </div>
+        <div class="card-body px-3 px-md-6 pt-2 pb-5">
+            <div id="movement_trend_chart" aria-label="Grafik tren jumlah barang keluar per tanggal"></div>
+        </div>
+    </div>
+
     <div class="card">
         <div class="card-header border-0 pt-6">
             <div>
@@ -574,6 +610,8 @@ document.addEventListener('DOMContentLoaded', () => {
         non_moving: ['Non-moving', 'danger'],
     };
     let movementDt = null;
+    let movementChart = null;
+    let movementChartTrend = [];
 
     function movementRequestData(params) {
         params.warehouse_id = movementFilters.warehouse.value;
@@ -593,6 +631,112 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('movement_kpi_slow').textContent = number(summary.slow_sku);
         document.getElementById('movement_kpi_non_moving').textContent = number(summary.non_moving_sku);
         document.getElementById('movement_period_hint').textContent = `${number(summary.period_days)} hari (${summary.date_from || '-'} s/d ${summary.date_to || '-'})`;
+    }
+
+    function movementDateLabel(value, includeYear = false) {
+        const date = new Date(`${value}T00:00:00`);
+        if (Number.isNaN(date.getTime())) return value || '-';
+        return date.toLocaleDateString('id-ID', {
+            day: '2-digit',
+            month: 'short',
+            ...(includeYear ? {year: 'numeric'} : {}),
+        });
+    }
+
+    function renderMovementChart(trend = movementChartTrend) {
+        movementChartTrend = Array.isArray(trend) ? trend : [];
+
+        const total = movementChartTrend.reduce((sum, point) => sum + Number(point.quantity || 0), 0);
+        const peak = movementChartTrend.reduce((max, point) => Math.max(max, Number(point.quantity || 0)), 0);
+        const firstDate = movementChartTrend[0]?.date;
+        const lastDate = movementChartTrend[movementChartTrend.length - 1]?.date;
+        document.getElementById('movement_chart_summary').textContent = `${number(movementChartTrend.length)} hari · Total ${number(total)} unit · Puncak ${number(peak)} unit/hari`;
+        document.querySelector('#movement_chart_period span').textContent = firstDate && lastDate
+            ? `${movementDateLabel(firstDate, true)} – ${movementDateLabel(lastDate, true)}`
+            : 'Periode aktif';
+
+        const pane = document.getElementById('stock-movement-pane');
+        if (!pane.classList.contains('show') || !pane.classList.contains('active')) return;
+
+        const chartElement = document.getElementById('movement_trend_chart');
+        if (typeof window.ApexCharts === 'undefined') {
+            chartElement.innerHTML = '<div class="text-center text-muted py-20">Grafik tidak dapat dimuat.</div>';
+            return;
+        }
+
+        const series = [{
+            name: 'Qty Keluar',
+            data: movementChartTrend.map(point => [new Date(`${point.date}T00:00:00`).getTime(), Number(point.quantity || 0)]),
+        }];
+
+        if (movementChart) {
+            movementChart.updateOptions({
+                xaxis: {tickAmount: Math.min(8, Math.max(2, movementChartTrend.length - 1))},
+            }, false, false);
+            movementChart.updateSeries(series, true);
+            return;
+        }
+
+        movementChart = new ApexCharts(chartElement, {
+            series,
+            chart: {
+                type: 'line',
+                height: 350,
+                fontFamily: 'inherit',
+                toolbar: {show: false},
+                zoom: {enabled: false},
+                animations: {enabled: true, easing: 'easeinout', speed: 450},
+            },
+            colors: ['#009ef7'],
+            stroke: {curve: 'smooth', width: 3, lineCap: 'round'},
+            fill: {
+                type: 'gradient',
+                gradient: {shadeIntensity: 1, opacityFrom: .28, opacityTo: .03, stops: [0, 95, 100]},
+            },
+            markers: {
+                size: 0,
+                strokeWidth: 3,
+                hover: {size: 6},
+            },
+            dataLabels: {enabled: false},
+            grid: {
+                borderColor: '#edf0f5',
+                strokeDashArray: 4,
+                padding: {left: 10, right: 16},
+            },
+            xaxis: {
+                type: 'datetime',
+                tickAmount: Math.min(8, Math.max(2, movementChartTrend.length - 1)),
+                axisBorder: {show: false},
+                axisTicks: {show: false},
+                labels: {
+                    datetimeUTC: false,
+                    hideOverlappingLabels: true,
+                    style: {colors: '#a1a5b7', fontSize: '12px'},
+                    formatter: (value, timestamp) => {
+                        const date = new Date(timestamp || value);
+                        return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('id-ID', {day: '2-digit', month: 'short'});
+                    },
+                },
+                title: {text: 'Tanggal', style: {color: '#7e8299', fontSize: '12px', fontWeight: 600}},
+            },
+            yaxis: {
+                min: 0,
+                forceNiceScale: true,
+                labels: {
+                    formatter: value => number(Math.round(value)),
+                    style: {colors: '#a1a5b7', fontSize: '12px'},
+                },
+                title: {text: 'Jumlah (unit)', style: {color: '#7e8299', fontSize: '12px', fontWeight: 600}},
+            },
+            tooltip: {
+                theme: 'light',
+                x: {formatter: value => new Date(value).toLocaleDateString('id-ID', {weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'})},
+                y: {formatter: value => `${number(value)} unit`},
+            },
+            noData: {text: 'Tidak ada data pergerakan pada periode ini.'},
+        });
+        movementChart.render();
     }
 
     function movementBadge(row) {
@@ -632,6 +776,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 data: movementRequestData,
                 dataSrc: json => {
                     updateMovementSummary(json.summary || {});
+                    renderMovementChart(json.trend || []);
                     return json.data || [];
                 },
                 error: xhr => window.AppSwal?.error(Object.values(xhr.responseJSON?.errors || {}).flat().join('\n') || 'Gagal memuat analisis pergerakan stok.'),
@@ -707,6 +852,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('stock-movement-tab').addEventListener('shown.bs.tab', () => {
         window.history.replaceState(null, '', '#stock-movement-pane');
         initializeMovementTable();
+        renderMovementChart();
     });
     document.getElementById('stock-position-tab').addEventListener('shown.bs.tab', () => {
         window.history.replaceState(null, '', '#stock-position-pane');

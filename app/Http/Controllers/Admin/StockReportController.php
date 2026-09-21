@@ -35,7 +35,7 @@ class StockReportController extends Controller
             'order.0.dir' => ['nullable', 'in:asc,desc'],
         ]));
 
-        $report = StockMovementReport::generate($validated);
+        $report = StockMovementReport::generate($validated, includeTrend: true);
         $rows = $report['rows'];
 
         $movementSorts = [
@@ -78,6 +78,7 @@ class StockReportController extends Controller
             'recordsTotal' => $report['summary']['total_sku'],
             'recordsFiltered' => $recordsFiltered,
             'summary' => $report['summary'],
+            'trend' => $report['trend'],
             'data' => $paged,
         ]);
     }

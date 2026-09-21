@@ -81,13 +81,39 @@ class InventoryAnalyticsReportsTest extends TestCase
             ->assertJsonPath('summary.fast_sku', 1)
             ->assertJsonPath('summary.medium_sku', 1)
             ->assertJsonPath('summary.slow_sku', 1)
-            ->assertJsonPath('summary.non_moving_sku', 1);
+            ->assertJsonPath('summary.non_moving_sku', 1)
+            ->assertJsonCount(30, 'trend');
+
+        $this->assertSame(100, collect($response->json('trend'))->sum('quantity'));
+        $this->assertSame(
+            now()->subDays(29)->toDateString(),
+            $response->json('trend.0.date'),
+        );
+        $this->assertSame(
+            now()->toDateString(),
+            $response->json('trend.29.date'),
+        );
 
         $classes = collect($response->json('data'))->pluck('movement_key', 'sku');
         $this->assertSame('fast', $classes['MOVE-FAST']);
         $this->assertSame('medium', $classes['MOVE-MEDIUM']);
         $this->assertSame('slow', $classes['MOVE-SLOW']);
         $this->assertSame('non_moving', $classes['MOVE-NONE']);
+
+        $fastOnlyResponse = $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', [
+                'draw' => 2,
+                'start' => 0,
+                'length' => -1,
+                'warehouse_id' => $warehouse->id,
+                'movement' => 'fast',
+                'date_from' => now()->subDays(29)->toDateString(),
+                'date_to' => now()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+
+        $this->assertSame(70, collect($fastOnlyResponse->json('trend'))->sum('quantity'));
 
         $sortedResponse = $this->actingAs($user)
             ->getJson(route('admin.reports.stock.movement-data', [

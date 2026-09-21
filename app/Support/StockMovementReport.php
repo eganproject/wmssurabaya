@@ -13,7 +13,7 @@ class StockMovementReport
      * Build the stock-movement dataset once so the web table and Excel export
      * always use the same operational-outbound and ABC classification rules.
      */
-    public static function generate(array $filters = []): array
+    public static function generate(array $filters = [], bool $includeTrend = false): array
     {
         $warehouseId = ! empty($filters['warehouse_id']) ? (int) $filters['warehouse_id'] : null;
         [$dateFrom, $dateTo, $periodDays] = self::period($filters);
@@ -71,6 +71,7 @@ class StockMovementReport
             ->where('i.is_bundle', false)
             ->select([
                 'i.id',
+                'w.id as warehouse_id',
                 'i.sku',
                 'i.name',
                 'i.is_active',
@@ -119,6 +120,7 @@ class StockMovementReport
 
             return [
                 'id' => (int) $row->id,
+                'warehouse_id' => $row->warehouse_id ? (int) $row->warehouse_id : null,
                 'sku' => $row->sku ?: '-',
                 'name' => $row->name ?: '-',
                 'category' => $row->category ?: 'Tanpa Kategori',
@@ -152,6 +154,7 @@ class StockMovementReport
             'rows' => $rows,
             'summary' => self::summary($allRows, $periodDays, $dateFrom, $dateTo),
             'filtered_summary' => self::summary($rows, $periodDays, $dateFrom, $dateTo),
+            'trend' => $includeTrend ? self::dailyOutboundTrend($rows, $dateFrom, $dateTo, $warehouseId) : [],
             'date_from' => $dateFrom,
             'date_to' => $dateTo,
             'period_days' => $periodDays,
@@ -202,6 +205,63 @@ class StockMovementReport
 
             return $row;
         });
+    }
+
+    private static function dailyOutboundTrend(Collection $rows, Carbon $dateFrom, Carbon $dateTo, ?int $warehouseId): array
+    {
+        $dailyTotals = [];
+        $cursor = $dateFrom->copy()->startOfDay();
+        $lastDate = $dateTo->copy()->startOfDay();
+
+        while ($cursor->lte($lastDate)) {
+            $dailyTotals[$cursor->toDateString()] = 0;
+            $cursor->addDay();
+        }
+
+        $allowedPairs = $rows
+            ->filter(fn (array $row) => ! empty($row['warehouse_id']))
+            ->mapWithKeys(fn (array $row) => [self::pairKey((int) $row['id'], (int) $row['warehouse_id']) => true]);
+
+        if ($allowedPairs->isNotEmpty()) {
+            $trendQuery = DB::table('stock_mutations')
+                ->select(['item_id', 'warehouse_id'])
+                ->selectRaw('DATE(occurred_at) as movement_date')
+                ->selectRaw('SUM(qty) as outbound_qty')
+                ->where('direction', 'out')
+                ->whereIn('source_type', ['outbound', 'picker', 'qc', 'qc_resi'])
+                ->where(function ($query) {
+                    $query->whereNull('source_subtype')
+                        ->orWhere('source_subtype', '!=', 'return');
+                })
+                ->whereBetween('occurred_at', [$dateFrom, $dateTo])
+                ->groupBy('item_id', 'warehouse_id', DB::raw('DATE(occurred_at)'));
+
+            if ($warehouseId) {
+                $trendQuery->where('warehouse_id', $warehouseId);
+            }
+
+            foreach ($trendQuery->get() as $point) {
+                $pair = self::pairKey((int) $point->item_id, (int) $point->warehouse_id);
+                $date = (string) $point->movement_date;
+
+                if ($allowedPairs->has($pair) && array_key_exists($date, $dailyTotals)) {
+                    $dailyTotals[$date] += (int) $point->outbound_qty;
+                }
+            }
+        }
+
+        return collect($dailyTotals)
+            ->map(fn (int $quantity, string $date) => [
+                'date' => $date,
+                'quantity' => $quantity,
+            ])
+            ->values()
+            ->all();
+    }
+
+    private static function pairKey(int $itemId, int $warehouseId): string
+    {
+        return $itemId.':'.$warehouseId;
     }
 
     private static function summary(Collection $rows, int $periodDays, Carbon $dateFrom, Carbon $dateTo): array
