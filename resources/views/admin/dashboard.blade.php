@@ -877,6 +877,46 @@
     {{-- ============ Ringkasan Resi ============ --}}
     <div class="card mb-6">
         <div class="card-body">
+            <div class="dash-section-title mb-3"><i class="fa-solid fa-copy"></i> Pemeriksaan Resi Kembar</div>
+            <p class="text-muted">Data pada tanggal upload terpilih dibandingkan dengan seluruh tanggal. Nomor resi kosong diabaikan; huruf besar/kecil dan spasi di awal/akhir disamakan.</p>
+            <div class="alert {{ $duplicateReport['groups']->isEmpty() ? 'alert-success' : 'alert-warning' }}">
+                <strong>{{ $duplicateReport['groups']->count() }} kelompok data kembar.</strong>
+                {{ $duplicateReport['groups']->isEmpty() ? 'Tidak ditemukan nomor resi atau ID Pesanan yang tersimpan lebih dari sekali.' : 'Periksa pesanan dan barang sebelum melanjutkan proses pengiriman.' }}
+            </div>
+            <p><strong>{{ number_format($duplicateReport['updated_count']) }} pembaruan pesanan melalui impor ulang</strong> pada tanggal ini. Impor ulang ID Pesanan yang sama memperbarui data lama; ini bukan penambahan resi baru. Beberapa baris SKU dalam satu pesanan juga bukan otomatis resi kembar.</p>
+            @foreach($duplicateReport['groups'] as $group)
+                <details class="border rounded p-3 mb-3">
+                    <summary><strong>{{ $group['type'] }}: {{ $group['value'] }}</strong> — {{ $group['rows']->count() }} data, {{ $group['active_count'] }} aktif</summary>
+                    <div class="table-responsive mt-3">
+                        <table class="table table-row-dashed align-middle">
+                            <thead><tr><th>ID Pesanan</th><th>No. Resi</th><th>Kurir</th><th>Tanggal Upload</th><th>Status</th><th>Tindakan</th></tr></thead>
+                            <tbody>
+                            @foreach($group['rows'] as $row)
+                                <tr>
+                                    <td>{{ $row->id_pesanan }}</td><td>{{ $row->no_resi ?: '-' }}</td><td>{{ $row->kurir?->name ?? '-' }}</td>
+                                    <td>{{ $row->tanggal_upload?->format('Y-m-d') }}</td><td>{{ $row->status === 'canceled' ? 'Cancel' : 'Aktif' }}</td>
+                                    <td><a href="{{ route('admin.inventory.resi-import.index', ['date' => $row->tanggal_upload?->format('Y-m-d'), 'q' => $row->id_pesanan]) }}">Periksa pesanan</a></td>
+                                </tr>
+                            @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </details>
+            @endforeach
+            <details class="mt-3">
+                <summary class="fw-bold">Bagaimana menangani resi kembar?</summary>
+                <ol class="mt-3 mb-0">
+                    <li>Cocokkan ID Pesanan, label pengiriman, SKU, dan jumlah barang dengan sumber pesanan. Tentukan data yang benar.</li>
+                    <li>Jika data tambahan memang salah dan belum QC scan, scan packer, atau scan out, buka Periksa pesanan lalu hapus data yang salah. Picking list akan disesuaikan oleh aplikasi.</li>
+                    <li>Jika sudah diproses, periksa kondisi fisik barang bersama penanggung jawab sebelum menggunakan cancel karena pembatalan memengaruhi proses dan stok. Jangan menghapus data langsung dari database.</li>
+                    <li>Jika kedua pesanan valid tetapi nomor resinya salah, koreksi file sumber dan impor ulang ID Pesanan yang bersangkutan setelah memastikan belum diproses. Periksa kembali SKU dan jumlah karena impor ulang mengganti detail pesanan.</li>
+                </ol>
+                <p class="text-muted mt-3 mb-0">Data cancel tetap ditampilkan sebagai riwayat. Pemeriksaan ini membaca data yang tersimpan dan riwayat pembaruan, bukan baris duplikat dalam file yang belum berhasil diimpor.</p>
+            </details>
+        </div>
+    </div>
+    <div class="card mb-6">
+        <div class="card-body">
             <div class="dash-section-head mb-5">
                 <div>
                     <div class="dash-section-title"><i class="fa-solid fa-chart-pie"></i> Ringkasan Resi</div>

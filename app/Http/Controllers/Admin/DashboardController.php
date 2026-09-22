@@ -28,6 +28,7 @@ class DashboardController extends Controller
         }
 
         $resiBase = Resi::query()->whereDate('tanggal_upload', $selectedDate);
+        $duplicateReport = app(\App\Support\ResiDuplicateReport::class)->forDate($selectedDate);
         $activeResiBase = (clone $resiBase)->where(function ($q) {
             $q->whereNull('status')
                 ->orWhere('status', '!=', 'canceled');
@@ -466,6 +467,7 @@ class DashboardController extends Controller
         return view('admin.dashboard', [
             'today' => $selectedDate,
             'totalResi' => $totalResiActive,
+            'duplicateReport' => $duplicateReport,
             'totalResiCanceled' => $totalResiCanceled,
             'totalQcScan' => $totalQcScan,
             'totalScanOut' => $totalScanOut,
