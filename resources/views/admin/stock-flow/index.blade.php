@@ -96,6 +96,11 @@
                 <button type="button" class="btn btn-light" id="filter_apply">Filter</button>
                 <button type="button" class="btn btn-light" id="filter_reset">Reset</button>
             </div>
+            @if(!empty($exportUrl ?? null))
+                <button type="button" class="btn btn-light-success" id="btn_export_flow">
+                    <i class="fas fa-file-excel me-1"></i>Export Excel
+                </button>
+            @endif
             @if($canImport)
                 <button type="button" class="btn btn-light-primary" id="btn_import_flow">
                     Import Excel
@@ -513,6 +518,7 @@
     const detailUrlTpl = '{{ $detailUrlTpl }}';
     const approveUrlTpl = '{{ $approveUrlTpl ?? '' }}';
     const importUrl = '{{ $importUrl ?? '' }}';
+    const exportUrl = '{{ $exportUrl ?? '' }}';
     const routeMap = @json($routeMap ?? []);
     const typeLabelMap = @json($typeOptions ?? []);
     const csrfToken = '{{ csrf_token() }}';
@@ -548,6 +554,7 @@
         const warehouseUnitInfo = document.getElementById('flow_warehouse_unit_info');
         const filterApplyBtn = document.getElementById('filter_apply');
         const filterResetBtn = document.getElementById('filter_reset');
+        const exportBtn = document.getElementById('btn_export_flow');
         const importBtn = document.getElementById('btn_import_flow');
         const importPanel = document.getElementById('modal_import_flow');
         const closeImportBtn = document.getElementById('btn_close_import_flow');
@@ -1362,6 +1369,16 @@
             if (fpFrom) fpFrom.clear(); else if (dateFromEl) dateFromEl.value = '';
             if (fpTo) fpTo.clear(); else if (dateToEl) dateToEl.value = '';
             reloadTable();
+        });
+
+        exportBtn?.addEventListener('click', () => {
+            if (!exportUrl) return;
+            const params = new URLSearchParams();
+            if (searchInput?.value) params.set('q', searchInput.value);
+            if (statusEl?.value) params.set('status', statusEl.value);
+            if (dateFromEl?.value) params.set('date_from', dateFromEl.value);
+            if (dateToEl?.value) params.set('date_to', dateToEl.value);
+            window.location.href = exportUrl + (params.toString() ? '?' + params.toString() : '');
         });
 
         importBtn?.addEventListener('click', () => {

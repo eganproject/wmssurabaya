@@ -13,10 +13,12 @@ use App\Models\Resi;
 use App\Models\StockMutation;
 use App\Models\Warehouse;
 use App\Exports\InboundReceiptsTemplateExport;
+use App\Exports\InboundReceiptsReportExport;
 use App\Exports\InboundReturnsTemplateExport;
 use App\Imports\InboundReceiptsImport;
 use App\Imports\InboundReturnsImport;
 use App\Support\DamagedStockService;
+use App\Support\Permission;
 use App\Support\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -54,6 +56,55 @@ class InboundController extends Controller
     public function receiptsData(Request $request)
     {
         return $this->data($request, 'receipt');
+    }
+
+    public function receiptsExport(Request $request)
+    {
+        abort_unless(
+            Permission::can($request->user(), 'admin.inbound.receipts.index', 'view'),
+            403,
+            'Anda tidak memiliki akses ke laporan penerimaan barang'
+        );
+
+        $query = InboundTransaction::query()
+            ->with([
+                'items.item.baseUnit',
+                'items.unit',
+                'creator',
+                'approver',
+                'warehouse',
+            ])
+            ->where('inbound_transactions.type', 'receipt')
+            ->orderByDesc('inbound_transactions.transacted_at')
+            ->orderByDesc('inbound_transactions.id');
+
+        $status = $request->input('status');
+        if (in_array($status, ['pending', 'approved'], true)) {
+            $query->where('inbound_transactions.status', $status);
+        }
+
+        $search = trim((string) $request->input('q', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('inbound_transactions.code', 'like', "%{$search}%")
+                    ->orWhere('inbound_transactions.ref_no', 'like', "%{$search}%")
+                    ->orWhere('inbound_transactions.note', 'like', "%{$search}%")
+                    ->orWhereHas('items.item', function ($itemQ) use ($search) {
+                        $itemQ->where('sku', 'like', "%{$search}%")
+                            ->orWhere('name', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $this->applyDateFilter($query, $request);
+
+        $filters = $request->only(['q', 'status', 'date_from', 'date_to']);
+        $filename = 'laporan-penerimaan-barang-'.now()->format('Ymd-His').'.xlsx';
+
+        return Excel::download(
+            new InboundReceiptsReportExport($query->get(), $filters, $request->user()?->name),
+            $filename
+        );
     }
 
     public function returnsData(Request $request)
@@ -425,6 +476,9 @@ class InboundController extends Controller
                 'return' => route('admin.inbound.returns.template'),
                 default => null,
             },
+            'exportUrl' => $type === 'receipt'
+                ? route('admin.inbound.receipts.export')
+                : null,
         ]);
     }
 
@@ -485,6 +539,7 @@ class InboundController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('inbound_transactions.code', 'like', "%{$search}%")
                     ->orWhere('inbound_transactions.ref_no', 'like', "%{$search}%")
+                    ->orWhere('inbound_transactions.note', 'like', "%{$search}%")
                     ->orWhereHas('items.item', function ($itemQ) use ($search) {
                         $itemQ->where('sku', 'like', "%{$search}%")
                             ->orWhere('name', 'like', "%{$search}%");

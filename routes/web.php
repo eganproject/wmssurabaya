@@ -285,6 +285,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
     Route::prefix('inbound')->as('inbound.')->group(function () {
         Route::get('/receipts', [InboundController::class, 'receipts'])->name('receipts.index');
         Route::get('/receipts/data', [InboundController::class, 'receiptsData'])->name('receipts.data');
+        Route::get('/receipts/export', [InboundController::class, 'receiptsExport'])->name('receipts.export');
         Route::post('/receipts', [InboundController::class, 'receiptsStore'])->name('receipts.store');
         Route::post('/receipts/import', [InboundController::class, 'receiptsImport'])->name('receipts.import');
         Route::get('/receipts/template', [InboundController::class, 'receiptsTemplate'])->name('receipts.template');
