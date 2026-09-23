@@ -359,8 +359,8 @@
                     <input id="movement_date_to" type="date" class="form-control form-control-solid" value="{{ now()->toDateString() }}">
                 </div>
                 <div class="col-xl-4 col-md-6">
-                    <label>Cari SKU, nama, gudang, kategori, atau lokasi</label>
-                    <input id="movement_search" class="form-control form-control-solid" placeholder="Tekan Enter untuk mencari">
+                    <label>Cari SKU tepat</label>
+                    <input id="movement_search" class="form-control form-control-solid" placeholder="Contoh: TRIP1 lalu tekan Enter">
                 </div>
                 <div class="col-xl-1 col-md-3">
                     <label>Limit</label>
@@ -648,6 +648,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const total = movementChartTrend.reduce((sum, point) => sum + Number(point.quantity || 0), 0);
         const peak = movementChartTrend.reduce((max, point) => Math.max(max, Number(point.quantity || 0)), 0);
+        const yAxisMax = peak > 0 ? Math.ceil(peak * 1.12) : 1;
         const firstDate = movementChartTrend[0]?.date;
         const lastDate = movementChartTrend[movementChartTrend.length - 1]?.date;
         document.getElementById('movement_chart_summary').textContent = `${number(movementChartTrend.length)} hari · Total ${number(total)} unit · Puncak ${number(peak)} unit/hari`;
@@ -672,6 +673,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (movementChart) {
             movementChart.updateOptions({
                 xaxis: {tickAmount: Math.min(8, Math.max(2, movementChartTrend.length - 1))},
+                yaxis: {min: 0, max: yAxisMax},
             }, false, false);
             movementChart.updateSeries(series, true);
             return;
@@ -686,17 +688,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 toolbar: {show: false},
                 zoom: {enabled: false},
                 animations: {enabled: true, easing: 'easeinout', speed: 450},
+                foreColor: '#7e8299',
             },
-            colors: ['#009ef7'],
-            stroke: {curve: 'smooth', width: 3, lineCap: 'round'},
-            fill: {
-                type: 'gradient',
-                gradient: {shadeIntensity: 1, opacityFrom: .28, opacityTo: .03, stops: [0, 95, 100]},
+            colors: ['#009EF7'],
+            stroke: {
+                show: true,
+                curve: 'smooth',
+                width: 4,
+                lineCap: 'round',
+                colors: ['#009EF7'],
             },
+            fill: {opacity: 0},
             markers: {
-                size: 0,
+                size: 3,
+                colors: ['#FFFFFF'],
+                strokeColors: '#009EF7',
                 strokeWidth: 3,
-                hover: {size: 6},
+                hover: {size: 7},
             },
             dataLabels: {enabled: false},
             grid: {
@@ -722,6 +730,7 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             yaxis: {
                 min: 0,
+                max: yAxisMax,
                 forceNiceScale: true,
                 labels: {
                     formatter: value => number(Math.round(value)),

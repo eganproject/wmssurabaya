@@ -100,6 +100,33 @@ class InventoryAnalyticsReportsTest extends TestCase
         $this->assertSame('slow', $classes['MOVE-SLOW']);
         $this->assertSame('non_moving', $classes['MOVE-NONE']);
 
+        $exactSkuResponse = $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', [
+                'draw' => 2,
+                'start' => 0,
+                'length' => -1,
+                'warehouse_id' => $warehouse->id,
+                'q' => 'MOVE-FAST',
+                'date_from' => now()->subDays(29)->toDateString(),
+                'date_to' => now()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.sku', 'MOVE-FAST');
+
+        $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', [
+                'draw' => 3,
+                'start' => 0,
+                'length' => -1,
+                'warehouse_id' => $warehouse->id,
+                'q' => 'MOVE',
+                'date_from' => now()->subDays(29)->toDateString(),
+                'date_to' => now()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+
         $fastOnlyResponse = $this->actingAs($user)
             ->getJson(route('admin.reports.stock.movement-data', [
                 'draw' => 2,

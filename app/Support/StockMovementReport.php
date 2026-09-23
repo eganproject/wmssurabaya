@@ -103,13 +103,7 @@ class StockMovementReport
 
         $search = trim((string) ($filters['q'] ?? ''));
         if ($search !== '') {
-            $query->where(function ($builder) use ($search) {
-                $builder->where('i.sku', 'like', "%{$search}%")
-                    ->orWhere('i.name', 'like', "%{$search}%")
-                    ->orWhere('c.name', 'like', "%{$search}%")
-                    ->orWhere('w.name', 'like', "%{$search}%")
-                    ->orWhere('ws.location', 'like', "%{$search}%");
-            });
+            $query->where('i.sku', $search);
         }
 
         $allRows = $query->get()->map(function ($row) use ($periodDays) {
