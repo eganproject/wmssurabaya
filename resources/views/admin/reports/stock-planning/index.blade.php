@@ -24,7 +24,8 @@
     <div>
         <div class="fw-bold text-gray-800">Cara membaca rekomendasi</div>
         <div class="text-gray-700 fs-7">
-            Pemakaian dihitung dari mutasi stok keluar operasional. Stok proyeksi = stok saat ini + transfer masuk yang sedang dikirim.
+            Secara default, stok merupakan akumulasi Gudang Besar dan Gudang Kecil. Pemakaian dihitung dari total outbound manual dan import resi yang sudah selesai diproses.
+            Stok proyeksi = stok saat ini + transfer masuk yang sedang dikirim.
             Rekomendasi membawa stok menuju target hari persediaan, dengan safety stock sebagai batas minimum.
         </div>
     </div>
@@ -36,8 +37,9 @@
             <div class="col-xl-2 col-md-4">
                 <label>Gudang</label>
                 <select id="filter_warehouse" class="form-select form-select-solid">
+                    <option value="" selected>Gudang Besar + Gudang Kecil (Akumulasi)</option>
                     @foreach($warehouses as $warehouse)
-                        <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>{{ $warehouse->name }}</option>
+                        <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
                     @endforeach
                 </select>
             </div>
@@ -168,7 +170,7 @@
                         <th>SKU / Item</th>
                         <th class="text-end">Stok Saat Ini</th>
                         <th class="text-end">Sedang Masuk</th>
-                        <th class="text-end">Pemakaian</th>
+                        <th class="text-end">Qty Out</th>
                         <th class="text-end">Rata-rata/Hari</th>
                         <th>Days Cover</th>
                         <th class="text-end">Safety / ROP</th>
@@ -330,12 +332,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('filter_reset').addEventListener('click', () => {
         filters.dateFrom.value = '';
         filters.dateTo.value = '';
+        filters.warehouse.value = '';
         filters.leadDays.value = 7;
         filters.targetDays.value = 30;
         filters.status.value = '';
         filters.category.value = '';
         filters.search.value = '';
-        [filters.status, filters.category].forEach(el => {
+        [filters.warehouse, filters.status, filters.category].forEach(el => {
             if ($(el).data('select2')) $(el).val('').trigger('change.select2');
         });
         dt.ajax.reload();

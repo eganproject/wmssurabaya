@@ -32,8 +32,26 @@ class StockPlanningReportController extends Controller
             'status' => ['nullable', 'in:critical,reorder,healthy,slow'],
         ]);
 
-        $warehouseId = (int) ($validated['warehouse_id'] ?? Warehouse::defaultId());
-        $warehouse = Warehouse::findOrFail($warehouseId);
+        $warehouseId = isset($validated['warehouse_id']) ? (int) $validated['warehouse_id'] : null;
+        $warehouse = $warehouseId ? Warehouse::findOrFail($warehouseId) : null;
+        $warehouses = $warehouse
+            ? collect([$warehouse])
+            : Warehouse::query()
+                ->whereIn('code', [Warehouse::BULK_CODE, Warehouse::DEFAULT_CODE])
+                ->get(['id', 'name', 'code', 'type']);
+
+        if ($warehouses->isEmpty()) {
+            $warehouses = Warehouse::query()->where('is_active', true)->get(['id', 'name', 'code', 'type']);
+        }
+
+        $warehouseIds = $warehouses->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $warehouseLabel = $warehouse
+            ? $warehouse->name
+            : $warehouses
+                ->sortBy(fn (Warehouse $row) => $row->code === Warehouse::BULK_CODE ? 0 : 1)
+                ->pluck('name')
+                ->implode(' + ');
+        $isBulkWarehouse = $warehouse?->type === Warehouse::TYPE_BULK;
         [$dateFrom, $dateTo, $periodDays] = $this->period($validated);
         $leadDays = (int) ($validated['lead_days'] ?? 7);
         $targetDays = max($leadDays, (int) ($validated['target_days'] ?? 30));
@@ -41,12 +59,21 @@ class StockPlanningReportController extends Controller
         $usage = DB::table('stock_mutations')
             ->select('item_id')
             ->selectRaw('SUM(qty) as usage_qty')
-            ->where('warehouse_id', $warehouseId)
+            ->whereIn('warehouse_id', $warehouseIds)
             ->where('direction', 'out')
-            ->whereIn('source_type', ['outbound', 'picker', 'qc', 'qc_resi'])
             ->where(function ($query) {
-                $query->whereNull('source_subtype')
-                    ->orWhere('source_subtype', '!=', 'return');
+                $query->where(function ($manual) {
+                    $manual->where('source_type', 'outbound')
+                        ->where('source_subtype', 'manual');
+                })->orWhere(function ($resi) {
+                    $resi->where('source_type', 'qc_resi')
+                        ->whereExists(function ($completed) {
+                            $completed->selectRaw('1')
+                                ->from('qc_scan_resis')
+                                ->whereColumn('qc_scan_resis.id', 'stock_mutations.source_id')
+                                ->where('qc_scan_resis.status', 'completed');
+                        });
+                });
             })
             ->whereBetween('occurred_at', [$dateFrom, $dateTo])
             ->groupBy('item_id');
@@ -55,20 +82,27 @@ class StockPlanningReportController extends Controller
             ->join('stock_transfers as incoming_transfers', 'incoming_transfers.id', '=', 'incoming_items.stock_transfer_id')
             ->select('incoming_items.item_id')
             ->selectRaw('SUM(incoming_items.qty_base) as incoming_qty')
-            ->where('incoming_transfers.destination_warehouse_id', $warehouseId)
+            ->whereIn('incoming_transfers.destination_warehouse_id', $warehouseIds)
             ->where('incoming_transfers.status', 'shipped')
             ->groupBy('incoming_items.item_id');
 
+        $stocks = DB::table('item_stocks')
+            ->select('item_id')
+            ->selectRaw('SUM(stock) as current_stock')
+            ->whereIn('warehouse_id', $warehouseIds)
+            ->groupBy('item_id');
+
+        $settings = DB::table('item_warehouse_settings')
+            ->select('item_id')
+            ->selectRaw('SUM(COALESCE(safety_stock, 0)) as safety_stock')
+            ->selectRaw('MAX(location) as location')
+            ->whereIn('warehouse_id', $warehouseIds)
+            ->groupBy('item_id');
+
         $query = DB::table('items as i')
             ->leftJoin('categories as c', 'c.id', '=', 'i.category_id')
-            ->leftJoin('item_stocks as s', function ($join) use ($warehouseId) {
-                $join->on('s.item_id', '=', 'i.id')
-                    ->where('s.warehouse_id', '=', $warehouseId);
-            })
-            ->leftJoin('item_warehouse_settings as ws', function ($join) use ($warehouseId) {
-                $join->on('ws.item_id', '=', 'i.id')
-                    ->where('ws.warehouse_id', '=', $warehouseId);
-            })
+            ->leftJoinSub($stocks, 's', 's.item_id', '=', 'i.id')
+            ->leftJoinSub($settings, 'ws', 'ws.item_id', '=', 'i.id')
             ->leftJoinSub($usage, 'usage', 'usage.item_id', '=', 'i.id')
             ->leftJoinSub($incoming, 'incoming', 'incoming.item_id', '=', 'i.id')
             ->leftJoin('item_units as base_unit', function ($join) {
@@ -91,7 +125,7 @@ class StockPlanningReportController extends Controller
                 'package_unit.name as package_unit_name',
                 'package_unit.conversion_qty as package_conversion',
             ])
-            ->selectRaw('COALESCE(s.stock, 0) as current_stock')
+            ->selectRaw('COALESCE(s.current_stock, 0) as current_stock')
             ->selectRaw('COALESCE(ws.safety_stock, 0) as safety_stock')
             ->selectRaw('COALESCE(usage.usage_qty, 0) as usage_qty')
             ->selectRaw('COALESCE(incoming.incoming_qty, 0) as incoming_qty');
@@ -109,7 +143,7 @@ class StockPlanningReportController extends Controller
             });
         }
 
-        $rows = $query->get()->map(function ($row) use ($warehouse, $periodDays, $leadDays, $targetDays) {
+        $rows = $query->get()->map(function ($row) use ($isBulkWarehouse, $periodDays, $leadDays, $targetDays) {
             $stock = (int) $row->current_stock;
             $incoming = (int) $row->incoming_qty;
             $projected = $stock + $incoming;
@@ -138,7 +172,7 @@ class StockPlanningReportController extends Controller
                 ? max(0, $targetStock - $projected)
                 : 0;
             $packageConversion = max(1, (int) ($row->package_conversion ?? 1));
-            if ($warehouse->type === Warehouse::TYPE_BULK && $recommended > 0) {
+            if ($isBulkWarehouse && $recommended > 0) {
                 $recommended = (int) (ceil($recommended / $packageConversion) * $packageConversion);
             }
 
@@ -159,7 +193,7 @@ class StockPlanningReportController extends Controller
                 'reorder_point' => $reorderPoint,
                 'target_stock' => $targetStock,
                 'recommended_qty' => $recommended,
-                'recommended_packages' => $warehouse->type === Warehouse::TYPE_BULK && $recommended > 0
+                'recommended_packages' => $isBulkWarehouse && $recommended > 0
                     ? (int) ceil($recommended / $packageConversion)
                     : null,
                 'package_unit' => $row->package_unit_name,
@@ -210,7 +244,7 @@ class StockPlanningReportController extends Controller
                 'date_to' => $dateTo->toDateString(),
                 'lead_days' => $leadDays,
                 'target_days' => $targetDays,
-                'warehouse' => $warehouse->name,
+                'warehouse' => $warehouseLabel,
             ]),
             'analytics' => $analytics,
             'data' => $paged,

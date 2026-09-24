@@ -7,6 +7,8 @@ use App\Models\Item;
 use App\Models\ItemStock;
 use App\Models\ItemUnit;
 use App\Models\ItemWarehouseSetting;
+use App\Models\QcScanResi;
+use App\Models\Resi;
 use App\Models\StockMutation;
 use App\Models\StockTransfer;
 use App\Models\StockTransferItem;
@@ -431,4 +433,113 @@ class InventoryAnalyticsReportsTest extends TestCase
             ->assertJsonPath('data.0.recommended_qty', 50)
             ->assertJsonPath('data.0.status', 'reorder');
     }
+
+    public function test_stock_planning_defaults_to_combined_warehouses_and_completed_outbound_sources(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $small = Warehouse::where('code', Warehouse::DEFAULT_CODE)->firstOrFail();
+        $bulk = Warehouse::where('code', Warehouse::BULK_CODE)->firstOrFail();
+        $item = Item::create([
+            'sku' => 'PLAN-COMBINED',
+            'name' => 'Item Rencana Gabungan',
+            'category_id' => null,
+        ]);
+        $unit = ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'PCS',
+            'conversion_qty' => 1,
+            'is_base' => true,
+        ]);
+
+        ItemStock::create(['warehouse_id' => $small->id, 'item_id' => $item->id, 'stock' => 40]);
+        ItemStock::create(['warehouse_id' => $bulk->id, 'item_id' => $item->id, 'stock' => 60]);
+        ItemWarehouseSetting::create([
+            'warehouse_id' => $small->id,
+            'item_id' => $item->id,
+            'safety_stock' => 3,
+            'location' => 'SMALL-01',
+        ]);
+        ItemWarehouseSetting::create([
+            'warehouse_id' => $bulk->id,
+            'item_id' => $item->id,
+            'safety_stock' => 2,
+            'location' => 'BULK-01',
+        ]);
+
+        $completedResi = Resi::create([
+            'id_pesanan' => 'ORDER-PLAN-COMPLETED',
+            'tanggal_pesanan' => now()->toDateString(),
+            'tanggal_upload' => now()->toDateString(),
+            'no_resi' => 'RESI-PLAN-COMPLETED',
+            'uploader_id' => $user->id,
+        ]);
+        $completedQc = QcScanResi::create([
+            'resi_id' => $completedResi->id,
+            'status' => 'completed',
+            'scanned_at' => now()->subDay(),
+            'scanned_by' => $user->id,
+            'completed_at' => now()->subDay(),
+            'completed_by' => $user->id,
+        ]);
+
+        $inProgressResi = Resi::create([
+            'id_pesanan' => 'ORDER-PLAN-IN-PROGRESS',
+            'tanggal_pesanan' => now()->toDateString(),
+            'tanggal_upload' => now()->toDateString(),
+            'no_resi' => 'RESI-PLAN-IN-PROGRESS',
+            'uploader_id' => $user->id,
+        ]);
+        $inProgressQc = QcScanResi::create([
+            'resi_id' => $inProgressResi->id,
+            'status' => 'in_progress',
+            'scanned_at' => now()->subDay(),
+            'scanned_by' => $user->id,
+        ]);
+
+        $createMutation = function (int $warehouseId, int $qty, string $sourceType, string $sourceSubtype, int $sourceId) use ($item, $unit, $user): void {
+            StockMutation::create([
+                'warehouse_id' => $warehouseId,
+                'item_id' => $item->id,
+                'unit_id' => $unit->id,
+                'direction' => 'out',
+                'qty' => $qty,
+                'qty_input' => $qty,
+                'conversion_qty' => 1,
+                'stock_before' => 200,
+                'stock_after' => 200 - $qty,
+                'source_type' => $sourceType,
+                'source_subtype' => $sourceSubtype,
+                'source_id' => $sourceId,
+                'occurred_at' => now()->subDay(),
+                'created_by' => $user->id,
+            ]);
+        };
+
+        $createMutation($bulk->id, 30, 'outbound', 'manual', 1001);
+        $createMutation($small->id, 20, 'qc_resi', 'scan', $completedQc->id);
+        $createMutation($small->id, 40, 'qc_resi', 'scan', $inProgressQc->id);
+        $createMutation($small->id, 70, 'outbound', 'marketplace', 1002);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.reports.stock-planning.data', [
+                'draw' => 1,
+                'start' => 0,
+                'length' => 10,
+                'date_from' => now()->subDays(29)->toDateString(),
+                'date_to' => now()->toDateString(),
+                'lead_days' => 7,
+                'target_days' => 30,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('summary.warehouse', 'Gudang Besar + Gudang Kecil')
+            ->assertJsonPath('summary.period_days', 30)
+            ->assertJsonPath('data.0.sku', 'PLAN-COMBINED')
+            ->assertJsonPath('data.0.current_stock', 100)
+            ->assertJsonPath('data.0.safety_stock', 5)
+            ->assertJsonPath('data.0.usage_qty', 50)
+            ->assertJsonPath('data.0.average_daily_usage', 1.67)
+            ->assertJsonPath('data.0.target_stock', 50)
+            ->assertJsonPath('data.0.status', 'healthy');
+    }
+
 }
