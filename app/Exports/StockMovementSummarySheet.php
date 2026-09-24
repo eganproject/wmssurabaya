@@ -36,7 +36,7 @@ class StockMovementSummarySheet extends DefaultValueBinder implements FromArray,
     public function array(): array
     {
         return [
-            ['Kelompok', 'Jumlah SKU', 'Fast', 'Medium', 'Slow', 'Non-moving', 'Qty Keluar', 'Stok Saat Ini', 'Stok Non-moving', 'Di Bawah Safety', 'Cover <= 7 Hari'],
+            ['Kelompok', 'Jumlah SKU', 'Fast', 'Medium', 'Slow', 'Non-moving', 'Qty Keluar', 'Stok Akumulasi', 'Stok Non-moving', 'Di Bawah Safety', 'Cover <= 7 Hari'],
             ...$this->groupedRows->all(),
         ];
     }

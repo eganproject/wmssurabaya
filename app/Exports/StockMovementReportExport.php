@@ -19,7 +19,7 @@ class StockMovementReportExport implements WithMultipleSheets
         return [
             new StockMovementDashboardSheet($this->rows, $this->summary, $this->filters, $this->generatedBy),
             new StockMovementSummarySheet($this->rows, 'movement_label', 'Klasifikasi'),
-            new StockMovementSummarySheet($this->rows, 'warehouse', 'Per Gudang'),
+            new StockMovementSummarySheet($this->rows, 'warehouse', 'Cakupan Gudang'),
             new StockMovementSummarySheet($this->rows, 'category', 'Per Kategori'),
             new StockMovementDetailSheet($this->rows),
             new StockMovementMethodologySheet,

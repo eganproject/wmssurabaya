@@ -98,7 +98,6 @@ class StockReportController extends Controller
     private function movementValidationRules(): array
     {
         return [
-            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'category_id' => ['nullable', 'integer'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],

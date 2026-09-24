@@ -30,8 +30,8 @@ class StockMovementDetailSheet extends DefaultValueBinder implements FromCollect
     public function headings(): array
     {
         return [
-            'SKU', 'Nama Item', 'Status Produk', 'Kategori', 'Gudang', 'Tipe Gudang', 'Lokasi', 'Klasifikasi',
-            'Stok Saat Ini', 'Safety Stock', 'Gap ke Safety', 'Satuan', 'Qty Keluar', 'Rata-rata / Hari',
+            'SKU', 'Nama Item', 'Status Produk', 'Kategori', 'Cakupan Stok', 'Jenis Data', 'Lokasi', 'Klasifikasi',
+            'Stok Akumulasi', 'Safety Stock Akumulasi', 'Gap ke Safety', 'Satuan', 'Qty Keluar', 'Rata-rata / Hari',
             'Kontribusi (%)', 'Transaksi Keluar', 'Hari Aktif', 'Days Cover', 'Terakhir Keluar', 'Rekomendasi Tindakan',
         ];
     }

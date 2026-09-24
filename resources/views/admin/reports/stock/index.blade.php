@@ -274,9 +274,9 @@
     <div class="notice d-flex bg-light-info rounded border-info border border-dashed p-5 mb-5">
         <i class="fa-solid fa-chart-simple fs-2x text-info me-4"></i>
         <div>
-            <div class="fw-bold text-gray-800">Analisis kecepatan pergerakan stok</div>
+            <div class="fw-bold text-gray-800">Analisis kecepatan pergerakan stok gabungan</div>
             <div class="text-gray-700 fs-7">
-                Klasifikasi dihitung dari jumlah barang keluar operasional pada periode terpilih. Retur dan perpindahan internal antar-gudang tidak dihitung.
+                Stok otomatis diakumulasi dari Gudang Besar + Gudang Kecil. Qty keluar hanya berasal dari outbound manual dan import resi yang prosesnya sudah selesai.
             </div>
         </div>
     </div>
@@ -311,17 +311,6 @@
     <div class="card mb-6">
         <div class="card-body py-5">
             <div class="row g-3 align-items-end stock-report-filter">
-                <div class="col-xl-2 col-md-4">
-                    <label>Gudang</label>
-                    <select id="movement_warehouse" class="form-select form-select-solid">
-                        <option value="">Semua Gudang</option>
-                        @foreach($warehouses as $warehouse)
-                            <option value="{{ $warehouse->id }}" @selected($warehouse->is_default)>
-                                {{ $warehouse->type === 'bulk' ? 'Gudang Besar' : 'Gudang Kecil' }} - {{ $warehouse->name }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
                 <div class="col-xl-2 col-md-4">
                     <label>Kategori</label>
                     <select id="movement_category" class="form-select form-select-solid">
@@ -392,7 +381,7 @@
             <div class="stock-report-kpi p-5">
                 <div class="label">Qty Keluar</div>
                 <div class="value text-dark" id="movement_kpi_outbound">0</div>
-                <div class="hint">Total operasional</div>
+                <div class="hint">Manual + resi selesai</div>
             </div>
         </div>
         <div class="col-xl-2 col-md-4 col-6">
@@ -454,9 +443,9 @@
                     <thead>
                         <tr class="text-muted text-uppercase">
                             <th>SKU / Item</th>
-                            <th>Gudang / Lokasi</th>
+                            <th>Cakupan Stok / Lokasi</th>
                             <th>Klasifikasi</th>
-                            <th class="text-end">Stok Saat Ini</th>
+                            <th class="text-end">Stok Akumulasi</th>
                             <th class="text-end">Qty Keluar</th>
                             <th class="text-end">Rata-rata / Hari</th>
                             <th class="text-end">Kontribusi</th>
@@ -589,7 +578,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const movementExportUrl = @json($movementExportUrl);
     const movementTableEl = $('#stock_movement_table');
     const movementFilters = {
-        warehouse: document.getElementById('movement_warehouse'),
         category: document.getElementById('movement_category'),
         movement: document.getElementById('movement_class'),
         itemStatus: document.getElementById('movement_item_status'),
@@ -599,7 +587,6 @@ document.addEventListener('DOMContentLoaded', () => {
         limit: document.getElementById('movement_limit'),
     };
     const movementDefaults = {
-        warehouse: movementFilters.warehouse.value,
         dateFrom: movementFilters.dateFrom.value,
         dateTo: movementFilters.dateTo.value,
     };
@@ -614,7 +601,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let movementChartTrend = [];
 
     function movementRequestData(params) {
-        params.warehouse_id = movementFilters.warehouse.value;
         params.category_id = movementFilters.category.value;
         params.movement = movementFilters.movement.value;
         params.is_active = movementFilters.itemStatus.value;
@@ -630,7 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('movement_kpi_medium').textContent = number(summary.medium_sku);
         document.getElementById('movement_kpi_slow').textContent = number(summary.slow_sku);
         document.getElementById('movement_kpi_non_moving').textContent = number(summary.non_moving_sku);
-        document.getElementById('movement_period_hint').textContent = `${number(summary.period_days)} hari (${summary.date_from || '-'} s/d ${summary.date_to || '-'})`;
+        document.getElementById('movement_period_hint').textContent = `${number(summary.period_days)} hari · ${summary.warehouse || 'Gudang Besar + Gudang Kecil'}`;
     }
 
     function movementDateLabel(value, includeYear = false) {
@@ -767,10 +753,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if ($.fn.select2) {
-            [movementFilters.warehouse, movementFilters.category, movementFilters.movement, movementFilters.itemStatus]
+            [movementFilters.category, movementFilters.movement, movementFilters.itemStatus]
                 .forEach(el => $(el).select2({
                     width: '100%',
-                    allowClear: el !== movementFilters.warehouse && el !== movementFilters.itemStatus,
+                    allowClear: el !== movementFilters.itemStatus,
                 }));
         }
 
@@ -833,14 +819,13 @@ document.addEventListener('DOMContentLoaded', () => {
     movementFilters.search.addEventListener('keyup', event => {
         if (event.key === 'Enter') reloadMovement();
     });
-    [movementFilters.warehouse, movementFilters.category, movementFilters.movement, movementFilters.itemStatus]
+    [movementFilters.category, movementFilters.movement, movementFilters.itemStatus]
         .forEach(el => el?.addEventListener('change', () => movementDt?.ajax.reload()));
     movementFilters.limit.addEventListener('change', () => {
         initializeMovementTable();
         movementDt.page.len(Number(movementFilters.limit.value || 10)).draw();
     });
     document.getElementById('movement_reset').addEventListener('click', () => {
-        movementFilters.warehouse.value = movementDefaults.warehouse;
         movementFilters.category.value = '';
         movementFilters.movement.value = '';
         movementFilters.itemStatus.value = '1';
@@ -848,8 +833,8 @@ document.addEventListener('DOMContentLoaded', () => {
         movementFilters.dateTo.value = movementDefaults.dateTo;
         movementFilters.search.value = '';
         movementFilters.limit.value = '10';
-        [movementFilters.warehouse, movementFilters.category, movementFilters.movement, movementFilters.itemStatus].forEach(el => {
-            if ($(el).data('select2')) $(el).val(el === movementFilters.warehouse ? movementDefaults.warehouse : (el === movementFilters.itemStatus ? '1' : '')).trigger('change.select2');
+        [movementFilters.category, movementFilters.movement, movementFilters.itemStatus].forEach(el => {
+            if ($(el).data('select2')) $(el).val(el === movementFilters.itemStatus ? '1' : '').trigger('change.select2');
         });
         if (movementDt) {
             movementDt.page.len(10).draw();

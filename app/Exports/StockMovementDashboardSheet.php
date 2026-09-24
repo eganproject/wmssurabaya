@@ -4,7 +4,6 @@ namespace App\Exports;
 
 use App\Exports\Concerns\BindsStringValuesAsText;
 use App\Models\Category;
-use App\Models\Warehouse;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithCharts;
@@ -48,7 +47,7 @@ class StockMovementDashboardSheet extends DefaultValueBinder implements FromArra
             ['', '', '', '', '', '', '', '', '', '', '', ''],
             ['FILTER LAPORAN', '', '', '', '', '', '', '', '', '', '', ''],
             ['Periode', $this->summary['date_from'].' s.d. '.$this->summary['date_to'].' ('.$this->summary['period_days'].' hari)', '', '', '', '', '', '', '', '', '', ''],
-            ['Gudang', $this->warehouseLabel(), '', '', '', '', '', '', '', '', '', ''],
+            ['Cakupan & Sumber', $this->warehouseLabel().' | Outbound manual + import resi selesai', '', '', '', '', '', '', '', '', '', ''],
             ['Kategori', $this->categoryLabel(), '', '', '', '', '', '', '', '', '', ''],
             ['Klasifikasi', $this->movementLabel(), '', '', '', '', '', '', '', '', '', ''],
             ['Status Produk', $this->statusLabel(), '', '', '', '', '', '', '', '', '', ''],
@@ -56,7 +55,7 @@ class StockMovementDashboardSheet extends DefaultValueBinder implements FromArra
             ['Dibuat', now()->format('d/m/Y H:i:s').' oleh '.($this->generatedBy ?: '-'), '', '', '', '', '', '', '', '', '', ''],
             ['', '', '', '', '', '', '', '', '', '', '', ''],
             ['KPI UTAMA', '', '', '', '', '', '', '', '', '', '', ''],
-            ['SKU Dianalisis', 'Qty Keluar', 'Stok Saat Ini', 'Transaksi Keluar', 'Fast', 'Medium', 'Slow', 'Non-moving', 'Stok Non-moving', 'Di Bawah Safety', 'Cover <= 7 Hari', 'Stok Habis'],
+            ['SKU Dianalisis', 'Qty Keluar', 'Stok Akumulasi', 'Transaksi Keluar', 'Fast', 'Medium', 'Slow', 'Non-moving', 'Stok Non-moving', 'Di Bawah Safety', 'Cover <= 7 Hari', 'Stok Habis'],
             [
                 $this->summary['total_sku'], $this->summary['total_outbound_qty'], $this->summary['total_stock'],
                 $this->summary['total_transactions'], $this->summary['fast_sku'], $this->summary['medium_sku'],
@@ -65,7 +64,7 @@ class StockMovementDashboardSheet extends DefaultValueBinder implements FromArra
             ],
             ['', '', '', '', '', '', '', '', '', '', '', ''],
             ['DISTRIBUSI KLASIFIKASI', '', '', '', '', '', '', '', '', '', '', ''],
-            ['Klasifikasi', 'Jumlah SKU', '% SKU', 'Qty Keluar', '% Qty Keluar', 'Stok Saat Ini', '', '', '', '', '', ''],
+            ['Klasifikasi', 'Jumlah SKU', '% SKU', 'Qty Keluar', '% Qty Keluar', 'Stok Akumulasi', '', '', '', '', '', ''],
         ];
 
         foreach ([
@@ -104,7 +103,7 @@ class StockMovementDashboardSheet extends DefaultValueBinder implements FromArra
         $result[] = ['SKU stok habis', $this->summary['out_of_stock_sku'], 'Validasi kebutuhan dan percepat pengadaan untuk SKU yang masih bergerak.', '', '', '', '', '', '', '', '', ''];
         $result[] = ['', '', '', '', '', '', '', '', '', '', '', ''];
         $result[] = ['TOP 10 QTY KELUAR', '', '', '', '', '', '', '', '', '', '', ''];
-        $result[] = ['SKU', 'Nama Item', 'Gudang', 'Klasifikasi', 'Qty Keluar', 'Stok', 'Days Cover', '', '', '', '', ''];
+        $result[] = ['SKU', 'Nama Item', 'Cakupan Stok', 'Klasifikasi', 'Qty Keluar', 'Stok Akumulasi', 'Days Cover', '', '', '', '', ''];
 
         foreach ($topItems as $row) {
             $result[] = [
@@ -208,8 +207,7 @@ class StockMovementDashboardSheet extends DefaultValueBinder implements FromArra
 
     private function warehouseLabel(): string
     {
-        $id = (int) ($this->filters['warehouse_id'] ?? 0);
-        return $id ? (Warehouse::find($id)?->name ?? "Gudang #{$id}") : 'Semua gudang';
+        return $this->summary['warehouse'] ?? 'Gudang Besar + Gudang Kecil';
     }
 
     private function categoryLabel(): string

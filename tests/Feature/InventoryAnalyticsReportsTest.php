@@ -162,6 +162,132 @@ class InventoryAnalyticsReportsTest extends TestCase
         $this->assertSame([0, 10], collect($sortedResponse->json('data'))->pluck('outbound_qty')->all());
     }
 
+    public function test_stock_movement_combines_two_warehouses_and_only_uses_manual_and_completed_resi_outbound(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $small = Warehouse::where('code', Warehouse::DEFAULT_CODE)->firstOrFail();
+        $bulk = Warehouse::where('code', Warehouse::BULK_CODE)->firstOrFail();
+        $item = Item::create([
+            'sku' => 'MOVE-COMBINED',
+            'name' => 'Item Pergerakan Gabungan',
+            'category_id' => null,
+        ]);
+        $unit = ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'PCS',
+            'conversion_qty' => 1,
+            'is_base' => true,
+        ]);
+
+        ItemStock::create(['warehouse_id' => $small->id, 'item_id' => $item->id, 'stock' => 40]);
+        ItemStock::create(['warehouse_id' => $bulk->id, 'item_id' => $item->id, 'stock' => 60]);
+        ItemWarehouseSetting::create([
+            'warehouse_id' => $small->id,
+            'item_id' => $item->id,
+            'safety_stock' => 3,
+            'location' => 'SMALL-01',
+        ]);
+        ItemWarehouseSetting::create([
+            'warehouse_id' => $bulk->id,
+            'item_id' => $item->id,
+            'safety_stock' => 2,
+            'location' => 'BULK-01',
+        ]);
+
+        $completedResi = Resi::create([
+            'id_pesanan' => 'ORDER-MOVE-COMPLETED',
+            'tanggal_pesanan' => now()->toDateString(),
+            'tanggal_upload' => now()->toDateString(),
+            'no_resi' => 'RESI-MOVE-COMPLETED',
+            'uploader_id' => $user->id,
+        ]);
+        $completedQc = QcScanResi::create([
+            'resi_id' => $completedResi->id,
+            'status' => 'completed',
+            'scanned_at' => now()->subDay(),
+            'scanned_by' => $user->id,
+            'completed_at' => now()->subDay(),
+            'completed_by' => $user->id,
+        ]);
+
+        $inProgressResi = Resi::create([
+            'id_pesanan' => 'ORDER-MOVE-IN-PROGRESS',
+            'tanggal_pesanan' => now()->toDateString(),
+            'tanggal_upload' => now()->toDateString(),
+            'no_resi' => 'RESI-MOVE-IN-PROGRESS',
+            'uploader_id' => $user->id,
+        ]);
+        $inProgressQc = QcScanResi::create([
+            'resi_id' => $inProgressResi->id,
+            'status' => 'in_progress',
+            'scanned_at' => now()->subDay(),
+            'scanned_by' => $user->id,
+        ]);
+
+        $createMutation = function (
+            int $warehouseId,
+            int $qty,
+            string $sourceType,
+            ?string $sourceSubtype,
+            int $sourceId
+        ) use ($item, $unit, $user): void {
+            StockMutation::create([
+                'warehouse_id' => $warehouseId,
+                'item_id' => $item->id,
+                'unit_id' => $unit->id,
+                'direction' => 'out',
+                'qty' => $qty,
+                'qty_input' => $qty,
+                'conversion_qty' => 1,
+                'stock_before' => 200,
+                'stock_after' => 200 - $qty,
+                'source_type' => $sourceType,
+                'source_subtype' => $sourceSubtype,
+                'source_id' => $sourceId,
+                'occurred_at' => now()->subDay(),
+                'created_by' => $user->id,
+            ]);
+        };
+
+        $createMutation($bulk->id, 30, 'outbound', 'manual', 91001);
+        $createMutation($small->id, 20, 'qc_resi', 'scan', $completedQc->id);
+        $createMutation($small->id, 40, 'qc_resi', 'scan', $inProgressQc->id);
+        $createMutation($small->id, 70, 'outbound', 'marketplace', 91002);
+        $createMutation($small->id, 80, 'picker', null, 91003);
+
+        $response = $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', [
+                'draw' => 1,
+                'start' => 0,
+                'length' => 10,
+                'warehouse_id' => $small->id,
+                'date_from' => now()->subDays(29)->toDateString(),
+                'date_to' => now()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertJsonPath('summary.warehouse', 'Gudang Besar + Gudang Kecil')
+            ->assertJsonPath('summary.outbound_source', 'Outbound manual + import resi selesai')
+            ->assertJsonPath('summary.total_stock', 100)
+            ->assertJsonPath('summary.total_outbound_qty', 50)
+            ->assertJsonPath('data.0.sku', 'MOVE-COMBINED')
+            ->assertJsonPath('data.0.warehouse', 'Gudang Besar + Gudang Kecil')
+            ->assertJsonPath('data.0.warehouse_type', 'Akumulasi')
+            ->assertJsonPath('data.0.stock', 100)
+            ->assertJsonPath('data.0.safety_stock', 5)
+            ->assertJsonPath('data.0.outbound_qty', 50)
+            ->assertJsonPath('data.0.outbound_transactions', 2)
+            ->assertJsonPath('data.0.average_daily_outbound', 1.67)
+            ->assertJsonPath('data.0.days_cover', 60);
+
+        $this->assertSame(50, collect($response->json('trend'))->sum('quantity'));
+
+        $this->actingAs($user)
+            ->get(route('admin.reports.stock.index', ['tab' => 'movement']))
+            ->assertOk()
+            ->assertDontSee('id="movement_warehouse"', false)
+            ->assertSee('Stok otomatis diakumulasi dari Gudang Besar + Gudang Kecil.');
+    }
+
     public function test_stock_movement_report_can_be_exported_to_excel_with_active_filters(): void
     {
         Excel::fake();

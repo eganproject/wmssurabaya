@@ -11,59 +11,39 @@ class StockMovementReport
 {
     /**
      * Build the stock-movement dataset once so the web table and Excel export
-     * always use the same operational-outbound and ABC classification rules.
+     * always use the same combined-warehouse and eligible-outbound rules.
      */
     public static function generate(array $filters = [], bool $includeTrend = false): array
     {
-        $warehouseId = ! empty($filters['warehouse_id']) ? (int) $filters['warehouse_id'] : null;
+        [$warehouseIds, $warehouseLabel] = self::warehouseScope();
         [$dateFrom, $dateTo, $periodDays] = self::period($filters);
 
-        $usage = DB::table('stock_mutations')
-            ->select(['item_id', 'warehouse_id'])
+        $usage = self::eligibleOutboundQuery($warehouseIds, $dateFrom, $dateTo)
+            ->select('item_id')
             ->selectRaw('SUM(qty) as outbound_qty')
             ->selectRaw('COUNT(*) as outbound_transactions')
             ->selectRaw('COUNT(DISTINCT DATE(occurred_at)) as active_days')
             ->selectRaw('MAX(occurred_at) as last_outbound_at')
-            ->where('direction', 'out')
-            ->whereIn('source_type', ['outbound', 'picker', 'qc', 'qc_resi'])
-            ->where(function ($query) {
-                $query->whereNull('source_subtype')
-                    ->orWhere('source_subtype', '!=', 'return');
-            })
-            ->whereBetween('occurred_at', [$dateFrom, $dateTo])
-            ->groupBy('item_id', 'warehouse_id');
+            ->groupBy('item_id');
+
+        $stocks = DB::table('item_stocks')
+            ->select('item_id')
+            ->selectRaw('SUM(stock) as stock')
+            ->whereIn('warehouse_id', $warehouseIds)
+            ->groupBy('item_id');
+
+        $settings = DB::table('item_warehouse_settings')
+            ->select('item_id')
+            ->selectRaw('SUM(COALESCE(safety_stock, 0)) as safety_stock')
+            ->selectRaw("GROUP_CONCAT(DISTINCT NULLIF(location, '')) as location")
+            ->whereIn('warehouse_id', $warehouseIds)
+            ->groupBy('item_id');
 
         $query = DB::table('items as i')
             ->leftJoin('categories as c', 'c.id', '=', 'i.category_id')
-            ->leftJoin('item_stocks as s', function ($join) use ($warehouseId) {
-                $join->on('s.item_id', '=', 'i.id');
-                if ($warehouseId) {
-                    $join->where('s.warehouse_id', '=', $warehouseId);
-                }
-            })
-            ->leftJoin('warehouses as w', function ($join) use ($warehouseId) {
-                if ($warehouseId) {
-                    $join->where('w.id', '=', $warehouseId);
-                } else {
-                    $join->on('w.id', '=', 's.warehouse_id');
-                }
-            })
-            ->leftJoin('item_warehouse_settings as ws', function ($join) use ($warehouseId) {
-                $join->on('ws.item_id', '=', 'i.id');
-                if ($warehouseId) {
-                    $join->where('ws.warehouse_id', '=', $warehouseId);
-                } else {
-                    $join->on('ws.warehouse_id', '=', 's.warehouse_id');
-                }
-            })
-            ->leftJoinSub($usage, 'usage', function ($join) use ($warehouseId) {
-                $join->on('usage.item_id', '=', 'i.id');
-                if ($warehouseId) {
-                    $join->where('usage.warehouse_id', '=', $warehouseId);
-                } else {
-                    $join->on('usage.warehouse_id', '=', 's.warehouse_id');
-                }
-            })
+            ->leftJoinSub($stocks, 's', 's.item_id', '=', 'i.id')
+            ->leftJoinSub($settings, 'ws', 'ws.item_id', '=', 'i.id')
+            ->leftJoinSub($usage, 'usage', 'usage.item_id', '=', 'i.id')
             ->leftJoin('item_units as base_unit', function ($join) {
                 $join->on('base_unit.item_id', '=', 'i.id')
                     ->where('base_unit.is_base', '=', true);
@@ -71,13 +51,10 @@ class StockMovementReport
             ->where('i.is_bundle', false)
             ->select([
                 'i.id',
-                'w.id as warehouse_id',
                 'i.sku',
                 'i.name',
                 'i.is_active',
                 DB::raw("COALESCE(c.name, 'Tanpa Kategori') as category"),
-                DB::raw("COALESCE(w.name, '-') as warehouse"),
-                DB::raw("COALESCE(w.type, '-') as warehouse_type"),
                 DB::raw("COALESCE(ws.location, '-') as location"),
                 DB::raw('COALESCE(ws.safety_stock, 0) as safety_stock'),
                 DB::raw('COALESCE(s.stock, 0) as stock'),
@@ -106,7 +83,7 @@ class StockMovementReport
             $query->where('i.sku', $search);
         }
 
-        $allRows = $query->get()->map(function ($row) use ($periodDays) {
+        $allRows = $query->get()->map(function ($row) use ($periodDays, $warehouseLabel) {
             $outboundQty = (int) $row->outbound_qty;
             $averageDaily = $periodDays > 0 ? $outboundQty / $periodDays : 0;
             $stock = (int) $row->stock;
@@ -114,14 +91,11 @@ class StockMovementReport
 
             return [
                 'id' => (int) $row->id,
-                'warehouse_id' => $row->warehouse_id ? (int) $row->warehouse_id : null,
                 'sku' => $row->sku ?: '-',
                 'name' => $row->name ?: '-',
                 'category' => $row->category ?: 'Tanpa Kategori',
-                'warehouse' => $row->warehouse ?: '-',
-                'warehouse_type' => $row->warehouse_type === Warehouse::TYPE_BULK
-                    ? 'Gudang Besar'
-                    : ($row->warehouse_type === Warehouse::TYPE_FULFILLMENT ? 'Gudang Kecil' : '-'),
+                'warehouse' => $warehouseLabel,
+                'warehouse_type' => 'Akumulasi',
                 'location' => $row->location ?: '-',
                 'stock' => $stock,
                 'safety_stock' => $safetyStock,
@@ -146,13 +120,57 @@ class StockMovementReport
         return [
             'all_rows' => $allRows,
             'rows' => $rows,
-            'summary' => self::summary($allRows, $periodDays, $dateFrom, $dateTo),
-            'filtered_summary' => self::summary($rows, $periodDays, $dateFrom, $dateTo),
-            'trend' => $includeTrend ? self::dailyOutboundTrend($rows, $dateFrom, $dateTo, $warehouseId) : [],
+            'summary' => self::summary($allRows, $periodDays, $dateFrom, $dateTo, $warehouseLabel),
+            'filtered_summary' => self::summary($rows, $periodDays, $dateFrom, $dateTo, $warehouseLabel),
+            'trend' => $includeTrend ? self::dailyOutboundTrend($rows, $dateFrom, $dateTo, $warehouseIds) : [],
             'date_from' => $dateFrom,
             'date_to' => $dateTo,
             'period_days' => $periodDays,
         ];
+    }
+
+    private static function warehouseScope(): array
+    {
+        $warehouses = Warehouse::query()
+            ->whereIn('code', [Warehouse::BULK_CODE, Warehouse::DEFAULT_CODE])
+            ->get(['id', 'name', 'code']);
+
+        if ($warehouses->isEmpty()) {
+            $warehouses = Warehouse::query()
+                ->where('is_active', true)
+                ->get(['id', 'name', 'code']);
+        }
+
+        $warehouses = $warehouses
+            ->sortBy(fn (Warehouse $warehouse) => $warehouse->code === Warehouse::BULK_CODE ? 0 : 1)
+            ->values();
+
+        return [
+            $warehouses->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            $warehouses->pluck('name')->implode(' + '),
+        ];
+    }
+
+    private static function eligibleOutboundQuery(array $warehouseIds, Carbon $dateFrom, Carbon $dateTo)
+    {
+        return DB::table('stock_mutations')
+            ->whereIn('warehouse_id', $warehouseIds)
+            ->where('direction', 'out')
+            ->where(function ($query) {
+                $query->where(function ($manual) {
+                    $manual->where('source_type', 'outbound')
+                        ->where('source_subtype', 'manual');
+                })->orWhere(function ($resi) {
+                    $resi->where('source_type', 'qc_resi')
+                        ->whereExists(function ($completed) {
+                            $completed->selectRaw('1')
+                                ->from('qc_scan_resis')
+                                ->whereColumn('qc_scan_resis.id', 'stock_mutations.source_id')
+                                ->where('qc_scan_resis.status', 'completed');
+                        });
+                });
+            })
+            ->whereBetween('occurred_at', [$dateFrom, $dateTo]);
     }
 
     private static function period(array $filters): array
@@ -201,8 +219,12 @@ class StockMovementReport
         });
     }
 
-    private static function dailyOutboundTrend(Collection $rows, Carbon $dateFrom, Carbon $dateTo, ?int $warehouseId): array
-    {
+    private static function dailyOutboundTrend(
+        Collection $rows,
+        Carbon $dateFrom,
+        Carbon $dateTo,
+        array $warehouseIds
+    ): array {
         $dailyTotals = [];
         $cursor = $dateFrom->copy()->startOfDay();
         $lastDate = $dateTo->copy()->startOfDay();
@@ -212,34 +234,20 @@ class StockMovementReport
             $cursor->addDay();
         }
 
-        $allowedPairs = $rows
-            ->filter(fn (array $row) => ! empty($row['warehouse_id']))
-            ->mapWithKeys(fn (array $row) => [self::pairKey((int) $row['id'], (int) $row['warehouse_id']) => true]);
+        $allowedItemIds = $rows->pluck('id')->map(fn ($id) => (int) $id)->unique()->values();
 
-        if ($allowedPairs->isNotEmpty()) {
-            $trendQuery = DB::table('stock_mutations')
-                ->select(['item_id', 'warehouse_id'])
+        if ($allowedItemIds->isNotEmpty()) {
+            $trend = self::eligibleOutboundQuery($warehouseIds, $dateFrom, $dateTo)
+                ->whereIn('item_id', $allowedItemIds->all())
                 ->selectRaw('DATE(occurred_at) as movement_date')
                 ->selectRaw('SUM(qty) as outbound_qty')
-                ->where('direction', 'out')
-                ->whereIn('source_type', ['outbound', 'picker', 'qc', 'qc_resi'])
-                ->where(function ($query) {
-                    $query->whereNull('source_subtype')
-                        ->orWhere('source_subtype', '!=', 'return');
-                })
-                ->whereBetween('occurred_at', [$dateFrom, $dateTo])
-                ->groupBy('item_id', 'warehouse_id', DB::raw('DATE(occurred_at)'));
+                ->groupBy(DB::raw('DATE(occurred_at)'))
+                ->get();
 
-            if ($warehouseId) {
-                $trendQuery->where('warehouse_id', $warehouseId);
-            }
-
-            foreach ($trendQuery->get() as $point) {
-                $pair = self::pairKey((int) $point->item_id, (int) $point->warehouse_id);
+            foreach ($trend as $point) {
                 $date = (string) $point->movement_date;
-
-                if ($allowedPairs->has($pair) && array_key_exists($date, $dailyTotals)) {
-                    $dailyTotals[$date] += (int) $point->outbound_qty;
+                if (array_key_exists($date, $dailyTotals)) {
+                    $dailyTotals[$date] = (int) $point->outbound_qty;
                 }
             }
         }
@@ -253,13 +261,13 @@ class StockMovementReport
             ->all();
     }
 
-    private static function pairKey(int $itemId, int $warehouseId): string
-    {
-        return $itemId.':'.$warehouseId;
-    }
-
-    private static function summary(Collection $rows, int $periodDays, Carbon $dateFrom, Carbon $dateTo): array
-    {
+    private static function summary(
+        Collection $rows,
+        int $periodDays,
+        Carbon $dateFrom,
+        Carbon $dateTo,
+        string $warehouseLabel
+    ): array {
         return [
             'total_sku' => $rows->count(),
             'fast_sku' => $rows->where('movement_key', 'fast')->count(),
@@ -276,6 +284,8 @@ class StockMovementReport
             'period_days' => $periodDays,
             'date_from' => $dateFrom->toDateString(),
             'date_to' => $dateTo->toDateString(),
+            'warehouse' => $warehouseLabel,
+            'outbound_source' => 'Outbound manual + import resi selesai',
         ];
     }
 
