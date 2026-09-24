@@ -15,6 +15,9 @@
     .stock-meter > span { display: block; height: 100%; border-radius: 10px; }
     .filter-box label { font-size: .75rem; color: #7e8299; margin-bottom: .3rem; }
     .action-row { border-bottom: 1px dashed #e4e6ef; padding: .8rem 0; }
+    .forecast-tooltip { cursor: help; }
+    .forecast-info-icon { color: #a1a5b7; cursor: help; margin-left: .25rem; text-transform: none; }
+    .forecast-tooltip-popover .tooltip-inner { max-width: 360px; text-align: left; line-height: 1.45; }
 </style>
 @endpush
 
@@ -290,42 +293,42 @@
 
     <div class="row g-4 mb-6">
         <div class="col-xl-2 col-md-4 col-6">
-            <div class="planning-kpi p-5">
+            <div class="planning-kpi p-5 forecast-tooltip" data-bs-toggle="tooltip" title="Jumlah SKU yang memiliki forecast kebutuhan harian lebih dari nol.">
                 <div class="label">SKU Berdemand</div>
                 <div class="value text-primary" id="forecast_kpi_demand">0</div>
                 <div class="hint">Memiliki forecast harian</div>
             </div>
         </div>
         <div class="col-xl-2 col-md-4 col-6">
-            <div class="planning-kpi p-5">
+            <div class="planning-kpi p-5 forecast-tooltip" data-bs-toggle="tooltip" title="Jumlah item bersumber Import yang days cover-nya sudah sama dengan atau di bawah lead time Import.">
                 <div class="label">Import Sekarang</div>
                 <div class="value text-danger" id="forecast_kpi_import_now">0</div>
                 <div class="hint">Cover ≤ lead time import</div>
             </div>
         </div>
         <div class="col-xl-2 col-md-4 col-6">
-            <div class="planning-kpi p-5">
+            <div class="planning-kpi p-5 forecast-tooltip" data-bs-toggle="tooltip" title="Jumlah item Nanggewer yang days cover-nya sudah sama dengan atau di bawah lead time Produksi.">
                 <div class="label">Produksi Sekarang</div>
                 <div class="value text-warning" id="forecast_kpi_production_now">0</div>
                 <div class="hint">Cover ≤ lead time produksi</div>
             </div>
         </div>
         <div class="col-xl-2 col-md-4 col-6">
-            <div class="planning-kpi p-5">
+            <div class="planning-kpi p-5 forecast-tooltip" data-bs-toggle="tooltip" title="Total rekomendasi seluruh item Import, dibulatkan mengikuti isi kemasan item.">
                 <div class="label">Qty Rekom. Import</div>
                 <div class="value text-info" id="forecast_kpi_import_qty">0</div>
                 <div class="hint">Dibulatkan ke kemasan</div>
             </div>
         </div>
         <div class="col-xl-2 col-md-4 col-6">
-            <div class="planning-kpi p-5">
+            <div class="planning-kpi p-5 forecast-tooltip" data-bs-toggle="tooltip" title="Total rekomendasi item Nanggewer dalam satuan dasar tanpa pembulatan kemasan Import.">
                 <div class="label">Qty Rekom. Produksi</div>
                 <div class="value text-success" id="forecast_kpi_production_qty">0</div>
                 <div class="hint">Dalam satuan dasar</div>
             </div>
         </div>
         <div class="col-xl-2 col-md-4 col-6">
-            <div class="planning-kpi p-5">
+            <div class="planning-kpi p-5 forecast-tooltip" data-bs-toggle="tooltip" title="Jumlah SKU tanpa outbound valid pada periode histori sehingga forecast hariannya nol.">
                 <div class="label">Tanpa Demand</div>
                 <div class="value text-muted" id="forecast_kpi_no_demand">0</div>
                 <div class="hint">Tidak ada outbound valid</div>
@@ -345,15 +348,15 @@
                 <table class="table align-middle table-row-dashed fs-7 gy-4" id="stock_forecast_table">
                     <thead>
                         <tr class="text-muted text-uppercase">
-                            <th>SKU / Item</th>
-                            <th class="text-end">Posisi Stok</th>
-                            <th class="text-end">Histori Out</th>
-                            <th class="text-end">Forecast/Hari</th>
-                            <th>Trend</th>
-                            <th>Days Cover</th>
-                            <th>Sumber Pengadaan</th>
-                            <th>Rekomendasi Sesuai Sumber</th>
-                            <th>Kualitas Data</th>
+                            <th>SKU / Item <i class="fa-solid fa-circle-info forecast-info-icon" data-bs-toggle="tooltip" title="Identitas item dan kategori dari master item."></i></th>
+                            <th class="text-end">Posisi Stok <i class="fa-solid fa-circle-info forecast-info-icon" data-bs-toggle="tooltip" title="Stok tersedia saat ini ditambah transfer masuk yang berstatus shipped."></i></th>
+                            <th class="text-end">Histori Out <i class="fa-solid fa-circle-info forecast-info-icon" data-bs-toggle="tooltip" title="Akumulasi outbound manual dan import resi yang selesai diproses dalam periode histori."></i></th>
+                            <th class="text-end">Forecast/Hari <i class="fa-solid fa-circle-info forecast-info-icon" data-bs-toggle="tooltip" title="Weighted moving average: 50% periode terbaru, 30% periode sebelumnya, dan 20% periode lebih lama."></i></th>
+                            <th>Trend <i class="fa-solid fa-circle-info forecast-info-icon" data-bs-toggle="tooltip" title="Perbandingan laju outbound 30 hari terbaru dengan periode 30 hari sebelumnya."></i></th>
+                            <th>Days Cover <i class="fa-solid fa-circle-info forecast-info-icon" data-bs-toggle="tooltip" title="Posisi stok dibagi forecast kebutuhan per hari."></i></th>
+                            <th>Sumber Pengadaan <i class="fa-solid fa-circle-info forecast-info-icon" data-bs-toggle="tooltip" title="Menentukan apakah rekomendasi menggunakan lead time Nanggewer (Produksi) atau Import."></i></th>
+                            <th>Rekomendasi Sesuai Sumber <i class="fa-solid fa-circle-info forecast-info-icon" data-bs-toggle="tooltip" title="Target kebutuhan selama lead time dan siklus review, dikurangi posisi stok. Tidak menggunakan safety stock."></i></th>
+                            <th>Kualitas Data <i class="fa-solid fa-circle-info forecast-info-icon" data-bs-toggle="tooltip" title="Dinilai dari jumlah hari yang memiliki outbound dalam periode histori."></i></th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -383,6 +386,21 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     const number = value => Number(value || 0).toLocaleString('id-ID', {maximumFractionDigits: 2});
     const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+    const forecastTooltip = (content, title, classes = '') =>
+        `<div class="forecast-tooltip d-inline-block ${classes}" data-bs-toggle="tooltip" data-bs-placement="top" title="${escapeHtml(title)}">${content}</div>`;
+    const initForecastTooltips = (root = document) => {
+        if (typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
+        root.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+            if (!bootstrap.Tooltip.getInstance(el)) {
+                new bootstrap.Tooltip(el, {
+                    container: 'body',
+                    trigger: 'hover focus',
+                    boundary: 'window',
+                    customClass: 'forecast-tooltip-popover',
+                });
+            }
+        });
+    };
     const statusMap = {
         critical: ['Kritis / Habis', 'danger'],
         reorder: ['Perlu Pengadaan', 'warning'],
@@ -554,11 +572,24 @@ document.addEventListener('DOMContentLoaded', () => {
         new: ['Demand Baru', 'warning', 'fa-star'],
         insufficient: ['Data Terbatas', 'secondary', 'fa-minus'],
     };
+    const trendHelp = {
+        growing: 'Laju outbound 30 hari terbaru meningkat lebih dari 20% dibanding periode sebelumnya.',
+        declining: 'Laju outbound 30 hari terbaru turun lebih dari 20% dibanding periode sebelumnya.',
+        stable: 'Perubahan laju outbound berada di antara -20% dan +20%.',
+        new: 'Ada outbound pada 30 hari terbaru, tetapi periode sebelumnya belum memiliki outbound.',
+        insufficient: 'Periode pembanding belum cukup untuk menghitung perubahan trend.',
+    };
     const qualityStatus = {
         high: ['Baik', 'success'],
         medium: ['Cukup', 'warning'],
         low: ['Rendah', 'danger'],
         none: ['Tidak Ada', 'secondary'],
+    };
+    const qualityHelp = {
+        high: 'Data baik: outbound tercatat pada sedikitnya 20 hari aktif.',
+        medium: 'Data cukup: outbound tercatat pada 7–19 hari aktif.',
+        low: 'Data rendah: outbound tercatat kurang dari 7 hari aktif.',
+        none: 'Tidak ada demand yang dapat digunakan pada periode histori.',
     };
 
     function forecastRequest(params) {
@@ -587,14 +618,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderTrend(row) {
         const [label, color, icon] = trendStatus[row.trend] || trendStatus.insufficient;
         const percent = row.trend_percent === null ? '' : ` ${Number(row.trend_percent) > 0 ? '+' : ''}${number(row.trend_percent)}%`;
-        return `<span class="badge badge-light-${color}"><i class="fa-solid ${icon} me-1"></i>${label}${percent}</span>
+        const content = `<span class="badge badge-light-${color}"><i class="fa-solid ${icon} me-1"></i>${label}${percent}</span>
             <div class="text-muted fs-8 mt-1">30h: ${number(row.recent_daily)} · prev: ${number(row.previous_daily)}</div>`;
+        return forecastTooltip(content, `${trendHelp[row.trend] || trendHelp.insufficient} Laju terbaru ${number(row.recent_daily)}/hari; sebelumnya ${number(row.previous_daily)}/hari.`);
     }
 
     function renderScenario(scenario, row, source) {
         const [label, color] = forecastStatus[scenario.status] || forecastStatus.no_demand;
         if (scenario.status === 'no_demand') {
-            return `<span class="badge badge-light-secondary">${label}</span>`;
+            return forecastTooltip(`<span class="badge badge-light-secondary">${label}</span>`, 'Tidak ada outbound valid pada periode histori, sehingga kebutuhan belum dapat diproyeksikan.');
         }
 
         const timing = scenario.status === 'order_now'
@@ -604,13 +636,18 @@ document.addEventListener('DOMContentLoaded', () => {
             ? `<div class="text-muted fs-8">${number(scenario.recommended_packages)} ${escapeHtml(row.package_unit || 'kemasan')}</div>`
             : '';
 
-        return `<div style="min-width:145px">
+        const content = `<div style="min-width:145px">
             <span class="badge badge-light-${color}">${label}</span>
             <div class="fw-bolder mt-2">${number(scenario.recommended_qty)} ${escapeHtml(row.base_unit)}</div>
             ${packages}
             <div class="text-muted fs-8">${timing} · LT ${number(scenario.lead_days)}h</div>
             <div class="text-muted fs-8">Demand LT ${number(scenario.lead_demand)}</div>
         </div>`;
+        const rounding = source === 'import' && scenario.recommended_packages
+            ? ` Rekomendasi Import dibulatkan menjadi ${number(scenario.recommended_packages)} ${row.package_unit || 'kemasan'}.`
+            : '';
+        const detail = `Target ${number(scenario.target_qty)} ${row.base_unit} untuk ${number(scenario.target_days)} hari (LT ${number(scenario.lead_days)} + review), dikurangi posisi stok ${number(row.stock_position)}. Demand selama LT ${number(scenario.lead_demand)}.${rounding}`;
+        return forecastTooltip(content, detail);
     }
 
     const forecastDt = $('#stock_forecast_table').DataTable({
@@ -629,22 +666,25 @@ document.addEventListener('DOMContentLoaded', () => {
             error: xhr => window.AppSwal?.error(Object.values(xhr.responseJSON?.errors || {}).flat().join('\n') || 'Gagal menghitung forecast stok.'),
         },
         columns: [
-            {data: null, render: row => `<div class="fw-bold">${escapeHtml(row.sku)}</div><div>${escapeHtml(row.name)}</div><div class="text-muted">${escapeHtml(row.category)}</div>`},
-            {data: 'stock_position', className: 'text-end', render: (value, type, row) => `<strong>${number(value)}</strong><div class="text-muted fs-8">stok ${number(row.current_stock)} + masuk ${number(row.incoming_stock)}</div>`},
-            {data: 'history_qty', className: 'text-end', render: (value, type, row) => `${number(value)}<div class="text-muted fs-8">${number(row.active_days)} hari aktif</div>`},
-            {data: 'forecast_daily', className: 'text-end', render: (value, type, row) => `<strong>${number(value)}</strong><div class="text-muted fs-8">≈ ${number(row.forecast_monthly)}/30 hari</div>`},
+            {data: null, render: row => forecastTooltip(`<div class="fw-bold">${escapeHtml(row.sku)}</div><div>${escapeHtml(row.name)}</div><div class="text-muted">${escapeHtml(row.category)}</div>`, `SKU ${row.sku}; ${row.name}; kategori ${row.category}.`)},
+            {data: 'stock_position', className: 'text-end', render: (value, type, row) => forecastTooltip(`<strong>${number(value)}</strong><div class="text-muted fs-8">stok ${number(row.current_stock)} + masuk ${number(row.incoming_stock)}</div>`, `Posisi stok ${number(value)} = stok saat ini ${number(row.current_stock)} + transfer masuk shipped ${number(row.incoming_stock)}.`)},
+            {data: 'history_qty', className: 'text-end', render: (value, type, row) => forecastTooltip(`${number(value)}<div class="text-muted fs-8">${number(row.active_days)} hari aktif</div>`, `Total outbound valid ${number(value)} selama ${number(row.history_days)} hari histori; transaksi keluar tercatat pada ${number(row.active_days)} hari.`)},
+            {data: 'forecast_daily', className: 'text-end', render: (value, type, row) => forecastTooltip(`<strong>${number(value)}</strong><div class="text-muted fs-8">≈ ${number(row.forecast_monthly)}/30 hari</div>`, `Forecast ${number(value)}/hari dari weighted moving average. Laju 30 hari terbaru ${number(row.recent_daily)}/hari dan periode sebelumnya ${number(row.previous_daily)}/hari.`)},
             {data: null, render: renderTrend},
-            {data: 'days_cover', render: value => value === null ? '<span class="text-muted">Tidak terukur</span>' : `<strong>${number(value)} hari</strong>`},
+            {data: 'days_cover', render: (value, type, row) => value === null ? forecastTooltip('<span class="text-muted">Tidak terukur</span>', 'Days cover tidak dapat dihitung karena forecast harian nol.') : forecastTooltip(`<strong>${number(value)} hari</strong>`, `Days cover ${number(value)} = posisi stok ${number(row.stock_position)} dibagi forecast ${number(row.forecast_daily)}/hari.`)},
             {data: 'procurement_source', render: (value, type, row) => {
                 const color = value === 'import' ? 'info' : 'success';
-                return `<span class="badge badge-light-${color}">${escapeHtml(row.procurement_source_label)}</span>`;
+                return forecastTooltip(`<span class="badge badge-light-${color}">${escapeHtml(row.procurement_source_label)}</span>`, `Sumber ${row.procurement_source_label} menggunakan lead time ${number(row.recommendation?.lead_days)} hari sesuai filter forecast.`);
             }},
             {data: 'recommendation', render: (value, type, row) => renderScenario(value, row, row.procurement_source)},
-            {data: 'data_quality', render: value => {
+            {data: 'data_quality', render: (value, type, row) => {
                 const [label, color] = qualityStatus[value] || qualityStatus.none;
-                return `<span class="badge badge-light-${color}">${label}</span>`;
+                return forecastTooltip(`<span class="badge badge-light-${color}">${label}</span>`, `${qualityHelp[value] || qualityHelp.none} Item ini memiliki ${number(row.active_days)} hari outbound aktif dari ${number(row.history_days)} hari histori.`);
             }},
         ],
+        drawCallback: () => {
+            initForecastTooltips(document.getElementById('stock_planning_forecast'));
+        },
         language: {processing: 'Menghitung forecast demand...', emptyTable: 'Tidak ada item sesuai filter forecast.'},
     });
 
