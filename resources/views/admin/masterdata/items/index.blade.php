@@ -76,6 +76,15 @@
                             <option value="0">Nonaktif</option>
                         </select>
                     </div>
+                    <div class="mb-7">
+                        <label class="form-label fs-6 fw-bold">Sumber Pengadaan</label>
+                        <select id="filter_item_procurement_source" class="form-select form-select-solid fw-bolder">
+                            <option value="">Semua Sumber</option>
+                            @foreach($procurementSources as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                     <div class="d-flex justify-content-end">
                         <button type="button" class="btn btn-light btn-active-light-primary me-2" id="filter_items_reset">Reset</button>
                         <button type="button" class="btn btn-primary" id="filter_items_apply">Terapkan</button>
@@ -147,6 +156,16 @@
                             @endforeach
                         </select>
                         <div class="invalid-feedback" id="error_category_id"></div>
+                    </div>
+                    <div class="fv-row mb-7">
+                        <label class="required fs-6 fw-bold form-label mb-2">Sumber Pengadaan</label>
+                        <select name="procurement_source" id="item_procurement_source" class="form-select form-select-solid" required>
+                            @foreach($procurementSources as $value => $label)
+                                <option value="{{ $value }}" @selected($value === \App\Models\Item::PROCUREMENT_NANGGEWER)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        <div class="form-text">Menentukan lead time yang digunakan pada Analisa Forecast.</div>
+                        <div class="invalid-feedback" id="error_procurement_source"></div>
                     </div>
                     <div class="fv-row mb-7">
                         <label class="fs-6 fw-bold form-label mb-2">Deskripsi</label>
@@ -248,6 +267,7 @@
                         <li><strong>name</strong> (wajib)</li>
                         <li><strong>parent_category</strong> (opsional, parent kategori; akan dibuat jika belum ada)</li>
                         <li><strong>category</strong> (opsional, anak kategori; jika kosong akan dimasukkan ke kategori default "Tanpa Kategori")</li>
+                        <li><strong>procurement_source</strong> (opsional; <code>nanggewer</code>/<code>produksi</code> atau <code>import</code>; default <code>nanggewer</code>)</li>
                         <li><strong>base_unit</strong> (opsional, default <code>PCS</code>; dapat diisi <code>SET</code>)</li>
                         <li><strong>package_unit</strong> (opsional, contoh <code>KOLI</code>, <code>DUS</code>, atau <code>BOX</code>)</li>
                         <li><strong>package_conversion_qty</strong> (wajib jika package_unit atau stok Gudang Besar diisi; minimal <code>1</code>, contoh <code>24</code> berarti 1 KOLI = 24 PCS)</li>
@@ -258,7 +278,7 @@
                         <li><strong>description</strong> (opsional)</li>
                     </ul>
                     <p class="text-muted small mb-1">Contoh header baru:</p>
-                    <code class="d-block text-wrap">sku,name,parent_category,category,base_unit,package_unit,package_conversion_qty,small_warehouse_stock,large_warehouse_stock,small_warehouse_safety_stock,small_warehouse_location,large_warehouse_safety_stock,large_warehouse_location,description</code>
+                    <code class="d-block text-wrap">sku,name,parent_category,category,procurement_source,base_unit,package_unit,package_conversion_qty,small_warehouse_stock,large_warehouse_stock,small_warehouse_safety_stock,small_warehouse_location,large_warehouse_safety_stock,large_warehouse_location,description</code>
                     <p class="text-muted small mt-3 mb-1">Contoh nilai: <code>SKU-001 | Produk A | PCS | KOLI | 24 | 100 | 10</code> berarti Gudang Kecil 100 PCS dan Gudang Besar 10 KOLI = 240 PCS.</p>
                     <p class="text-muted small mb-1">Gunakan format Excel (.xlsx/.xls) dengan header di baris pertama.</p>
                     <p class="text-muted small mb-0">Jika kolom category dikosongkan, item otomatis dimasukkan ke kategori "Tanpa Kategori".</p>
@@ -302,12 +322,14 @@
         const limitSelect    = document.getElementById('filter_items_limit');
         const categoryFilter = document.getElementById('filter_item_category');
         const statusFilter   = document.getElementById('filter_item_status');
+        const procurementFilter = document.getElementById('filter_item_procurement_source');
         const form           = document.getElementById('item_form');
         const modalEl        = document.getElementById('modal_item_form');
         const modal          = modalEl ? new bootstrap.Modal(modalEl) : null;
         const formSku        = document.getElementById('item_sku');
         const formName       = document.getElementById('item_name');
         const formCategory   = document.getElementById('item_category_id');
+        const formProcurementSource = document.getElementById('item_procurement_source');
         const formId         = document.getElementById('item_id');
         const formDescription = document.getElementById('item_description');
         const formBaseUnit    = document.getElementById('item_base_unit_name');
@@ -429,7 +451,7 @@
         formBaseUom?.addEventListener('change', syncUomNames);
         formPackageUom?.addEventListener('change', syncUomNames);
 
-        const errorIds = ['error_sku','error_name','error_category_id','error_address','error_description','error_safety_stock','error_is_bundle','error_components'];
+        const errorIds = ['error_sku','error_name','error_category_id','error_procurement_source','error_address','error_description','error_safety_stock','error_is_bundle','error_components'];
         const clearErrors = () => {
             errorIds.forEach(id => {
                 const el = document.getElementById(id);
@@ -577,6 +599,8 @@
         if (typeof $ !== 'undefined' && $.fn.select2) {
             $(categoryFilter).select2({ placeholder: 'Semua', allowClear: true, width: '100%' })
                 .on('select2:opening select2:closing select2:close', e => e.stopPropagation());
+            $(procurementFilter).select2({ placeholder: 'Semua Sumber', allowClear: true, width: '100%' })
+                .on('select2:opening select2:closing select2:close', e => e.stopPropagation());
             $(statusFilter).select2({ placeholder: 'Semua Status', allowClear: true, width: '100%' })
                 .on('select2:opening select2:closing select2:close', e => e.stopPropagation());
             $(formCategory).select2({ placeholder: 'Pilih kategori', allowClear: true, width: '100%' });
@@ -597,6 +621,7 @@
                     params.q = searchInput?.value || '';
                     params.category_id = categoryFilter?.value || '';
                     params.is_active = statusFilter?.value ?? '';
+                    params.procurement_source = procurementFilter?.value || '';
                 },
             },
             columns: [
@@ -608,6 +633,9 @@
                             <div class="item-name fw-bolder">${escapeHtml(value)}</div>
                             <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
                                 <span class="badge badge-light-dark">${escapeHtml(row.sku)}</span>
+                                <span class="badge ${row.procurement_source === 'import' ? 'badge-light-info' : 'badge-light-success'}">
+                                    ${escapeHtml(row.procurement_source_label || 'Nanggewer (Produksi)')}
+                                </span>
                                 <span class="badge ${row.is_bundle ? 'badge-light-primary' : 'badge-light-secondary'}">
                                     ${row.is_bundle ? 'Bundle / Set' : 'Item Reguler'}
                                 </span>
@@ -673,6 +701,7 @@
         applyBtn?.addEventListener('click', reloadTable);
         categoryFilter?.addEventListener('change', reloadTable);
         statusFilter?.addEventListener('change', reloadTable);
+        procurementFilter?.addEventListener('change', reloadTable);
         limitSelect?.addEventListener('change', () => {
             dt.page.len(Number(limitSelect.value || 10)).draw();
         });
@@ -685,6 +714,10 @@
                 statusFilter.value = '';
                 typeof $ !== 'undefined' && $(statusFilter).data('select2') && $(statusFilter).val('').trigger('change.select2');
             }
+            if (procurementFilter) {
+                procurementFilter.value = '';
+                typeof $ !== 'undefined' && $(procurementFilter).data('select2') && $(procurementFilter).val('').trigger('change.select2');
+            }
             if (limitSelect) { limitSelect.value = '10'; dt.page.len(10).draw(); }
             reloadTable();
         });
@@ -695,6 +728,7 @@
             if (!form) return;
             form.reset();
             formId.value = '';
+            if (formProcurementSource) formProcurementSource.value = 'nanggewer';
             document.querySelectorAll('.warehouse-location').forEach(el => el.value = '');
             document.querySelectorAll('.warehouse-safety').forEach(el => el.value = 0);
             formBaseUnit && (formBaseUnit.value = 'PCS');
@@ -728,6 +762,7 @@
 
                 form.reset();
                 formId.value = id;
+                formProcurementSource && (formProcurementSource.value = json.procurement_source || 'nanggewer');
                 formSku && (formSku.value = json.sku || '');
                 formName && (formName.value = json.name || '');
                 formDescription && (formDescription.value = json.description || '');

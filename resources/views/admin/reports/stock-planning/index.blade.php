@@ -213,7 +213,7 @@
             <div class="text-gray-700 fs-7">
                 Forecast memakai weighted moving average: 50% laju 30 hari terbaru, 30% periode sebelumnya, dan 20% sisa histori.
                 Posisi stok mencakup stok saat ini dan transfer berstatus shipped. Target pengadaan = forecast harian × (lead time + siklus review).
-                Karena master item belum menyimpan sumber pengadaan per SKU, skenario Import dan Produksi ditampilkan berdampingan agar dapat dipilih sesuai jalur pengadaan item.
+                Lead time dipilih otomatis dari sumber pengadaan pada master item: Nanggewer (Produksi) atau Import.
             </div>
         </div>
     </div>
@@ -254,6 +254,14 @@
                         <option value="import_now">Import Sekarang</option>
                         <option value="production_now">Produksi Sekarang</option>
                         <option value="no_demand">Tanpa Demand</option>
+                    </select>
+                </div>
+                <div class="col-xl-2 col-md-3">
+                    <label>Sumber Pengadaan</label>
+                    <select id="forecast_procurement_source" class="form-select form-select-solid">
+                        <option value="">Semua Sumber</option>
+                        <option value="nanggewer">Nanggewer (Produksi)</option>
+                        <option value="import">Import</option>
                     </select>
                 </div>
                 <div class="col-xl-2 col-md-3">
@@ -343,8 +351,8 @@
                             <th class="text-end">Forecast/Hari</th>
                             <th>Trend</th>
                             <th>Days Cover</th>
-                            <th>Skenario Import</th>
-                            <th>Skenario Produksi</th>
+                            <th>Sumber Pengadaan</th>
+                            <th>Rekomendasi Sesuai Sumber</th>
                             <th>Kualitas Data</th>
                         </tr>
                     </thead>
@@ -522,12 +530,13 @@ document.addEventListener('DOMContentLoaded', () => {
         productionLead: document.getElementById('forecast_production_lead'),
         reviewDays: document.getElementById('forecast_review_days'),
         action: document.getElementById('forecast_action'),
+        procurementSource: document.getElementById('forecast_procurement_source'),
         category: document.getElementById('forecast_category'),
         search: document.getElementById('forecast_search'),
     };
 
     if ($.fn.select2) {
-        [forecastFilters.warehouse, forecastFilters.action, forecastFilters.category].forEach(el => {
+        [forecastFilters.warehouse, forecastFilters.action, forecastFilters.procurementSource, forecastFilters.category].forEach(el => {
             $(el).select2({width: '100%', allowClear: el !== forecastFilters.warehouse});
         });
     }
@@ -559,6 +568,7 @@ document.addEventListener('DOMContentLoaded', () => {
         params.production_lead_days = forecastFilters.productionLead.value;
         params.review_days = forecastFilters.reviewDays.value;
         params.action = forecastFilters.action.value;
+        params.procurement_source = forecastFilters.procurementSource.value;
         params.category_id = forecastFilters.category.value;
         params.q = forecastFilters.search.value;
     }
@@ -625,8 +635,11 @@ document.addEventListener('DOMContentLoaded', () => {
             {data: 'forecast_daily', className: 'text-end', render: (value, type, row) => `<strong>${number(value)}</strong><div class="text-muted fs-8">≈ ${number(row.forecast_monthly)}/30 hari</div>`},
             {data: null, render: renderTrend},
             {data: 'days_cover', render: value => value === null ? '<span class="text-muted">Tidak terukur</span>' : `<strong>${number(value)} hari</strong>`},
-            {data: 'import', render: (value, type, row) => renderScenario(value, row, 'import')},
-            {data: 'production', render: (value, type, row) => renderScenario(value, row, 'production')},
+            {data: 'procurement_source', render: (value, type, row) => {
+                const color = value === 'import' ? 'info' : 'success';
+                return `<span class="badge badge-light-${color}">${escapeHtml(row.procurement_source_label)}</span>`;
+            }},
+            {data: 'recommendation', render: (value, type, row) => renderScenario(value, row, row.procurement_source)},
             {data: 'data_quality', render: value => {
                 const [label, color] = qualityStatus[value] || qualityStatus.none;
                 return `<span class="badge badge-light-${color}">${label}</span>`;
@@ -646,9 +659,10 @@ document.addEventListener('DOMContentLoaded', () => {
         forecastFilters.productionLead.value = 14;
         forecastFilters.reviewDays.value = 30;
         forecastFilters.action.value = '';
+        forecastFilters.procurementSource.value = '';
         forecastFilters.category.value = '';
         forecastFilters.search.value = '';
-        [forecastFilters.warehouse, forecastFilters.action, forecastFilters.category].forEach(el => {
+        [forecastFilters.warehouse, forecastFilters.action, forecastFilters.procurementSource, forecastFilters.category].forEach(el => {
             if ($(el).data('select2')) $(el).val('').trigger('change.select2');
         });
         forecastDt.ajax.reload();

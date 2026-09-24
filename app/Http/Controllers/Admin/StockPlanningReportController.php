@@ -262,6 +262,7 @@ class StockPlanningReportController extends Controller
             'production_lead_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'review_days' => ['nullable', 'integer', 'min:1', 'max:180'],
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'procurement_source' => ['nullable', 'in:nanggewer,import'],
             'action' => ['nullable', 'in:import_now,production_now,any_action,no_demand'],
             'q' => ['nullable', 'string', 'max:200'],
         ]);
@@ -286,6 +287,7 @@ class StockPlanningReportController extends Controller
                 'weights' => ['recent' => 50, 'previous' => 30, 'older' => 20],
                 'stock_position' => 'Stok saat ini + transfer masuk berstatus shipped',
                 'target' => 'Forecast harian × (lead time + siklus review)',
+                'lead_time_selection' => 'Sesuai sumber pengadaan pada master item',
                 'uses_safety_stock' => false,
             ],
             'data' => $paged,

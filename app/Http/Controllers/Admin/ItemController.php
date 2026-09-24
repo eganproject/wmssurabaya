@@ -31,7 +31,8 @@ class ItemController extends Controller
         $categories = Category::orderBy('name')->get(['id', 'name']);
         $warehouses = Warehouse::where('is_active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']);
         $uoms = Uom::where('is_active', true)->orderBy('code')->get(['id', 'code', 'name']);
-        return view('admin.masterdata.items.index', compact('categories', 'warehouses', 'uoms'));
+        $procurementSources = Item::procurementSources();
+        return view('admin.masterdata.items.index', compact('categories', 'warehouses', 'uoms', 'procurementSources'));
     }
 
     public function show(Item $item)
@@ -44,6 +45,8 @@ class ItemController extends Controller
             'sku' => $item->sku,
             'name' => $item->name,
             'category_id' => $item->category_id,
+            'procurement_source' => $item->procurement_source,
+            'procurement_source_label' => $item->procurement_source_label,
             'description' => $item->description ?? '',
             'is_active' => (bool) $item->is_active,
             'warehouse_settings' => $item->warehouseSettings->map(fn ($setting) => [
@@ -100,6 +103,10 @@ class ItemController extends Controller
         if (in_array((string) $statusFilter, ['0', '1'], true)) {
             $query->where('is_active', (int) $statusFilter === 1);
         }
+        $procurementSource = $request->input('procurement_source');
+        if (array_key_exists((string) $procurementSource, Item::procurementSources())) {
+            $query->where('procurement_source', $procurementSource);
+        }
 
         $recordsTotal = Item::count();
         $recordsFiltered = (clone $query)->count();
@@ -117,6 +124,8 @@ class ItemController extends Controller
                 'name' => $i->name,
                 'category' => $i->category?->name ?? '-',
                 'category_id' => $i->category_id,
+                'procurement_source' => $i->procurement_source,
+                'procurement_source_label' => $i->procurement_source_label,
                 'default_location' => $i->warehouseSettings->first()?->location ?? '',
                 'description' => $i->description ?? '',
                 'default_safety_stock' => (int) ($i->warehouseSettings->first()?->safety_stock ?? 0),
@@ -145,6 +154,7 @@ class ItemController extends Controller
                     $fail('Kategori tidak valid.');
                 }
             }],
+            'procurement_source' => ['nullable', 'string', Rule::in(array_keys(Item::procurementSources()))],
             'description' => ['nullable', 'string'],
             'is_bundle' => ['nullable', 'boolean'],
             'components' => ['nullable', 'array'],
@@ -172,6 +182,7 @@ class ItemController extends Controller
 
         $catId = $request->input('category_id');
         $validated['category_id'] = ($catId === null || (int)$catId === 0) ? null : (int) $catId;
+        $validated['procurement_source'] = $validated['procurement_source'] ?? Item::PROCUREMENT_NANGGEWER;
         $validated['is_bundle'] = $isBundle;
         $validated['is_active'] = true;
         $warehouseSettings = $validated['warehouse_settings'] ?? [];
@@ -199,6 +210,7 @@ class ItemController extends Controller
                     'sku' => $item->sku,
                     'name' => $item->name,
                     'category_id' => $item->category_id,
+                    'procurement_source' => $item->procurement_source,
                     'is_bundle' => $item->is_bundle,
                     'is_active' => $item->is_active,
                 ]
@@ -225,6 +237,7 @@ class ItemController extends Controller
                     $fail('Kategori tidak valid.');
                 }
             }],
+            'procurement_source' => ['nullable', 'string', Rule::in(array_keys(Item::procurementSources()))],
             'description' => ['nullable', 'string'],
             'is_bundle' => ['nullable', 'boolean'],
             'components' => ['nullable', 'array'],
@@ -257,6 +270,7 @@ class ItemController extends Controller
 
         $catId = $request->input('category_id');
         $validated['category_id'] = ($catId === null || (int)$catId === 0) ? null : (int) $catId;
+        $validated['procurement_source'] = $validated['procurement_source'] ?? $item->procurement_source ?? Item::PROCUREMENT_NANGGEWER;
         $validated['is_bundle'] = $isBundle;
         $warehouseSettings = $validated['warehouse_settings'] ?? [];
         $unitPayload = $this->unitPayload($validated);
@@ -287,6 +301,7 @@ class ItemController extends Controller
                     'sku' => $item->sku,
                     'name' => $item->name,
                     'category_id' => $item->category_id,
+                    'procurement_source' => $item->procurement_source,
                     'is_bundle' => $item->is_bundle,
                     'is_active' => $item->is_active,
                 ]

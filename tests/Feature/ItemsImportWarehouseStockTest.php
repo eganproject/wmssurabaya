@@ -30,13 +30,14 @@ class ItemsImportWarehouseStockTest extends TestCase
             [
                 'sku',
                 'name',
+                'procurement_source',
                 'base_unit',
                 'package_unit',
                 'package_conversion_qty',
                 'small_warehouse_stock',
                 'large_warehouse_stock',
             ],
-            ['IMP-001', 'Produk Import', 'PCS', 'KOLI', 24, 100, 10],
+            ['IMP-001', 'Produk Import', 'import', 'PCS', 'KOLI', 24, 100, 10],
         ]);
         (new Xlsx($spreadsheet))->save($path);
 
@@ -65,6 +66,7 @@ class ItemsImportWarehouseStockTest extends TestCase
         $this->assertSame(24, $package->conversion_qty);
         $this->assertSame(100, (int) ItemStock::where('warehouse_id', $small->id)->where('item_id', $item->id)->value('stock'));
         $this->assertSame(240, (int) ItemStock::where('warehouse_id', $large->id)->where('item_id', $item->id)->value('stock'));
+        $this->assertSame(Item::PROCUREMENT_IMPORT, $item->procurement_source);
         $this->assertSame(2, InboundTransaction::where('type', 'opening')->count());
 
         $largeMutation = StockMutation::where('warehouse_id', $large->id)
@@ -116,6 +118,7 @@ class ItemsImportWarehouseStockTest extends TestCase
             'sku' => 'IMP-KEEP',
             'name' => 'Nama Lama',
             'category_id' => null,
+            'procurement_source' => Item::PROCUREMENT_IMPORT,
             'description' => 'Deskripsi lama',
         ]);
         ItemUnit::create([
@@ -134,6 +137,7 @@ class ItemsImportWarehouseStockTest extends TestCase
         $item->refresh();
         $this->assertSame('Nama Baru', $item->name);
         $this->assertSame('Deskripsi lama', $item->description);
+        $this->assertSame(Item::PROCUREMENT_IMPORT, $item->procurement_source);
         $this->assertSame('SET', ItemUnit::where('item_id', $item->id)->where('is_base', true)->value('name'));
     }
 

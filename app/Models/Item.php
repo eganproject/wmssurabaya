@@ -10,10 +10,15 @@ class Item extends Model
 {
     use HasFactory;
 
+    public const PROCUREMENT_NANGGEWER = 'nanggewer';
+
+    public const PROCUREMENT_IMPORT = 'import';
+
     protected $fillable = [
         'sku',
         'name',
         'category_id',
+        'procurement_source',
         'description',
         'is_bundle',
         'is_active',
@@ -23,6 +28,20 @@ class Item extends Model
         'is_bundle' => 'boolean',
         'is_active' => 'boolean',
     ];
+
+    public static function procurementSources(): array
+    {
+        return [
+            self::PROCUREMENT_NANGGEWER => 'Nanggewer (Produksi)',
+            self::PROCUREMENT_IMPORT => 'Import',
+        ];
+    }
+
+    public function getProcurementSourceLabelAttribute(): string
+    {
+        return self::procurementSources()[$this->procurement_source]
+            ?? self::procurementSources()[self::PROCUREMENT_NANGGEWER];
+    }
 
     public function scopeActive(Builder $query): Builder
     {

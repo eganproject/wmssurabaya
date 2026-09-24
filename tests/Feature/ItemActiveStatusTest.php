@@ -49,6 +49,42 @@ class ItemActiveStatusTest extends TestCase
         $this->assertFalse(StockApiSyncRecord::where('item_id', $item->id)->where('status', 'deleted')->exists());
     }
 
+    public function test_procurement_source_defaults_to_nanggewer_and_can_be_changed_to_import(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+
+        $response = $this->actingAs($user)->postJson(route('admin.masterdata.items.store'), [
+            'sku' => 'SOURCE-001',
+            'name' => 'Item Sumber',
+            'category_id' => 0,
+            'is_bundle' => false,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('item.procurement_source', Item::PROCUREMENT_NANGGEWER);
+
+        $item = Item::where('sku', 'SOURCE-001')->firstOrFail();
+        $this->assertSame(Item::PROCUREMENT_NANGGEWER, $item->procurement_source);
+
+        $this->actingAs($user)->putJson(route('admin.masterdata.items.update', $item), [
+            'sku' => $item->sku,
+            'name' => $item->name,
+            'category_id' => 0,
+            'procurement_source' => Item::PROCUREMENT_IMPORT,
+            'is_bundle' => false,
+        ])->assertOk()
+            ->assertJsonPath('item.procurement_source', Item::PROCUREMENT_IMPORT);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.masterdata.items.data', [
+                'procurement_source' => Item::PROCUREMENT_IMPORT,
+                'length' => -1,
+            ]))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.procurement_source_label', 'Import');
+    }
+
     public function test_master_and_item_stock_lists_can_filter_product_status(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);

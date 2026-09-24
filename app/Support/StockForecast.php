@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Item;
 use App\Models\Warehouse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -74,6 +75,7 @@ class StockForecast
                 'i.id',
                 'i.sku',
                 'i.name',
+                'i.procurement_source',
                 'c.name as category_name',
                 'base_unit.name as base_unit_name',
                 'package_unit.name as package_unit_name',
@@ -89,6 +91,10 @@ class StockForecast
 
         if (! empty($filters['category_id'])) {
             $query->where('i.category_id', (int) $filters['category_id']);
+        }
+
+        if (! empty($filters['procurement_source'])) {
+            $query->where('i.procurement_source', $filters['procurement_source']);
         }
 
         $search = trim((string) ($filters['q'] ?? ''));
@@ -146,6 +152,10 @@ class StockForecast
                 $productionLeadDays,
                 $reviewDays
             );
+            $procurementSource = $row->procurement_source === Item::PROCUREMENT_IMPORT
+                ? Item::PROCUREMENT_IMPORT
+                : Item::PROCUREMENT_NANGGEWER;
+            $recommendation = $procurementSource === Item::PROCUREMENT_IMPORT ? $import : $production;
 
             $activeDays = (int) $row->active_days;
             $quality = match (true) {
@@ -156,8 +166,8 @@ class StockForecast
             };
 
             $priority = match (true) {
-                $import['status'] === 'order_now' || $production['status'] === 'order_now' => 1,
-                $import['status'] === 'plan' || $production['status'] === 'plan' => 2,
+                $recommendation['status'] === 'order_now' => 1,
+                $recommendation['status'] === 'plan' => 2,
                 $forecastDaily > 0 => 3,
                 default => 4,
             };
@@ -167,6 +177,8 @@ class StockForecast
                 'sku' => $row->sku,
                 'name' => $row->name,
                 'category' => $row->category_name ?: 'Tanpa Kategori',
+                'procurement_source' => $procurementSource,
+                'procurement_source_label' => Item::procurementSources()[$procurementSource],
                 'base_unit' => $row->base_unit_name ?: 'UNIT',
                 'package_unit' => $row->package_unit_name,
                 'package_conversion' => $packageConversion,
@@ -186,16 +198,18 @@ class StockForecast
                 'data_quality' => $quality,
                 'import' => $import,
                 'production' => $production,
+                'recommendation' => $recommendation,
                 'priority' => $priority,
             ];
         });
 
         if ($action = $filters['action'] ?? null) {
             $rows = $rows->filter(fn (array $row) => match ($action) {
-                'import_now' => $row['import']['status'] === 'order_now',
-                'production_now' => $row['production']['status'] === 'order_now',
-                'any_action' => in_array($row['import']['status'], ['order_now', 'plan'], true)
-                    || in_array($row['production']['status'], ['order_now', 'plan'], true),
+                'import_now' => $row['procurement_source'] === Item::PROCUREMENT_IMPORT
+                    && $row['recommendation']['status'] === 'order_now',
+                'production_now' => $row['procurement_source'] === Item::PROCUREMENT_NANGGEWER
+                    && $row['recommendation']['status'] === 'order_now',
+                'any_action' => in_array($row['recommendation']['status'], ['order_now', 'plan'], true),
                 'no_demand' => $row['forecast_daily'] <= 0,
                 default => true,
             })->values();
@@ -203,8 +217,7 @@ class StockForecast
 
         $rows = $rows->sort(function (array $left, array $right) {
             return ($left['priority'] <=> $right['priority'])
-                ?: (max($right['import']['recommended_qty'], $right['production']['recommended_qty'])
-                    <=> max($left['import']['recommended_qty'], $left['production']['recommended_qty']))
+                ?: ($right['recommendation']['recommended_qty'] <=> $left['recommendation']['recommended_qty'])
                 ?: strcmp($left['sku'], $right['sku']);
         })->values();
 
@@ -349,14 +362,19 @@ class StockForecast
         int $productionLeadDays,
         int $reviewDays
     ): array {
+        $importRows = $rows->where('procurement_source', Item::PROCUREMENT_IMPORT);
+        $productionRows = $rows->where('procurement_source', Item::PROCUREMENT_NANGGEWER);
+
         return [
             'total_sku' => $rows->count(),
             'demand_sku' => $rows->where('forecast_daily', '>', 0)->count(),
             'no_demand_sku' => $rows->where('forecast_daily', '<=', 0)->count(),
-            'import_order_now_sku' => $rows->filter(fn (array $row) => $row['import']['status'] === 'order_now')->count(),
-            'production_order_now_sku' => $rows->filter(fn (array $row) => $row['production']['status'] === 'order_now')->count(),
-            'import_recommended_qty' => (int) $rows->sum(fn (array $row) => $row['import']['recommended_qty']),
-            'production_recommended_qty' => (int) $rows->sum(fn (array $row) => $row['production']['recommended_qty']),
+            'import_sku' => $importRows->count(),
+            'production_sku' => $productionRows->count(),
+            'import_order_now_sku' => $importRows->filter(fn (array $row) => $row['recommendation']['status'] === 'order_now')->count(),
+            'production_order_now_sku' => $productionRows->filter(fn (array $row) => $row['recommendation']['status'] === 'order_now')->count(),
+            'import_recommended_qty' => (int) $importRows->sum(fn (array $row) => $row['recommendation']['recommended_qty']),
+            'production_recommended_qty' => (int) $productionRows->sum(fn (array $row) => $row['recommendation']['recommended_qty']),
             'warehouse' => $warehouse,
             'history_days' => $historyDays,
             'date_from' => $dateFrom->toDateString(),

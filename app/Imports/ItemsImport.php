@@ -59,6 +59,7 @@ class ItemsImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
 
         $seenSkus = [];
         $hasCategoryColumns = count(array_intersect(['parent_category', 'category'], $headers)) > 0;
+        $hasProcurementSourceColumn = in_array('procurement_source', $headers, true);
         $hasDescriptionColumn = in_array('description', $headers, true);
         $hasBaseUnitColumn = count(array_intersect(['base_unit', 'satuan_dasar', 'unit_dasar'], $headers)) > 0;
         $hasPackageUnitColumn = count(array_intersect(['package_unit', 'satuan_kemasan', 'unit_kemasan'], $headers)) > 0;
@@ -77,6 +78,20 @@ class ItemsImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
             $name = trim((string) ($row['name'] ?? ''));
             $parentCategoryName = trim((string) ($row['parent_category'] ?? ''));
             $categoryName = trim((string) ($row['category'] ?? ''));
+            $procurementSource = null;
+            if ($hasProcurementSourceColumn) {
+                $sourceValue = mb_strtolower(trim((string) ($row['procurement_source'] ?? '')));
+                $procurementSource = match ($sourceValue) {
+                    '', 'nanggewer', 'produksi', 'production', 'nanggewer (produksi)' => Item::PROCUREMENT_NANGGEWER,
+                    'import', 'impor' => Item::PROCUREMENT_IMPORT,
+                    default => null,
+                };
+                if ($procurementSource === null) {
+                    throw ValidationException::withMessages([
+                        'file' => "Baris {$rowNumber} SKU {$sku}: procurement_source harus nanggewer/produksi atau import.",
+                    ]);
+                }
+            }
             $description = trim((string) ($row['description'] ?? ''));
             $smallStock = $this->parsePositiveInt($row, [
                 'small_warehouse_stock',
@@ -120,6 +135,9 @@ class ItemsImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
             $payload = [
                 'name' => $name,
             ];
+            if ($hasProcurementSourceColumn) {
+                $payload['procurement_source'] = $procurementSource;
+            }
             if ($hasCategoryColumns) {
                 $catId = null;
                 if ($categoryName !== '') {

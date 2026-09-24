@@ -551,6 +551,7 @@ class InventoryAnalyticsReportsTest extends TestCase
             'sku' => 'FORECAST-001',
             'name' => 'Item Forecast',
             'category_id' => null,
+            'procurement_source' => Item::PROCUREMENT_IMPORT,
         ]);
         $unit = ItemUnit::create([
             'item_id' => $item->id,
@@ -611,10 +612,35 @@ class InventoryAnalyticsReportsTest extends TestCase
             ->assertJsonPath('data.0.forecast_daily', 1.43)
             ->assertJsonPath('data.0.trend', 'growing')
             ->assertJsonPath('data.0.trend_percent', 100)
+            ->assertJsonPath('data.0.procurement_source', Item::PROCUREMENT_IMPORT)
+            ->assertJsonPath('data.0.procurement_source_label', 'Import')
+            ->assertJsonPath('data.0.recommendation.status', 'order_now')
+            ->assertJsonPath('data.0.recommendation.recommended_qty', 130)
+            ->assertJsonPath('summary.import_order_now_sku', 1)
+            ->assertJsonPath('summary.production_order_now_sku', 0)
             ->assertJsonPath('data.0.import.status', 'order_now')
             ->assertJsonPath('data.0.import.recommended_qty', 130)
             ->assertJsonPath('data.0.import.recommended_packages', 13)
             ->assertJsonPath('data.0.production.status', 'plan')
             ->assertJsonPath('data.0.production.recommended_qty', 14);
+        $item->update(['procurement_source' => Item::PROCUREMENT_NANGGEWER]);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.reports.stock-planning.forecast-data', [
+                'draw' => 2,
+                'start' => 0,
+                'length' => 10,
+                'history_days' => 90,
+                'import_lead_days' => 90,
+                'production_lead_days' => 14,
+                'review_days' => 30,
+                'procurement_source' => Item::PROCUREMENT_NANGGEWER,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.0.procurement_source', Item::PROCUREMENT_NANGGEWER)
+            ->assertJsonPath('data.0.recommendation.status', 'plan')
+            ->assertJsonPath('data.0.recommendation.recommended_qty', 14)
+            ->assertJsonPath('summary.import_order_now_sku', 0)
+            ->assertJsonPath('summary.production_recommended_qty', 14);
     }
 }
