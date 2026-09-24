@@ -19,6 +19,25 @@
 @endpush
 
 @section('content')
+<div class="card mb-6">
+    <div class="card-body py-3">
+        <ul class="nav nav-tabs nav-line-tabs nav-line-tabs-2x border-transparent fw-bold">
+            <li class="nav-item">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#stock_planning_current" type="button">
+                    <i class="fa-solid fa-list-check me-2"></i>Perencanaan Stok
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#stock_planning_forecast" type="button">
+                    <i class="fa-solid fa-chart-line me-2"></i>Analisa Forecast
+                </button>
+            </li>
+        </ul>
+    </div>
+</div>
+
+<div class="tab-content">
+<div class="tab-pane fade show active" id="stock_planning_current" role="tabpanel">
 <div class="notice d-flex bg-light-primary rounded border-primary border border-dashed p-5 mb-6">
     <i class="fa-solid fa-lightbulb fs-2x text-primary me-4"></i>
     <div>
@@ -184,12 +203,165 @@
         </div>
     </div>
 </div>
+</div>
+
+<div class="tab-pane fade" id="stock_planning_forecast" role="tabpanel">
+    <div class="notice d-flex bg-light-info rounded border-info border border-dashed p-5 mb-6">
+        <i class="fa-solid fa-chart-area fs-2x text-info me-4"></i>
+        <div>
+            <div class="fw-bold text-gray-800">Forecast demand tanpa safety stock</div>
+            <div class="text-gray-700 fs-7">
+                Forecast memakai weighted moving average: 50% laju 30 hari terbaru, 30% periode sebelumnya, dan 20% sisa histori.
+                Posisi stok mencakup stok saat ini dan transfer berstatus shipped. Target pengadaan = forecast harian × (lead time + siklus review).
+                Karena master item belum menyimpan sumber pengadaan per SKU, skenario Import dan Produksi ditampilkan berdampingan agar dapat dipilih sesuai jalur pengadaan item.
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-6">
+        <div class="card-body py-5">
+            <div class="row g-3 align-items-end filter-box">
+                <div class="col-xl-3 col-md-6">
+                    <label>Gudang</label>
+                    <select id="forecast_warehouse" class="form-select form-select-solid">
+                        <option value="" selected>Gudang Besar + Gudang Kecil (Akumulasi)</option>
+                        @foreach($warehouses as $warehouse)
+                            <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-xl-1 col-md-3">
+                    <label>Histori Hari</label>
+                    <input id="forecast_history_days" type="number" min="30" max="365" value="90" class="form-control form-control-solid">
+                </div>
+                <div class="col-xl-1 col-md-3">
+                    <label>LT Import</label>
+                    <input id="forecast_import_lead" type="number" min="1" max="365" value="90" class="form-control form-control-solid">
+                </div>
+                <div class="col-xl-1 col-md-3">
+                    <label>LT Produksi</label>
+                    <input id="forecast_production_lead" type="number" min="1" max="365" value="14" class="form-control form-control-solid">
+                </div>
+                <div class="col-xl-1 col-md-3">
+                    <label>Siklus Review</label>
+                    <input id="forecast_review_days" type="number" min="1" max="180" value="30" class="form-control form-control-solid">
+                </div>
+                <div class="col-xl-2 col-md-3">
+                    <label>Tindakan</label>
+                    <select id="forecast_action" class="form-select form-select-solid">
+                        <option value="">Semua</option>
+                        <option value="any_action">Ada Rekomendasi</option>
+                        <option value="import_now">Import Sekarang</option>
+                        <option value="production_now">Produksi Sekarang</option>
+                        <option value="no_demand">Tanpa Demand</option>
+                    </select>
+                </div>
+                <div class="col-xl-2 col-md-3">
+                    <label>Kategori</label>
+                    <select id="forecast_category" class="form-select form-select-solid">
+                        <option value="">Semua</option>
+                        @foreach($categories as $category)
+                            <option value="{{ $category->id }}">{{ $category->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-xl-4 col-md-7">
+                    <label>Cari SKU, nama, atau kategori</label>
+                    <input id="forecast_search" class="form-control form-control-solid" placeholder="Tekan Enter untuk mencari">
+                </div>
+                <div class="col-xl-3 col-md-5 d-flex gap-2">
+                    <button id="forecast_apply" class="btn btn-info flex-grow-1"><i class="fa-solid fa-chart-line"></i> Hitung Forecast</button>
+                    <button id="forecast_reset" class="btn btn-light">Reset</button>
+                </div>
+                <div class="col-xl-5 text-xl-end">
+                    <span class="text-muted fs-7" id="forecast_period_info">Histori forecast akan dihitung otomatis.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-6">
+        <div class="col-xl-2 col-md-4 col-6">
+            <div class="planning-kpi p-5">
+                <div class="label">SKU Berdemand</div>
+                <div class="value text-primary" id="forecast_kpi_demand">0</div>
+                <div class="hint">Memiliki forecast harian</div>
+            </div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6">
+            <div class="planning-kpi p-5">
+                <div class="label">Import Sekarang</div>
+                <div class="value text-danger" id="forecast_kpi_import_now">0</div>
+                <div class="hint">Cover ≤ lead time import</div>
+            </div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6">
+            <div class="planning-kpi p-5">
+                <div class="label">Produksi Sekarang</div>
+                <div class="value text-warning" id="forecast_kpi_production_now">0</div>
+                <div class="hint">Cover ≤ lead time produksi</div>
+            </div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6">
+            <div class="planning-kpi p-5">
+                <div class="label">Qty Rekom. Import</div>
+                <div class="value text-info" id="forecast_kpi_import_qty">0</div>
+                <div class="hint">Dibulatkan ke kemasan</div>
+            </div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6">
+            <div class="planning-kpi p-5">
+                <div class="label">Qty Rekom. Produksi</div>
+                <div class="value text-success" id="forecast_kpi_production_qty">0</div>
+                <div class="hint">Dalam satuan dasar</div>
+            </div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6">
+            <div class="planning-kpi p-5">
+                <div class="label">Tanpa Demand</div>
+                <div class="value text-muted" id="forecast_kpi_no_demand">0</div>
+                <div class="hint">Tidak ada outbound valid</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header border-0 pt-6">
+            <div>
+                <h3 class="fw-bolder mb-1">Forecast per SKU</h3>
+                <div class="text-muted fs-7">Tanggal order dihitung mundur dari days cover terhadap lead time. Rekomendasi tidak menggunakan safety stock.</div>
+            </div>
+        </div>
+        <div class="card-body py-5">
+            <div class="table-responsive">
+                <table class="table align-middle table-row-dashed fs-7 gy-4" id="stock_forecast_table">
+                    <thead>
+                        <tr class="text-muted text-uppercase">
+                            <th>SKU / Item</th>
+                            <th class="text-end">Posisi Stok</th>
+                            <th class="text-end">Histori Out</th>
+                            <th class="text-end">Forecast/Hari</th>
+                            <th>Trend</th>
+                            <th>Days Cover</th>
+                            <th>Skenario Import</th>
+                            <th>Skenario Produksi</th>
+                            <th>Kualitas Data</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
 @endsection
 
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const dataUrl = @json($dataUrl);
+    const forecastDataUrl = @json($forecastDataUrl);
     const $table = $('#stock_planning_table');
     const filters = {
         warehouse: document.getElementById('filter_warehouse'),
@@ -342,6 +514,151 @@ document.addEventListener('DOMContentLoaded', () => {
             if ($(el).data('select2')) $(el).val('').trigger('change.select2');
         });
         dt.ajax.reload();
+    });
+    const forecastFilters = {
+        warehouse: document.getElementById('forecast_warehouse'),
+        historyDays: document.getElementById('forecast_history_days'),
+        importLead: document.getElementById('forecast_import_lead'),
+        productionLead: document.getElementById('forecast_production_lead'),
+        reviewDays: document.getElementById('forecast_review_days'),
+        action: document.getElementById('forecast_action'),
+        category: document.getElementById('forecast_category'),
+        search: document.getElementById('forecast_search'),
+    };
+
+    if ($.fn.select2) {
+        [forecastFilters.warehouse, forecastFilters.action, forecastFilters.category].forEach(el => {
+            $(el).select2({width: '100%', allowClear: el !== forecastFilters.warehouse});
+        });
+    }
+
+    const forecastStatus = {
+        order_now: ['Order Sekarang', 'danger'],
+        plan: ['Jadwalkan', 'warning'],
+        covered: ['Tercukupi', 'success'],
+        no_demand: ['Tanpa Demand', 'secondary'],
+    };
+    const trendStatus = {
+        growing: ['Naik', 'danger', 'fa-arrow-trend-up'],
+        declining: ['Turun', 'success', 'fa-arrow-trend-down'],
+        stable: ['Stabil', 'primary', 'fa-arrow-right'],
+        new: ['Demand Baru', 'warning', 'fa-star'],
+        insufficient: ['Data Terbatas', 'secondary', 'fa-minus'],
+    };
+    const qualityStatus = {
+        high: ['Baik', 'success'],
+        medium: ['Cukup', 'warning'],
+        low: ['Rendah', 'danger'],
+        none: ['Tidak Ada', 'secondary'],
+    };
+
+    function forecastRequest(params) {
+        params.warehouse_id = forecastFilters.warehouse.value;
+        params.history_days = forecastFilters.historyDays.value;
+        params.import_lead_days = forecastFilters.importLead.value;
+        params.production_lead_days = forecastFilters.productionLead.value;
+        params.review_days = forecastFilters.reviewDays.value;
+        params.action = forecastFilters.action.value;
+        params.category_id = forecastFilters.category.value;
+        params.q = forecastFilters.search.value;
+    }
+
+    function updateForecastSummary(summary = {}) {
+        document.getElementById('forecast_kpi_demand').textContent = number(summary.demand_sku);
+        document.getElementById('forecast_kpi_import_now').textContent = number(summary.import_order_now_sku);
+        document.getElementById('forecast_kpi_production_now').textContent = number(summary.production_order_now_sku);
+        document.getElementById('forecast_kpi_import_qty').textContent = number(summary.import_recommended_qty);
+        document.getElementById('forecast_kpi_production_qty').textContent = number(summary.production_recommended_qty);
+        document.getElementById('forecast_kpi_no_demand').textContent = number(summary.no_demand_sku);
+        document.getElementById('forecast_period_info').textContent =
+            `${summary.warehouse || '-'} · histori ${summary.date_from || '-'} s/d ${summary.date_to || '-'} (${number(summary.history_days)} hari) · LT import ${number(summary.import_lead_days)} · LT produksi ${number(summary.production_lead_days)} · review ${number(summary.review_days)} hari`;
+    }
+
+    function renderTrend(row) {
+        const [label, color, icon] = trendStatus[row.trend] || trendStatus.insufficient;
+        const percent = row.trend_percent === null ? '' : ` ${Number(row.trend_percent) > 0 ? '+' : ''}${number(row.trend_percent)}%`;
+        return `<span class="badge badge-light-${color}"><i class="fa-solid ${icon} me-1"></i>${label}${percent}</span>
+            <div class="text-muted fs-8 mt-1">30h: ${number(row.recent_daily)} · prev: ${number(row.previous_daily)}</div>`;
+    }
+
+    function renderScenario(scenario, row, source) {
+        const [label, color] = forecastStatus[scenario.status] || forecastStatus.no_demand;
+        if (scenario.status === 'no_demand') {
+            return `<span class="badge badge-light-secondary">${label}</span>`;
+        }
+
+        const timing = scenario.status === 'order_now'
+            ? 'Order sekarang'
+            : `Order ${escapeHtml(scenario.order_date || '-')}`;
+        const packages = source === 'import' && scenario.recommended_packages
+            ? `<div class="text-muted fs-8">${number(scenario.recommended_packages)} ${escapeHtml(row.package_unit || 'kemasan')}</div>`
+            : '';
+
+        return `<div style="min-width:145px">
+            <span class="badge badge-light-${color}">${label}</span>
+            <div class="fw-bolder mt-2">${number(scenario.recommended_qty)} ${escapeHtml(row.base_unit)}</div>
+            ${packages}
+            <div class="text-muted fs-8">${timing} · LT ${number(scenario.lead_days)}h</div>
+            <div class="text-muted fs-8">Demand LT ${number(scenario.lead_demand)}</div>
+        </div>`;
+    }
+
+    const forecastDt = $('#stock_forecast_table').DataTable({
+        processing: true,
+        serverSide: true,
+        dom: 'rtip',
+        order: [],
+        pageLength: 10,
+        ajax: {
+            url: forecastDataUrl,
+            data: forecastRequest,
+            dataSrc: json => {
+                updateForecastSummary(json.summary || {});
+                return json.data || [];
+            },
+            error: xhr => window.AppSwal?.error(Object.values(xhr.responseJSON?.errors || {}).flat().join('\n') || 'Gagal menghitung forecast stok.'),
+        },
+        columns: [
+            {data: null, render: row => `<div class="fw-bold">${escapeHtml(row.sku)}</div><div>${escapeHtml(row.name)}</div><div class="text-muted">${escapeHtml(row.category)}</div>`},
+            {data: 'stock_position', className: 'text-end', render: (value, type, row) => `<strong>${number(value)}</strong><div class="text-muted fs-8">stok ${number(row.current_stock)} + masuk ${number(row.incoming_stock)}</div>`},
+            {data: 'history_qty', className: 'text-end', render: (value, type, row) => `${number(value)}<div class="text-muted fs-8">${number(row.active_days)} hari aktif</div>`},
+            {data: 'forecast_daily', className: 'text-end', render: (value, type, row) => `<strong>${number(value)}</strong><div class="text-muted fs-8">≈ ${number(row.forecast_monthly)}/30 hari</div>`},
+            {data: null, render: renderTrend},
+            {data: 'days_cover', render: value => value === null ? '<span class="text-muted">Tidak terukur</span>' : `<strong>${number(value)} hari</strong>`},
+            {data: 'import', render: (value, type, row) => renderScenario(value, row, 'import')},
+            {data: 'production', render: (value, type, row) => renderScenario(value, row, 'production')},
+            {data: 'data_quality', render: value => {
+                const [label, color] = qualityStatus[value] || qualityStatus.none;
+                return `<span class="badge badge-light-${color}">${label}</span>`;
+            }},
+        ],
+        language: {processing: 'Menghitung forecast demand...', emptyTable: 'Tidak ada item sesuai filter forecast.'},
+    });
+
+    document.getElementById('forecast_apply').addEventListener('click', () => forecastDt.ajax.reload());
+    forecastFilters.search.addEventListener('keyup', event => {
+        if (event.key === 'Enter') forecastDt.ajax.reload();
+    });
+    document.getElementById('forecast_reset').addEventListener('click', () => {
+        forecastFilters.warehouse.value = '';
+        forecastFilters.historyDays.value = 90;
+        forecastFilters.importLead.value = 90;
+        forecastFilters.productionLead.value = 14;
+        forecastFilters.reviewDays.value = 30;
+        forecastFilters.action.value = '';
+        forecastFilters.category.value = '';
+        forecastFilters.search.value = '';
+        [forecastFilters.warehouse, forecastFilters.action, forecastFilters.category].forEach(el => {
+            if ($(el).data('select2')) $(el).val('').trigger('change.select2');
+        });
+        forecastDt.ajax.reload();
+    });
+
+    document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
+        tab.addEventListener('shown.bs.tab', () => {
+            dt.columns.adjust();
+            forecastDt.columns.adjust();
+        });
     });
 });
 </script>

@@ -542,4 +542,79 @@ class InventoryAnalyticsReportsTest extends TestCase
             ->assertJsonPath('data.0.status', 'healthy');
     }
 
+    public function test_stock_forecast_uses_weighted_demand_and_distinct_procurement_lead_times_without_safety_stock(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $small = Warehouse::where('code', Warehouse::DEFAULT_CODE)->firstOrFail();
+        $bulk = Warehouse::where('code', Warehouse::BULK_CODE)->firstOrFail();
+        $item = Item::create([
+            'sku' => 'FORECAST-001',
+            'name' => 'Item Forecast',
+            'category_id' => null,
+        ]);
+        $unit = ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'PCS',
+            'conversion_qty' => 1,
+            'is_base' => true,
+        ]);
+        ItemUnit::create([
+            'item_id' => $item->id,
+            'name' => 'KOLI',
+            'conversion_qty' => 10,
+            'is_base' => false,
+        ]);
+        ItemStock::create(['warehouse_id' => $small->id, 'item_id' => $item->id, 'stock' => 20]);
+        ItemStock::create(['warehouse_id' => $bulk->id, 'item_id' => $item->id, 'stock' => 30]);
+        ItemWarehouseSetting::create([
+            'warehouse_id' => $small->id,
+            'item_id' => $item->id,
+            'safety_stock' => 999,
+            'location' => 'F-01',
+        ]);
+
+        foreach ([[10, 60], [40, 30], [70, 20]] as $index => [$daysAgo, $qty]) {
+            StockMutation::create([
+                'warehouse_id' => $index === 2 ? $bulk->id : $small->id,
+                'item_id' => $item->id,
+                'unit_id' => $unit->id,
+                'direction' => 'out',
+                'qty' => $qty,
+                'qty_input' => $qty,
+                'conversion_qty' => 1,
+                'stock_before' => 200,
+                'stock_after' => 200 - $qty,
+                'source_type' => 'outbound',
+                'source_subtype' => 'manual',
+                'source_id' => 2000 + $index,
+                'occurred_at' => now()->subDays($daysAgo),
+                'created_by' => $user->id,
+            ]);
+        }
+
+        $this->actingAs($user)
+            ->getJson(route('admin.reports.stock-planning.forecast-data', [
+                'draw' => 1,
+                'start' => 0,
+                'length' => 10,
+                'history_days' => 90,
+                'import_lead_days' => 90,
+                'production_lead_days' => 14,
+                'review_days' => 30,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('methodology.uses_safety_stock', false)
+            ->assertJsonPath('summary.warehouse', 'Gudang Besar + Gudang Kecil')
+            ->assertJsonPath('data.0.sku', 'FORECAST-001')
+            ->assertJsonPath('data.0.stock_position', 50)
+            ->assertJsonPath('data.0.history_qty', 110)
+            ->assertJsonPath('data.0.forecast_daily', 1.43)
+            ->assertJsonPath('data.0.trend', 'growing')
+            ->assertJsonPath('data.0.trend_percent', 100)
+            ->assertJsonPath('data.0.import.status', 'order_now')
+            ->assertJsonPath('data.0.import.recommended_qty', 130)
+            ->assertJsonPath('data.0.import.recommended_packages', 13)
+            ->assertJsonPath('data.0.production.status', 'plan')
+            ->assertJsonPath('data.0.production.recommended_qty', 14);
+    }
 }

@@ -403,5 +403,6 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::get('/transfer-analytics/data', [TransferAnalyticsReportController::class, 'data'])->name('transfer-analytics.data');
         Route::get('/stock-planning', [StockPlanningReportController::class, 'index'])->name('stock-planning.index');
         Route::get('/stock-planning/data', [StockPlanningReportController::class, 'data'])->name('stock-planning.data');
+        Route::get('/stock-planning/forecast-data', [StockPlanningReportController::class, 'forecastData'])->name('stock-planning.forecast-data');
     });
 });

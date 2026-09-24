@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\Warehouse;
+use App\Support\StockForecast;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -16,6 +17,7 @@ class StockPlanningReportController extends Controller
     {
         return view('admin.reports.stock-planning.index', [
             'dataUrl' => route('admin.reports.stock-planning.data'),
+            'forecastDataUrl' => route('admin.reports.stock-planning.forecast-data'),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'type', 'is_default']),
             'categories' => Category::orderBy('name')->get(['id', 'name']),
         ]);
@@ -247,6 +249,45 @@ class StockPlanningReportController extends Controller
                 'warehouse' => $warehouseLabel,
             ]),
             'analytics' => $analytics,
+            'data' => $paged,
+        ]);
+    }
+
+    public function forecastData(Request $request)
+    {
+        $validated = $request->validate([
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
+            'history_days' => ['nullable', 'integer', 'min:30', 'max:365'],
+            'import_lead_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'production_lead_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'review_days' => ['nullable', 'integer', 'min:1', 'max:180'],
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'action' => ['nullable', 'in:import_now,production_now,any_action,no_demand'],
+            'q' => ['nullable', 'string', 'max:200'],
+        ]);
+
+        $forecast = StockForecast::generate($validated);
+        $rows = $forecast['rows'];
+        $recordsFiltered = $rows->count();
+        $start = max(0, (int) $request->input('start', 0));
+        $length = (int) $request->input('length', 10);
+        $paged = $length > 0 ? $rows->slice($start, $length)->values() : $rows;
+
+        return response()->json([
+            'draw' => (int) $request->input('draw'),
+            'recordsTotal' => DB::table('items')
+                ->where('is_bundle', false)
+                ->where('is_active', true)
+                ->count(),
+            'recordsFiltered' => $recordsFiltered,
+            'summary' => $forecast['summary'],
+            'methodology' => [
+                'model' => 'Weighted moving average 30/30/sisa hari',
+                'weights' => ['recent' => 50, 'previous' => 30, 'older' => 20],
+                'stock_position' => 'Stok saat ini + transfer masuk berstatus shipped',
+                'target' => 'Forecast harian × (lead time + siklus review)',
+                'uses_safety_stock' => false,
+            ],
             'data' => $paged,
         ]);
     }
