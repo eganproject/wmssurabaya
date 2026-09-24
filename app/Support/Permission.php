@@ -16,7 +16,7 @@ class Permission
             return $base;
         }
 
-        $base = preg_replace('/\.(create|store|edit|update|status|destroy|show|data|forecast-data|stocks|import|detail|approve|ship|receive|cancel)$/', '.index', $routeName);
+        $base = preg_replace('/\.(create|store|edit|update|status|destroy|show|data|forecast-data|forecast-export|stocks|import|detail|approve|ship|receive|cancel)$/', '.index', $routeName);
         return $base;
     }
 

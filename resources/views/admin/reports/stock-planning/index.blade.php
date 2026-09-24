@@ -280,11 +280,12 @@
                     <label>Cari SKU, nama, atau kategori</label>
                     <input id="forecast_search" class="form-control form-control-solid" placeholder="Tekan Enter untuk mencari">
                 </div>
-                <div class="col-xl-3 col-md-5 d-flex gap-2">
+                <div class="col-xl-4 col-md-7 d-flex gap-2 flex-wrap">
                     <button id="forecast_apply" class="btn btn-info flex-grow-1"><i class="fa-solid fa-chart-line"></i> Hitung Forecast</button>
+                    <button id="forecast_export" class="btn btn-light-success"><i class="fa-solid fa-file-excel"></i> Export Excel</button>
                     <button id="forecast_reset" class="btn btn-light">Reset</button>
                 </div>
-                <div class="col-xl-5 text-xl-end">
+                <div class="col-xl-4 text-xl-end">
                     <span class="text-muted fs-7" id="forecast_period_info">Histori forecast akan dihitung otomatis.</span>
                 </div>
             </div>
@@ -373,6 +374,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const dataUrl = @json($dataUrl);
     const forecastDataUrl = @json($forecastDataUrl);
+    const forecastExportUrl = @json($forecastExportUrl);
     const $table = $('#stock_planning_table');
     const filters = {
         warehouse: document.getElementById('filter_warehouse'),
@@ -592,16 +594,22 @@ document.addEventListener('DOMContentLoaded', () => {
         none: 'Tidak ada demand yang dapat digunakan pada periode histori.',
     };
 
+    function forecastFilterParams() {
+        return {
+            warehouse_id: forecastFilters.warehouse.value,
+            history_days: forecastFilters.historyDays.value,
+            import_lead_days: forecastFilters.importLead.value,
+            production_lead_days: forecastFilters.productionLead.value,
+            review_days: forecastFilters.reviewDays.value,
+            action: forecastFilters.action.value,
+            procurement_source: forecastFilters.procurementSource.value,
+            category_id: forecastFilters.category.value,
+            q: forecastFilters.search.value,
+        };
+    }
+
     function forecastRequest(params) {
-        params.warehouse_id = forecastFilters.warehouse.value;
-        params.history_days = forecastFilters.historyDays.value;
-        params.import_lead_days = forecastFilters.importLead.value;
-        params.production_lead_days = forecastFilters.productionLead.value;
-        params.review_days = forecastFilters.reviewDays.value;
-        params.action = forecastFilters.action.value;
-        params.procurement_source = forecastFilters.procurementSource.value;
-        params.category_id = forecastFilters.category.value;
-        params.q = forecastFilters.search.value;
+        Object.assign(params, forecastFilterParams());
     }
 
     function updateForecastSummary(summary = {}) {
@@ -689,6 +697,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('forecast_apply').addEventListener('click', () => forecastDt.ajax.reload());
+    document.getElementById('forecast_export').addEventListener('click', () => {
+        const query = new URLSearchParams(forecastFilterParams());
+        window.location.assign(`${forecastExportUrl}?${query.toString()}`);
+    });
     forecastFilters.search.addEventListener('keyup', event => {
         if (event.key === 'Enter') forecastDt.ajax.reload();
     });

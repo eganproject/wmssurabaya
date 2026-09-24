@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exports\StockForecastReportExport;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\Warehouse;
@@ -10,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Maatwebsite\Excel\Facades\Excel;
 
 class StockPlanningReportController extends Controller
 {
@@ -18,6 +20,7 @@ class StockPlanningReportController extends Controller
         return view('admin.reports.stock-planning.index', [
             'dataUrl' => route('admin.reports.stock-planning.data'),
             'forecastDataUrl' => route('admin.reports.stock-planning.forecast-data'),
+            'forecastExportUrl' => route('admin.reports.stock-planning.forecast-export'),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(['id', 'name', 'type', 'is_default']),
             'categories' => Category::orderBy('name')->get(['id', 'name']),
         ]);
@@ -292,6 +295,29 @@ class StockPlanningReportController extends Controller
             ],
             'data' => $paged,
         ]);
+    }
+
+    public function forecastExport(Request $request)
+    {
+        $validated = $request->validate([
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
+            'history_days' => ['nullable', 'integer', 'min:30', 'max:365'],
+            'import_lead_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'production_lead_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'review_days' => ['nullable', 'integer', 'min:1', 'max:180'],
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'procurement_source' => ['nullable', 'in:nanggewer,import'],
+            'action' => ['nullable', 'in:import_now,production_now,any_action,no_demand'],
+            'q' => ['nullable', 'string', 'max:200'],
+        ]);
+
+        $forecast = StockForecast::generate($validated);
+        $filename = 'analisa-forecast-pengadaan-stok-'.now()->format('Ymd-His').'.xlsx';
+
+        return Excel::download(
+            new StockForecastReportExport($forecast['rows'], $forecast['summary'], $validated, $request->user()?->name),
+            $filename,
+        );
     }
 
     private function period(array $validated): array
