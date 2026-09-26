@@ -332,6 +332,15 @@
                     </select>
                 </div>
                 <div class="col-xl-2 col-md-4">
+                    <label>Days Cover</label>
+                    <select id="movement_cover" class="form-select form-select-solid">
+                        <option value="">Semua Days Cover</option>
+                        @foreach($coverRanges as $key => $label)
+                            <option value="{{ $key }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-xl-2 col-md-4">
                     <label>Status Produk</label>
                     <select id="movement_item_status" class="form-select form-select-solid">
                         <option value="1" selected>Produk Aktif</option>
@@ -580,6 +589,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const movementFilters = {
         category: document.getElementById('movement_category'),
         movement: document.getElementById('movement_class'),
+        cover: document.getElementById('movement_cover'),
         itemStatus: document.getElementById('movement_item_status'),
         dateFrom: document.getElementById('movement_date_from'),
         dateTo: document.getElementById('movement_date_to'),
@@ -603,6 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function movementRequestData(params) {
         params.category_id = movementFilters.category.value;
         params.movement = movementFilters.movement.value;
+        params.cover = movementFilters.cover.value;
         params.is_active = movementFilters.itemStatus.value;
         params.date_from = movementFilters.dateFrom.value;
         params.date_to = movementFilters.dateTo.value;
@@ -753,7 +764,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if ($.fn.select2) {
-            [movementFilters.category, movementFilters.movement, movementFilters.itemStatus]
+            [movementFilters.category, movementFilters.movement, movementFilters.cover, movementFilters.itemStatus]
                 .forEach(el => $(el).select2({
                     width: '100%',
                     allowClear: el !== movementFilters.itemStatus,
@@ -819,7 +830,7 @@ document.addEventListener('DOMContentLoaded', () => {
     movementFilters.search.addEventListener('keyup', event => {
         if (event.key === 'Enter') reloadMovement();
     });
-    [movementFilters.category, movementFilters.movement, movementFilters.itemStatus]
+    [movementFilters.category, movementFilters.movement, movementFilters.cover, movementFilters.itemStatus]
         .forEach(el => el?.addEventListener('change', () => movementDt?.ajax.reload()));
     movementFilters.limit.addEventListener('change', () => {
         initializeMovementTable();
@@ -828,12 +839,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('movement_reset').addEventListener('click', () => {
         movementFilters.category.value = '';
         movementFilters.movement.value = '';
+        movementFilters.cover.value = '';
         movementFilters.itemStatus.value = '1';
         movementFilters.dateFrom.value = movementDefaults.dateFrom;
         movementFilters.dateTo.value = movementDefaults.dateTo;
         movementFilters.search.value = '';
         movementFilters.limit.value = '10';
-        [movementFilters.category, movementFilters.movement, movementFilters.itemStatus].forEach(el => {
+        [movementFilters.category, movementFilters.movement, movementFilters.cover, movementFilters.itemStatus].forEach(el => {
             if ($(el).data('select2')) $(el).val(el === movementFilters.itemStatus ? '1' : '').trigger('change.select2');
         });
         if (movementDt) {

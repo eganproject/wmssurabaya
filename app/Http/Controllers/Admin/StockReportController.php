@@ -24,6 +24,7 @@ class StockReportController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name', 'type', 'is_default']),
             'categories' => Category::orderBy('name')->get(['id', 'name']),
+            'coverRanges' => collect(StockMovementReport::COVER_RANGES)->map(fn (array $range) => $range[0]),
         ]);
     }
 
@@ -102,6 +103,7 @@ class StockReportController extends Controller
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
             'movement' => ['nullable', 'in:fast,medium,slow,non_moving'],
+            'cover' => ['nullable', 'in:'.implode(',', array_keys(StockMovementReport::COVER_RANGES))],
             'is_active' => ['nullable', 'in:0,1'],
             'q' => ['nullable', 'string', 'max:150'],
         ];

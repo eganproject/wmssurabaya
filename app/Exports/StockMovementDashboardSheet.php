@@ -4,6 +4,7 @@ namespace App\Exports;
 
 use App\Exports\Concerns\BindsStringValuesAsText;
 use App\Models\Category;
+use App\Support\StockMovementReport;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithCharts;
@@ -49,7 +50,7 @@ class StockMovementDashboardSheet extends DefaultValueBinder implements FromArra
             ['Periode', $this->summary['date_from'].' s.d. '.$this->summary['date_to'].' ('.$this->summary['period_days'].' hari)', '', '', '', '', '', '', '', '', '', ''],
             ['Cakupan & Sumber', $this->warehouseLabel().' | Outbound manual + import resi selesai', '', '', '', '', '', '', '', '', '', ''],
             ['Kategori', $this->categoryLabel(), '', '', '', '', '', '', '', '', '', ''],
-            ['Klasifikasi', $this->movementLabel(), '', '', '', '', '', '', '', '', '', ''],
+            ['Klasifikasi & Days Cover', $this->movementLabel().' | Days cover: '.$this->coverLabel(), '', '', '', '', '', '', '', '', '', ''],
             ['Status Produk', $this->statusLabel(), '', '', '', '', '', '', '', '', '', ''],
             ['Pencarian', trim((string) ($this->filters['q'] ?? '')) ?: 'Semua data', '', '', '', '', '', '', '', '', '', ''],
             ['Dibuat', now()->format('d/m/Y H:i:s').' oleh '.($this->generatedBy ?: '-'), '', '', '', '', '', '', '', '', '', ''],
@@ -225,6 +226,11 @@ class StockMovementDashboardSheet extends DefaultValueBinder implements FromArra
             'fast' => 'Fast moving', 'medium' => 'Medium moving', 'slow' => 'Slow moving',
             'non_moving' => 'Non-moving',
         ][$this->filters['movement'] ?? ''] ?? 'Semua klasifikasi';
+    }
+
+    private function coverLabel(): string
+    {
+        return StockMovementReport::COVER_RANGES[$this->filters['cover'] ?? ''][0] ?? 'Semua';
     }
 
     private function statusLabel(): string

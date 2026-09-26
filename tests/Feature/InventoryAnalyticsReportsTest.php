@@ -281,9 +281,29 @@ class InventoryAnalyticsReportsTest extends TestCase
 
         $this->assertSame(50, collect($response->json('trend'))->sum('quantity'));
 
+        $coverParams = [
+            'draw' => 2,
+            'start' => 0,
+            'length' => 10,
+            'date_from' => now()->subDays(29)->toDateString(),
+            'date_to' => now()->toDateString(),
+        ];
+        $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover' => '31_60']))
+            ->assertOk()
+            ->assertJsonPath('data.0.sku', 'MOVE-COMBINED');
+        $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover' => 'over_60']))
+            ->assertOk()
+            ->assertJsonMissing(['sku' => 'MOVE-COMBINED']);
+        $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover' => 'invalid']))
+            ->assertUnprocessable();
+
         $this->actingAs($user)
             ->get(route('admin.reports.stock.index', ['tab' => 'movement']))
             ->assertOk()
+            ->assertSee('id="movement_cover"', false)
             ->assertDontSee('id="movement_warehouse"', false)
             ->assertSee('Stok otomatis diakumulasi dari Gudang Besar + Gudang Kecil.');
     }
