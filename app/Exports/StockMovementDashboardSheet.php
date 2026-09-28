@@ -4,7 +4,6 @@ namespace App\Exports;
 
 use App\Exports\Concerns\BindsStringValuesAsText;
 use App\Models\Category;
-use App\Support\StockMovementReport;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithCharts;
@@ -230,7 +229,17 @@ class StockMovementDashboardSheet extends DefaultValueBinder implements FromArra
 
     private function coverLabel(): string
     {
-        return StockMovementReport::COVER_RANGES[$this->filters['cover'] ?? ''][0] ?? 'Semua';
+        $min = $this->filters['cover_min'] ?? null;
+        $max = $this->filters['cover_max'] ?? null;
+        $hasMin = $min !== null && $min !== '';
+        $hasMax = $max !== null && $max !== '';
+
+        return match (true) {
+            $hasMin && $hasMax => $min.' - '.$max.' hari',
+            $hasMin => '>= '.$min.' hari',
+            $hasMax => '<= '.$max.' hari',
+            default => 'Semua',
+        };
     }
 
     private function statusLabel(): string

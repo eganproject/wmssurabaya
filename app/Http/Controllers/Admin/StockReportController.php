@@ -23,9 +23,7 @@ class StockReportController extends Controller
                 ->orderByRaw("CASE WHEN type = 'bulk' THEN 0 ELSE 1 END")
                 ->orderBy('name')
                 ->get(['id', 'name', 'type', 'is_default']),
-            'categories' => Category::orderBy('name')->get(['id', 'name']),
-            'coverRanges' => collect(StockMovementReport::COVER_RANGES)->map(fn (array $range) => $range[0]),
-        ]);
+            'categories' => Category::orderBy('name')->get(['id', 'name']),        ]);
     }
 
     public function movementData(Request $request)
@@ -98,12 +96,16 @@ class StockReportController extends Controller
 
     private function movementValidationRules(): array
     {
+        $coverMin = request()->input('cover_min');
+
         return [
             'category_id' => ['nullable', 'integer'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
             'movement' => ['nullable', 'in:fast,medium,slow,non_moving'],
-            'cover' => ['nullable', 'in:'.implode(',', array_keys(StockMovementReport::COVER_RANGES))],
+            'cover_min' => ['nullable', 'numeric', 'min:0'],
+            // gte:cover_min fails when cover_min is empty, so only compare when Min is a number.
+            'cover_max' => array_merge(['nullable', 'numeric', 'min:0'], is_numeric($coverMin) ? ['gte:cover_min'] : []),
             'is_active' => ['nullable', 'in:0,1'],
             'q' => ['nullable', 'string', 'max:150'],
         ];

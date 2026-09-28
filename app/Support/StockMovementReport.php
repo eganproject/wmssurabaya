@@ -10,19 +10,6 @@ use Illuminate\Support\Facades\DB;
 class StockMovementReport
 {
     /**
-     * Days-cover filter buckets: key => [label, min (exclusive), max (inclusive)].
-     * A null min/max means unbounded; 'no_usage' matches rows without outbound.
-     */
-    public const COVER_RANGES = [
-        'critical' => ['<= 7 hari (kritis)', null, 7],
-        '8_14' => ['8 - 14 hari', 7, 14],
-        '15_30' => ['15 - 30 hari', 14, 30],
-        '31_60' => ['31 - 60 hari', 30, 60],
-        'over_60' => ['> 60 hari', 60, null],
-        'no_usage' => ['Tidak terukur (tanpa pemakaian)', null, null],
-    ];
-
-    /**
      * Build the stock-movement dataset once so the web table and Excel export
      * always use the same combined-warehouse and eligible-outbound rules.
      */
@@ -129,8 +116,10 @@ class StockMovementReport
         if (! empty($filters['movement'])) {
             $rows = $rows->where('movement_key', $filters['movement'])->values();
         }
-        if (! empty($filters['cover']) && isset(self::COVER_RANGES[$filters['cover']])) {
-            $rows = $rows->filter(fn (array $row) => self::matchesCover($row['days_cover'], $filters['cover']))->values();
+        $coverMin = self::coverBound($filters['cover_min'] ?? null);
+        $coverMax = self::coverBound($filters['cover_max'] ?? null);
+        if ($coverMin !== null || $coverMax !== null) {
+            $rows = $rows->filter(fn (array $row) => self::matchesCover($row['days_cover'], $coverMin, $coverMax))->values();
         }
 
         return [
@@ -145,18 +134,22 @@ class StockMovementReport
         ];
     }
 
-    private static function matchesCover(?float $daysCover, string $cover): bool
+    /**
+     * Manual days-cover range, both bounds inclusive. Rows without outbound
+     * (days cover not measurable) never match once a bound is set.
+     */
+    private static function matchesCover(?float $daysCover, ?float $min, ?float $max): bool
     {
-        if ($cover === 'no_usage') {
-            return $daysCover === null;
-        }
         if ($daysCover === null) {
             return false;
         }
 
-        [, $min, $max] = self::COVER_RANGES[$cover];
+        return ($min === null || $daysCover >= $min) && ($max === null || $daysCover <= $max);
+    }
 
-        return ($min === null || $daysCover > $min) && ($max === null || $daysCover <= $max);
+    private static function coverBound(mixed $value): ?float
+    {
+        return $value === null || $value === '' ? null : (float) $value;
     }
 
     private static function warehouseScope(): array

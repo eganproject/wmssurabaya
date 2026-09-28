@@ -289,21 +289,29 @@ class InventoryAnalyticsReportsTest extends TestCase
             'date_to' => now()->toDateString(),
         ];
         $this->actingAs($user)
-            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover' => '31_60']))
+            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover_min' => 45, 'cover_max' => 60]))
             ->assertOk()
             ->assertJsonPath('data.0.sku', 'MOVE-COMBINED');
         $this->actingAs($user)
-            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover' => 'over_60']))
+            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover_max' => 60]))
+            ->assertOk()
+            ->assertJsonPath('data.0.sku', 'MOVE-COMBINED');
+        $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover_min' => 60.5]))
             ->assertOk()
             ->assertJsonMissing(['sku' => 'MOVE-COMBINED']);
         $this->actingAs($user)
-            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover' => 'invalid']))
+            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover_min' => 30, 'cover_max' => 10]))
+            ->assertUnprocessable();
+        $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover_min' => 'abc']))
             ->assertUnprocessable();
 
         $this->actingAs($user)
             ->get(route('admin.reports.stock.index', ['tab' => 'movement']))
             ->assertOk()
-            ->assertSee('id="movement_cover"', false)
+            ->assertSee('id="movement_cover_min"', false)
+            ->assertSee('id="movement_cover_max"', false)
             ->assertDontSee('id="movement_warehouse"', false)
             ->assertSee('Stok otomatis diakumulasi dari Gudang Besar + Gudang Kecil.');
     }
