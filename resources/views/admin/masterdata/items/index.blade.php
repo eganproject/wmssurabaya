@@ -23,6 +23,13 @@
     .item-description { max-width: 360px; color: #5e6278; line-height: 1.5; }
     .warehouse-info { min-width: 210px; }
     .table-action-button { white-space: nowrap; }
+    .bulk-step-number { width: 30px; height: 30px; flex: 0 0 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-right: .85rem; background: #eef6ff; color: #1b84ff; font-weight: 700; font-size: .9rem; }
+    .bulk-field-option { padding: .85rem 1rem; border: 1px dashed #dbdfe9; border-radius: .65rem; cursor: pointer; transition: border-color .15s ease, background-color .15s ease; }
+    .bulk-field-option:hover { border-color: #1b84ff; }
+    .bulk-field-option.is-selected { border-style: solid; border-color: #1b84ff; background: #f1f8ff; }
+    .bulk-field-key { font-size: .7rem; padding: .1rem .35rem; margin-left: .25rem; background: #f9f9f9; color: #7e8299; }
+    .bulk-error-list { max-height: 220px; overflow-y: auto; padding-left: 1.1rem; }
+    .bulk-error-list li + li { margin-top: .25rem; }
     @media (max-width: 991.98px) {
         .items-toolbar > * { flex: 1 1 200px; }
     }
@@ -91,6 +98,11 @@
                     </div>
                 </div>
             </div>
+            @if($canUpdate)
+                <button type="button" class="btn btn-light-primary" id="btn_bulk_update_items" data-bs-toggle="modal" data-bs-target="#modal_bulk_update_items">
+                    <i class="fas fa-edit me-2"></i>Update Massal
+                </button>
+            @endif
             @if($canCreate)
                 <button type="button" class="btn btn-light-primary" id="btn_import_items" data-bs-toggle="modal" data-bs-target="#modal_import_items">
                     <i class="fas fa-file-import me-2"></i>Import Excel
@@ -298,6 +310,128 @@
     </div>
 </div>
 <!--end::Import Modal-->
+
+@if($canUpdate)
+<!--begin::Bulk Update Modal-->
+<div class="modal fade" id="modal_bulk_update_items" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable mw-900px">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h2 class="fw-bolder mb-1">Update Massal Item</h2>
+                    <div class="text-muted fs-7">Perbarui field tertentu untuk banyak item sekaligus berdasarkan SKU.</div>
+                </div>
+                <div class="btn btn-icon btn-sm btn-active-icon-primary" data-bs-dismiss="modal">
+                    <span class="svg-icon svg-icon-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <rect opacity="0.5" x="6" y="17.3137" width="16" height="2" rx="1" transform="rotate(-45 6 17.3137)" fill="black" />
+                            <rect x="7.41422" y="6" width="16" height="2" rx="1" transform="rotate(45 7.41422 6)" fill="black" />
+                        </svg>
+                    </span>
+                </div>
+            </div>
+            <div class="modal-body px-8 px-lg-10 py-8">
+                <div class="notice d-flex align-items-center bg-light-warning rounded border-warning border border-dashed p-4 mb-8">
+                    <i class="fas fa-lock text-warning fs-2 me-4"></i>
+                    <div class="fs-7 text-gray-700">
+                        <span class="fw-bolder text-gray-900">Tidak dapat diubah:</span>
+                        SKU (dipakai sebagai kunci pencarian), satuan kemasan (koli), dan isi per koli.
+                        Field yang tidak dipilih tetap seperti semula.
+                    </div>
+                </div>
+
+                <!-- Langkah 1: pilih field -->
+                <div class="bulk-step mb-8">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+                        <div class="d-flex align-items-center">
+                            <span class="bulk-step-number">1</span>
+                            <div>
+                                <div class="fw-bolder fs-6 text-gray-900">Pilih field yang akan diupdate</div>
+                                <div class="text-muted fs-8">Kolom template mengikuti pilihan ini.</div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge badge-light-primary fs-8" id="bulk_field_counter">0 field dipilih</span>
+                            <button type="button" class="btn btn-sm btn-light" id="bulk_field_select_all">Pilih semua</button>
+                            <button type="button" class="btn btn-sm btn-light" id="bulk_field_clear">Kosongkan</button>
+                        </div>
+                    </div>
+                    @foreach($bulkUpdateFieldGroups as $groupName => $groupFields)
+                        <div class="text-gray-500 fw-bold fs-8 text-uppercase mb-2 {{ $loop->first ? '' : 'mt-4' }}">{{ $groupName }}</div>
+                        <div class="row g-3">
+                            @foreach($groupFields as $fieldKey => $field)
+                                <div class="col-md-6">
+                                    <label class="bulk-field-option d-flex align-items-start h-100" for="bulk_field_{{ $fieldKey }}">
+                                        <span class="form-check form-check-custom form-check-solid form-check-sm me-3 mt-1">
+                                            <input class="form-check-input bulk-field-checkbox" type="checkbox" value="{{ $fieldKey }}" id="bulk_field_{{ $fieldKey }}" data-label="{{ $field['label'] }}" />
+                                        </span>
+                                        <span class="d-flex flex-column">
+                                            <span class="fw-bold text-gray-900 fs-7">{{ $field['label'] }} <code class="bulk-field-key">{{ $fieldKey }}</code></span>
+                                            <span class="text-muted fs-8 lh-sm mt-1">{{ $field['hint'] }}</span>
+                                        </span>
+                                    </label>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endforeach
+                </div>
+
+                <!-- Langkah 2: download template -->
+                <div class="bulk-step mb-8">
+                    <div class="d-flex align-items-center mb-4">
+                        <span class="bulk-step-number">2</span>
+                        <div>
+                            <div class="fw-bolder fs-6 text-gray-900">Download template</div>
+                            <div class="text-muted fs-8">Template berisi kolom SKU + field terpilih, lengkap dengan dropdown dan sheet panduan.</div>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-3">
+                        <div class="btn-group bulk-prefill-group flex-wrap" role="group" aria-label="Isi template">
+                            <input type="radio" class="btn-check" name="bulk_prefill" id="bulk_prefill_all" value="all" checked />
+                            <label class="btn btn-sm btn-light btn-active-light-primary" for="bulk_prefill_all">Isi semua item</label>
+                            <input type="radio" class="btn-check" name="bulk_prefill" id="bulk_prefill_filtered" value="filtered" />
+                            <label class="btn btn-sm btn-light btn-active-light-primary" for="bulk_prefill_filtered">Sesuai filter tabel</label>
+                            <input type="radio" class="btn-check" name="bulk_prefill" id="bulk_prefill_none" value="none" />
+                            <label class="btn btn-sm btn-light btn-active-light-primary" for="bulk_prefill_none">Template kosong</label>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-light-success ms-md-auto" id="btn_bulk_update_template" disabled>
+                            <i class="fas fa-file-excel me-2"></i>Download Template
+                        </button>
+                    </div>
+                    <div class="text-muted fs-8 mt-2" id="bulk_prefill_hint">Template diisi data item saat ini sehingga Anda cukup mengubah nilai yang perlu diganti.</div>
+                </div>
+
+                <!-- Langkah 3: upload -->
+                <div class="bulk-step">
+                    <div class="d-flex align-items-center mb-4">
+                        <span class="bulk-step-number">3</span>
+                        <div>
+                            <div class="fw-bolder fs-6 text-gray-900">Upload file yang sudah diisi</div>
+                            <div class="text-muted fs-8">Semua baris divalidasi dulu. Jika ada yang salah, tidak ada data yang diubah.</div>
+                        </div>
+                    </div>
+                    <input type="file" class="form-control form-control-solid" id="bulk_update_file" accept=".xlsx,.xls" />
+                    <div class="invalid-feedback d-block" id="bulk_update_file_error"></div>
+                    <div class="alert alert-dismissible bg-light-danger border border-danger border-dashed d-none mt-4 mb-0 p-4" id="bulk_update_errors">
+                        <div class="d-flex align-items-center mb-2">
+                            <i class="fas fa-exclamation-circle text-danger me-2"></i>
+                            <span class="fw-bolder text-danger fs-7">Import dibatalkan, perbaiki baris berikut lalu upload ulang:</span>
+                        </div>
+                        <ul class="bulk-error-list mb-0 fs-7 text-gray-800" id="bulk_update_error_list"></ul>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer flex-center">
+                <button type="button" class="btn btn-light me-3" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-primary" id="btn_bulk_update_submit" disabled>
+                    <i class="fas fa-upload me-2"></i>Proses Update
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<!--end::Bulk Update Modal-->
+@endif
 @endsection
 
 @push('scripts')
@@ -310,6 +444,8 @@
     const statusTpl  = '{{ route('admin.masterdata.items.status', ':id') }}';
     const showTpl    = '{{ route('admin.masterdata.items.show', ':id') }}';
     const importUrl  = '{{ route('admin.masterdata.items.import') }}';
+    const bulkTemplateUrl = '{{ route('admin.masterdata.items.bulk-update.template') }}';
+    const bulkImportUrl   = '{{ route('admin.masterdata.items.bulk-update.import') }}';
     const itemSearchUrl = '{{ route('admin.masterdata.items.data') }}';
     const canUpdate  = {{ $canUpdate ? 'true' : 'false' }};
     const canDelete  = {{ $canDelete ? 'true' : 'false' }};
@@ -952,6 +1088,151 @@
                 console.error(err);
                 closeSwal();
                 Swal?.fire('Error', 'Gagal import', 'error');
+            }
+        });
+
+        // ── Update Massal ──────────────────────────────────────────────────────
+
+        const bulkModalEl     = document.getElementById('modal_bulk_update_items');
+        const bulkModal       = bulkModalEl ? bootstrap.Modal.getOrCreateInstance(bulkModalEl) : null;
+        const bulkCheckboxes  = Array.from(document.querySelectorAll('.bulk-field-checkbox'));
+        const bulkCounter     = document.getElementById('bulk_field_counter');
+        const bulkTemplateBtn = document.getElementById('btn_bulk_update_template');
+        const bulkSubmitBtn   = document.getElementById('btn_bulk_update_submit');
+        const bulkFileInput   = document.getElementById('bulk_update_file');
+        const bulkFileError   = document.getElementById('bulk_update_file_error');
+        const bulkErrorBox    = document.getElementById('bulk_update_errors');
+        const bulkErrorList   = document.getElementById('bulk_update_error_list');
+        const bulkPrefillHint = document.getElementById('bulk_prefill_hint');
+        const bulkStorageKey  = 'items.bulkUpdate.fields';
+        const bulkPrefillHints = {
+            all: 'Template diisi data item saat ini sehingga Anda cukup mengubah nilai yang perlu diganti.',
+            filtered: 'Hanya item yang tampil sesuai pencarian & filter tabel saat ini yang dimasukkan ke template.',
+            none: 'Template hanya berisi header. Isi SKU dan nilai baru secara manual.',
+        };
+
+        const selectedBulkFields = () => bulkCheckboxes.filter(cb => cb.checked);
+
+        const refreshBulkState = () => {
+            const selected = selectedBulkFields();
+            bulkCheckboxes.forEach(cb => cb.closest('.bulk-field-option')?.classList.toggle('is-selected', cb.checked));
+            if (bulkCounter) bulkCounter.textContent = `${selected.length} field dipilih`;
+            if (bulkTemplateBtn) bulkTemplateBtn.disabled = selected.length === 0;
+            if (bulkSubmitBtn) bulkSubmitBtn.disabled = selected.length === 0;
+            try { localStorage.setItem(bulkStorageKey, JSON.stringify(selected.map(cb => cb.value))); } catch {}
+        };
+
+        const clearBulkErrors = () => {
+            if (bulkFileError) bulkFileError.textContent = '';
+            bulkErrorBox?.classList.add('d-none');
+            if (bulkErrorList) bulkErrorList.innerHTML = '';
+        };
+
+        const showBulkErrors = (messages) => {
+            if (!bulkErrorBox || !bulkErrorList) return;
+            bulkErrorList.innerHTML = messages.map(msg => `<li>${escapeHtml(msg)}</li>`).join('');
+            bulkErrorBox.classList.remove('d-none');
+            bulkErrorBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        };
+
+        try {
+            const saved = JSON.parse(localStorage.getItem(bulkStorageKey) || '[]');
+            if (Array.isArray(saved)) bulkCheckboxes.forEach(cb => { cb.checked = saved.includes(cb.value); });
+        } catch {}
+        refreshBulkState();
+
+        bulkCheckboxes.forEach(cb => cb.addEventListener('change', refreshBulkState));
+        document.getElementById('bulk_field_select_all')?.addEventListener('click', () => {
+            bulkCheckboxes.forEach(cb => { cb.checked = true; });
+            refreshBulkState();
+        });
+        document.getElementById('bulk_field_clear')?.addEventListener('click', () => {
+            bulkCheckboxes.forEach(cb => { cb.checked = false; });
+            refreshBulkState();
+        });
+        document.querySelectorAll('input[name="bulk_prefill"]').forEach(radio => radio.addEventListener('change', () => {
+            if (bulkPrefillHint) bulkPrefillHint.textContent = bulkPrefillHints[radio.value] || '';
+        }));
+
+        bulkModalEl?.addEventListener('show.bs.modal', () => {
+            if (bulkFileInput) bulkFileInput.value = '';
+            clearBulkErrors();
+        });
+        bulkFileInput?.addEventListener('change', clearBulkErrors);
+
+        bulkTemplateBtn?.addEventListener('click', () => {
+            const fields = selectedBulkFields();
+            if (!fields.length) return;
+            const prefill = document.querySelector('input[name="bulk_prefill"]:checked')?.value || 'all';
+            const params = new URLSearchParams();
+            fields.forEach(cb => params.append('fields[]', cb.value));
+            params.append('prefill', prefill);
+            if (prefill === 'filtered') {
+                params.append('q', searchInput?.value || '');
+                params.append('category_id', categoryFilter?.value || '');
+                params.append('is_active', statusFilter?.value ?? '');
+                params.append('procurement_source', procurementFilter?.value || '');
+            }
+            window.location.href = `${bulkTemplateUrl}?${params.toString()}`;
+        });
+
+        bulkSubmitBtn?.addEventListener('click', async () => {
+            clearBulkErrors();
+            const fields = selectedBulkFields();
+            if (!fields.length) return;
+            const file = bulkFileInput?.files?.[0];
+            if (!file) {
+                if (bulkFileError) bulkFileError.textContent = 'Pilih file Excel terlebih dahulu.';
+                return;
+            }
+
+            if (typeof Swal !== 'undefined') {
+                const labels = fields.map(cb => `<span class="badge badge-light-primary m-1">${escapeHtml(cb.dataset.label)}</span>`).join('');
+                const result = await Swal.fire({
+                    title: 'Proses update massal?',
+                    html: `<div class="text-gray-700 fs-6 mb-3">Field berikut akan diperbarui berdasarkan SKU di file:</div><div>${labels}</div>`,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Ya, proses',
+                    cancelButtonText: 'Batal',
+                    customClass: { confirmButton: 'btn btn-primary', cancelButton: 'btn btn-light' },
+                    buttonsStyling: false,
+                });
+                if (!result.isConfirmed) return;
+                Swal.fire({ title: 'Memproses...', allowOutsideClick: false, allowEscapeKey: false, didOpen: () => Swal.showLoading() });
+            }
+
+            const fd = new FormData();
+            fd.append('file', file);
+            fields.forEach(cb => fd.append('fields[]', cb.value));
+            bulkSubmitBtn.disabled = true;
+            try {
+                const res = await fetch(bulkImportUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                    body: fd,
+                });
+                const json = await res.json().catch(() => null);
+                closeSwal();
+                if (!res.ok) {
+                    const messages = json?.errors ? Object.values(json.errors).flat() : [json?.message || 'Gagal memproses update massal.'];
+                    showBulkErrors(messages);
+                    Swal?.fire('Update dibatalkan', 'Tidak ada data yang diubah. Periksa daftar kesalahan pada form update massal.', 'error');
+                    return;
+                }
+                Swal?.fire({
+                    title: 'Update massal selesai',
+                    html: `<div class="fs-6"><span class="fw-bolder text-success">${json.updated}</span> item diperbarui, <span class="fw-bolder text-gray-700">${json.unchanged}</span> item tanpa perubahan.</div>`,
+                    icon: 'success',
+                });
+                bulkModal?.hide();
+                reloadTable(true);
+            } catch (err) {
+                console.error(err);
+                closeSwal();
+                Swal?.fire('Error', 'Gagal memproses update massal.', 'error');
+            } finally {
+                refreshBulkState();
             }
         });
     });

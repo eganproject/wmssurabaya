@@ -13,8 +13,12 @@ use App\Models\ItemUnit;
 use App\Models\ItemWarehouseSetting;
 use App\Models\Warehouse;
 use App\Models\Uom;
+use App\Exports\ItemsBulkUpdateTemplateExport;
 use App\Exports\ItemsTemplateExport;
+use App\Imports\ItemsBulkUpdateImport;
 use App\Imports\ItemsImport;
+use App\Support\ItemBulkUpdateFields;
+use App\Support\Permission as Perm;
 use App\Support\StockService;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\Request;
@@ -32,7 +36,8 @@ class ItemController extends Controller
         $warehouses = Warehouse::where('is_active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']);
         $uoms = Uom::where('is_active', true)->orderBy('code')->get(['id', 'code', 'name']);
         $procurementSources = Item::procurementSources();
-        return view('admin.masterdata.items.index', compact('categories', 'warehouses', 'uoms', 'procurementSources'));
+        $bulkUpdateFieldGroups = ItemBulkUpdateFields::grouped();
+        return view('admin.masterdata.items.index', compact('categories', 'warehouses', 'uoms', 'procurementSources', 'bulkUpdateFieldGroups'));
     }
 
     public function show(Item $item)
@@ -78,35 +83,7 @@ class ItemController extends Controller
             'warehouseSettings' => fn ($settings) => $settings->where('warehouse_id', $defaultWarehouseId),
         ])->orderBy('name');
 
-        $search = trim((string) $request->input('q', ''));
-        if ($search !== '') {
-            $query->where(function ($q) use ($search, $defaultWarehouseId) {
-                $q->where('sku', 'like', "%{$search}%")
-                    ->orWhere('name', 'like', "%{$search}%")
-                    ->orWhereHas('warehouseSettings', fn ($settings) => $settings
-                        ->where('warehouse_id', $defaultWarehouseId)
-                        ->where('location', 'like', "%{$search}%"))
-                    ->orWhere('description', 'like', "%{$search}%");
-            });
-        }
-
-        $catFilter = $request->input('category_id');
-        if ($catFilter !== null && $catFilter !== '') {
-            if ((int)$catFilter === 0) {
-                $query->whereNull('category_id');
-            } else {
-                $query->where('category_id', (int)$catFilter);
-            }
-        }
-
-        $statusFilter = $request->input('is_active');
-        if (in_array((string) $statusFilter, ['0', '1'], true)) {
-            $query->where('is_active', (int) $statusFilter === 1);
-        }
-        $procurementSource = $request->input('procurement_source');
-        if (array_key_exists((string) $procurementSource, Item::procurementSources())) {
-            $query->where('procurement_source', $procurementSource);
-        }
+        $this->applyListFilters($query, $request, $defaultWarehouseId);
 
         $recordsTotal = Item::count();
         $recordsFiltered = (clone $query)->count();
@@ -461,6 +438,126 @@ class ItemController extends Controller
     public function template()
     {
         return Excel::download(new ItemsTemplateExport(), 'template-import-items-multi-gudang.xlsx');
+    }
+
+    /**
+     * Template update massal: kolom SKU + field terpilih, opsional diisi data item saat ini.
+     */
+    public function bulkUpdateTemplate(Request $request)
+    {
+        $this->authorizeBulkUpdate();
+        $validated = $request->validate([
+            'fields' => ['required', 'array', 'min:1'],
+            'fields.*' => ['string', Rule::in(ItemBulkUpdateFields::keys())],
+            'prefill' => ['nullable', Rule::in(['none', 'all', 'filtered'])],
+        ], [
+            'fields.required' => 'Pilih minimal satu field yang akan diupdate.',
+        ]);
+
+        $fields = ItemBulkUpdateFields::normalize($validated['fields']);
+        $prefill = $validated['prefill'] ?? 'all';
+        $smallWarehouseId = Warehouse::defaultId();
+        $largeWarehouseId = (int) Warehouse::where('type', Warehouse::TYPE_BULK)->where('is_active', true)->value('id');
+
+        $items = collect();
+        if ($prefill !== 'none') {
+            $query = Item::with(['category', 'units', 'warehouseSettings'])->orderBy('name');
+            if ($prefill === 'filtered') {
+                $this->applyListFilters($query, $request, $smallWarehouseId);
+            }
+            $items = $query->get();
+        }
+
+        return Excel::download(
+            new ItemsBulkUpdateTemplateExport($fields, $items, $smallWarehouseId, $largeWarehouseId),
+            'template-update-items-'.now()->format('Ymd-His').'.xlsx'
+        );
+    }
+
+    public function bulkUpdateImport(Request $request)
+    {
+        $this->authorizeBulkUpdate();
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
+            'fields' => ['required', 'array', 'min:1'],
+            'fields.*' => ['string', Rule::in(ItemBulkUpdateFields::keys())],
+        ], [
+            'fields.required' => 'Pilih minimal satu field yang akan diupdate.',
+            'file.required' => 'Pilih file Excel terlebih dahulu.',
+            'file.mimes' => 'File harus berformat .xlsx atau .xls.',
+            'file.max' => 'Ukuran file maksimal 5 MB.',
+        ]);
+
+        $import = new ItemsBulkUpdateImport(ItemBulkUpdateFields::normalize($validated['fields']));
+
+        DB::beginTransaction();
+        try {
+            Excel::import($import, $request->file('file'));
+            DB::commit();
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            report($e);
+            return response()->json(['message' => 'Gagal update massal: '.$e->getMessage()], 500);
+        }
+
+        return response()->json([
+            'message' => 'Update massal selesai',
+            'updated' => $import->updated,
+            'unchanged' => $import->unchanged,
+        ]);
+    }
+
+    /**
+     * Route update massal tidak cocok dengan pola nama route di Permission,
+     * jadi hak akses "update" menu Items dicek eksplisit di sini.
+     */
+    private function authorizeBulkUpdate(): void
+    {
+        abort_unless(
+            Perm::can(auth()->user(), 'admin.masterdata.items.index', 'update'),
+            403,
+            'Anda tidak memiliki akses untuk mengubah item.'
+        );
+    }
+
+    /**
+     * Filter daftar item (pencarian, kategori, status, sumber pengadaan) yang dipakai
+     * bersama oleh tabel dan template update massal.
+     */
+    private function applyListFilters($query, Request $request, int $defaultWarehouseId): void
+    {
+        $search = trim((string) $request->input('q', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search, $defaultWarehouseId) {
+                $q->where('sku', 'like', "%{$search}%")
+                    ->orWhere('name', 'like', "%{$search}%")
+                    ->orWhereHas('warehouseSettings', fn ($settings) => $settings
+                        ->where('warehouse_id', $defaultWarehouseId)
+                        ->where('location', 'like', "%{$search}%"))
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        $catFilter = $request->input('category_id');
+        if ($catFilter !== null && $catFilter !== '') {
+            if ((int)$catFilter === 0) {
+                $query->whereNull('category_id');
+            } else {
+                $query->where('category_id', (int)$catFilter);
+            }
+        }
+
+        $statusFilter = $request->input('is_active');
+        if (in_array((string) $statusFilter, ['0', '1'], true)) {
+            $query->where('is_active', (int) $statusFilter === 1);
+        }
+        $procurementSource = $request->input('procurement_source');
+        if (array_key_exists((string) $procurementSource, Item::procurementSources())) {
+            $query->where('procurement_source', $procurementSource);
+        }
     }
 
     /**

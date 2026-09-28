@@ -159,6 +159,8 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::resource('uoms', \App\Http\Controllers\Admin\UomController::class)->except(['create','show','edit'])->names('uoms');
         Route::get('/items/data', [\App\Http\Controllers\Admin\ItemController::class, 'data'])->name('items.data');
         Route::get('/items/template', [\App\Http\Controllers\Admin\ItemController::class, 'template'])->name('items.template');
+        Route::get('/items/bulk-update/template', [\App\Http\Controllers\Admin\ItemController::class, 'bulkUpdateTemplate'])->name('items.bulk-update.template');
+        Route::post('/items/bulk-update/import', [\App\Http\Controllers\Admin\ItemController::class, 'bulkUpdateImport'])->name('items.bulk-update.import');
         Route::patch('/items/{item}/status', [\App\Http\Controllers\Admin\ItemController::class, 'updateStatus'])->name('items.status');
         Route::get('/items/{item}', [\App\Http\Controllers\Admin\ItemController::class, 'show'])->name('items.show');
         Route::resource('items', \App\Http\Controllers\Admin\ItemController::class)->except(['create','show','edit'])->names('items');
