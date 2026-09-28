@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Exports\Concerns\BindsStringValuesAsText;
+use App\Models\Item;
 use App\Support\ItemBulkUpdateFields;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromArray;
@@ -83,6 +84,7 @@ class ItemsBulkUpdateDataSheet extends DefaultValueBinder implements FromArray, 
                 'status' => $item->is_active ? 'aktif' : 'nonaktif',
                 'description' => (string) ($item->description ?? ''),
                 'base_unit' => $item->is_bundle ? '' : (string) ($item->units->firstWhere('is_base', true)?->name ?? 'PCS'),
+                'koli_length_cm', 'koli_width_cm', 'koli_height_cm' => $item->{$column} ?? '',
                 'small_warehouse_safety_stock' => (int) ($small?->safety_stock ?? 0),
                 'small_warehouse_location' => (string) ($small?->location ?? ''),
                 'large_warehouse_safety_stock' => (int) ($large?->safety_stock ?? 0),
@@ -140,6 +142,9 @@ class ItemsBulkUpdateDataSheet extends DefaultValueBinder implements FromArray, 
             if (in_array($column, ['small_warehouse_safety_stock', 'large_warehouse_safety_stock'], true)) {
                 $sheet->getStyle("{$letter}2:{$letter}{$validationLastRow}")->getNumberFormat()->setFormatCode('0');
                 $this->applyValidation($sheet, "{$letter}2:{$letter}{$validationLastRow}", DataValidation::TYPE_WHOLE, null, 'Safety stock harus berupa angka bulat 0 atau lebih.');
+            } elseif (in_array($column, Item::KOLI_DIMENSION_FIELDS, true)) {
+                $sheet->getStyle("{$letter}2:{$letter}{$validationLastRow}")->getNumberFormat()->setFormatCode('0.##');
+                $this->applyValidation($sheet, "{$letter}2:{$letter}{$validationLastRow}", DataValidation::TYPE_DECIMAL, null, 'Dimensi koli harus berupa angka lebih dari 0 (cm).');
             } elseif (in_array($column, [ItemBulkUpdateFields::KEY_COLUMN, 'small_warehouse_location', 'large_warehouse_location'], true)) {
                 $sheet->getStyle("{$letter}2:{$letter}{$validationLastRow}")->getNumberFormat()->setFormatCode('@');
             }

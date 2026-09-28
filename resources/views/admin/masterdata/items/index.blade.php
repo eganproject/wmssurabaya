@@ -220,6 +220,22 @@
                         </div>
                     </div>
 
+                    <div class="mb-7">
+                        <label class="fs-6 fw-bold form-label mb-2">Dimensi per Koli (cm)</label>
+                        <div class="row g-4">
+                            @foreach(['koli_length_cm' => 'Panjang', 'koli_width_cm' => 'Lebar', 'koli_height_cm' => 'Tinggi'] as $field => $label)
+                                <div class="col-md-3">
+                                    <input type="number" min="0.01" max="{{ \App\Models\Item::KOLI_DIMENSION_MAX }}" step="0.01" class="form-control form-control-solid koli-dimension" name="{{ $field }}" id="item_{{ $field }}" placeholder="{{ $label }}" />
+                                    <div class="invalid-feedback d-block" id="error_{{ $field }}"></div>
+                                </div>
+                            @endforeach
+                            <div class="col-md-3">
+                                <div class="form-control form-control-solid bg-light-primary text-primary fw-bold" id="item_cbm_preview">- m³</div>
+                            </div>
+                        </div>
+                        <div class="form-text">Opsional. CBM per koli = P × L × T ÷ 1.000.000. Kosongkan jika belum diketahui.</div>
+                    </div>
+
                     {{-- Bundle toggle --}}
                     <div class="fv-row mb-5">
                         <div class="form-check form-switch form-check-custom form-check-solid">
@@ -283,6 +299,7 @@
                         <li><strong>base_unit</strong> (opsional, default <code>PCS</code>; dapat diisi <code>SET</code>)</li>
                         <li><strong>package_unit</strong> (opsional, contoh <code>KOLI</code>, <code>DUS</code>, atau <code>BOX</code>)</li>
                         <li><strong>package_conversion_qty</strong> (wajib jika package_unit atau stok Gudang Besar diisi; minimal <code>1</code>, contoh <code>24</code> berarti 1 KOLI = 24 PCS)</li>
+                        <li><strong>koli_length_cm</strong>, <strong>koli_width_cm</strong>, <strong>koli_height_cm</strong> (opsional, dimensi per koli dalam cm untuk informasi CBM; jika kolom tidak ada, dimensi item tidak diubah)</li>
                         <li><strong>small_warehouse_stock</strong> (opsional, stok awal Gudang Kecil dalam satuan dasar)</li>
                         <li><strong>large_warehouse_stock</strong> (opsional, stok awal Gudang Besar dalam satuan kemasan; package_unit default <code>KOLI</code>)</li>
                         <li><strong>small_warehouse_safety_stock</strong> dan <strong>small_warehouse_location</strong> (opsional)</li>
@@ -290,7 +307,7 @@
                         <li><strong>description</strong> (opsional)</li>
                     </ul>
                     <p class="text-muted small mb-1">Contoh header baru:</p>
-                    <code class="d-block text-wrap">sku,name,parent_category,category,procurement_source,base_unit,package_unit,package_conversion_qty,small_warehouse_stock,large_warehouse_stock,small_warehouse_safety_stock,small_warehouse_location,large_warehouse_safety_stock,large_warehouse_location,description</code>
+                    <code class="d-block text-wrap">sku,name,parent_category,category,procurement_source,base_unit,package_unit,package_conversion_qty,koli_length_cm,koli_width_cm,koli_height_cm,small_warehouse_stock,large_warehouse_stock,small_warehouse_safety_stock,small_warehouse_location,large_warehouse_safety_stock,large_warehouse_location,description</code>
                     <p class="text-muted small mt-3 mb-1">Contoh nilai: <code>SKU-001 | Produk A | PCS | KOLI | 24 | 100 | 10</code> berarti Gudang Kecil 100 PCS dan Gudang Besar 10 KOLI = 240 PCS.</p>
                     <p class="text-muted small mb-1">Gunakan format Excel (.xlsx/.xls) dengan header di baris pertama.</p>
                     <p class="text-muted small mb-0">Jika kolom category dikosongkan, item otomatis dimasukkan ke kategori "Tanpa Kategori".</p>
@@ -587,7 +604,19 @@
         formBaseUom?.addEventListener('change', syncUomNames);
         formPackageUom?.addEventListener('change', syncUomNames);
 
-        const errorIds = ['error_sku','error_name','error_category_id','error_procurement_source','error_address','error_description','error_safety_stock','error_is_bundle','error_components'];
+        const koliDimensionInputs = ['koli_length_cm', 'koli_width_cm', 'koli_height_cm'].map(field => document.getElementById(`item_${field}`));
+        const cbmPreview = document.getElementById('item_cbm_preview');
+        const formatCbm = (value) => `${Number(value).toLocaleString('id-ID', { maximumFractionDigits: 6 })} m³`;
+        const updateCbmPreview = () => {
+            if (!cbmPreview) return;
+            const values = koliDimensionInputs.map(el => parseFloat(el?.value));
+            cbmPreview.textContent = values.every(v => v > 0)
+                ? formatCbm(values.reduce((total, v) => total * v, 1) / 1000000)
+                : '- m³';
+        };
+        koliDimensionInputs.forEach(el => el?.addEventListener('input', updateCbmPreview));
+
+        const errorIds = ['error_sku','error_name','error_category_id','error_procurement_source','error_address','error_description','error_safety_stock','error_is_bundle','error_components','error_koli_length_cm','error_koli_width_cm','error_koli_height_cm'];
         const clearErrors = () => {
             errorIds.forEach(id => {
                 const el = document.getElementById(id);
@@ -787,6 +816,9 @@
                         <div>
                             <div class="fw-semibold text-gray-800 mb-1">${escapeHtml(value || 'Tanpa kategori')}</div>
                             <div class="mb-1"><span class="badge badge-light-info">Dasar: ${escapeHtml(row.base_unit || 'PCS')}</span>${row.package_unit ? ` <span class="badge badge-light-warning">Kemasan: ${escapeHtml(row.package_unit)}</span>` : ''}</div>
+                            <div class="mb-1 fs-7">${row.cbm_per_koli !== null
+                                ? `<span class="text-muted">Koli:</span> <span class="fw-semibold">${[row.koli_length_cm, row.koli_width_cm, row.koli_height_cm].map(v => Number(v).toLocaleString('id-ID')).join(' × ')} cm</span> <span class="badge badge-light-primary">${formatCbm(row.cbm_per_koli)}</span>`
+                                : '<span class="text-muted">Dimensi koli belum diisi</span>'}</div>
                             <div class="item-description">
                                 ${row.description ? escapeHtml(row.description) : '<span class="text-muted">Tidak ada deskripsi</span>'}
                             </div>
@@ -873,6 +905,7 @@
             if (formPackageUom) formPackageUom.value = '';
             syncUomNames();
             formPackageConversion && (formPackageConversion.value = 1);
+            updateCbmPreview();
             formIsBundle.checked = false;
             bundleSection.classList.add('d-none');
             bundleContainer.innerHTML = '';
@@ -912,6 +945,8 @@
                 formBaseUnit && (formBaseUnit.value = json.base_unit_name || 'PCS');
                 formPackageUnit && (formPackageUnit.value = json.package_unit_name || '');
                 formPackageConversion && (formPackageConversion.value = json.package_conversion_qty || 1);
+                koliDimensionInputs.forEach(el => { if (el) el.value = json[el.name] ?? ''; });
+                updateCbmPreview();
                 setCategoryValue(json.category_id || '0');
 
                 // Bundle state

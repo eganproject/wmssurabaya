@@ -6,6 +6,7 @@ namespace App\Support;
  * Daftar field master item yang boleh diperbarui massal lewat import Excel.
  * SKU dipakai sebagai kunci pencarian, sedangkan informasi koli (satuan kemasan
  * dan isi per koli) sengaja tidak tersedia di sini agar tidak bisa diubah.
+ * Dimensi koli boleh diubah karena hanya informasi CBM dan tidak memengaruhi stok.
  */
 class ItemBulkUpdateFields
 {
@@ -46,6 +47,21 @@ class ItemBulkUpdateFields
                 'label' => 'UOM Dasar',
                 'group' => 'Satuan',
                 'hint' => 'Kode UOM aktif, misal PCS atau SET. Tidak berlaku untuk item bundle.',
+            ],
+            'koli_length_cm' => [
+                'label' => 'Panjang Koli (cm)',
+                'group' => 'Dimensi Koli',
+                'hint' => 'Angka > 0 dalam cm, maksimal 2 desimal. Kosongkan untuk menghapus.',
+            ],
+            'koli_width_cm' => [
+                'label' => 'Lebar Koli (cm)',
+                'group' => 'Dimensi Koli',
+                'hint' => 'Angka > 0 dalam cm, maksimal 2 desimal. Kosongkan untuk menghapus.',
+            ],
+            'koli_height_cm' => [
+                'label' => 'Tinggi Koli (cm)',
+                'group' => 'Dimensi Koli',
+                'hint' => 'Angka > 0 dalam cm, maksimal 2 desimal. Kosongkan untuk menghapus.',
             ],
             'small_warehouse_safety_stock' => [
                 'label' => 'Safety Stock Gudang Kecil',

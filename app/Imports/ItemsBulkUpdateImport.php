@@ -192,6 +192,16 @@ class ItemsBulkUpdateImport implements ToCollection, WithHeadingRow, WithMultipl
                     }
                     break;
 
+                case 'koli_length_cm':
+                case 'koli_width_cm':
+                case 'koli_height_cm':
+                    try {
+                        $attributes[$field] = Item::parseKoliDimension($raw);
+                    } catch (\InvalidArgumentException $e) {
+                        $this->addError($rowNumber, $sku, ItemBulkUpdateFields::all()[$field]['label'].' '.$e->getMessage().'.');
+                    }
+                    break;
+
                 case 'small_warehouse_safety_stock':
                 case 'large_warehouse_safety_stock':
                     $number = $this->nonNegativeInt($raw);
