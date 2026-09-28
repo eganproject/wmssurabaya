@@ -19,6 +19,9 @@ class Item extends Model
         'name',
         'category_id',
         'procurement_source',
+        'koli_length_cm',
+        'koli_width_cm',
+        'koli_height_cm',
         'description',
         'is_bundle',
         'is_active',
@@ -27,7 +30,64 @@ class Item extends Model
     protected $casts = [
         'is_bundle' => 'boolean',
         'is_active' => 'boolean',
+        'koli_length_cm' => 'float',
+        'koli_width_cm' => 'float',
+        'koli_height_cm' => 'float',
     ];
+
+    /** Kolom dimensi koli (cm) yang dipakai untuk menghitung CBM per koli. */
+    public const KOLI_DIMENSION_FIELDS = ['koli_length_cm', 'koli_width_cm', 'koli_height_cm'];
+
+    /** Batas atas dimensi (cm), menyesuaikan kolom decimal(8,2). */
+    public const KOLI_DIMENSION_MAX = 99999.99;
+
+    /**
+     * CBM (m³) per koli = P × L × T (cm) / 1.000.000.
+     * Null jika salah satu dimensi belum diisi.
+     */
+    public function getCbmPerKoliAttribute(): ?float
+    {
+        if ($this->koli_length_cm === null || $this->koli_width_cm === null || $this->koli_height_cm === null) {
+            return null;
+        }
+
+        return round($this->koli_length_cm * $this->koli_width_cm * $this->koli_height_cm / 1_000_000, 6);
+    }
+
+    /**
+     * Ubah nilai dimensi dari Excel menjadi cm (2 desimal). Kosong berarti null;
+     * koma diterima sebagai pemisah desimal (mis. "30,5").
+     *
+     * @throws \InvalidArgumentException jika bukan angka > 0 atau melebihi batas.
+     */
+    public static function parseKoliDimension(mixed $raw): ?float
+    {
+        if (is_int($raw) || is_float($raw)) {
+            $value = (float) $raw;
+        } else {
+            $text = str_replace(' ', '', trim((string) ($raw ?? '')));
+            if ($text === '') {
+                return null;
+            }
+            if (!str_contains($text, '.')) {
+                $text = str_replace(',', '.', $text);
+            }
+            if (!is_numeric($text)) {
+                throw new \InvalidArgumentException('harus berupa angka (cm)');
+            }
+            $value = (float) $text;
+        }
+
+        $value = round($value, 2);
+        if ($value <= 0) {
+            throw new \InvalidArgumentException('harus lebih dari 0 cm');
+        }
+        if ($value > self::KOLI_DIMENSION_MAX) {
+            throw new \InvalidArgumentException('maksimal '.self::KOLI_DIMENSION_MAX.' cm');
+        }
+
+        return $value;
+    }
 
     public static function procurementSources(): array
     {

@@ -61,6 +61,8 @@ class ItemsImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
         $hasCategoryColumns = count(array_intersect(['parent_category', 'category'], $headers)) > 0;
         $hasProcurementSourceColumn = in_array('procurement_source', $headers, true);
         $hasDescriptionColumn = in_array('description', $headers, true);
+        // Dimensi koli hanya disentuh jika kolomnya ada, agar file lama tidak mengosongkan data.
+        $koliDimensionColumns = array_values(array_intersect(Item::KOLI_DIMENSION_FIELDS, $headers));
         $hasBaseUnitColumn = count(array_intersect(['base_unit', 'satuan_dasar', 'unit_dasar'], $headers)) > 0;
         $hasPackageUnitColumn = count(array_intersect(['package_unit', 'satuan_kemasan', 'unit_kemasan'], $headers)) > 0;
         $hasSmallSettingColumns = count(array_intersect([
@@ -153,6 +155,15 @@ class ItemsImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
             }
             if ($hasDescriptionColumn) {
                 $payload['description'] = $description;
+            }
+            foreach ($koliDimensionColumns as $column) {
+                try {
+                    $payload[$column] = Item::parseKoliDimension($row[$column] ?? null);
+                } catch (\InvalidArgumentException $e) {
+                    throw ValidationException::withMessages([
+                        'file' => "Baris {$rowNumber} SKU {$sku}: {$column} {$e->getMessage()}.",
+                    ]);
+                }
             }
             $item = Item::where('sku', $sku)->first();
             $isNewItem = !$item;

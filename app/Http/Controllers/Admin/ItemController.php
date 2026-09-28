@@ -30,6 +30,12 @@ use Illuminate\Validation\ValidationException;
 
 class ItemController extends Controller
 {
+    private const KOLI_DIMENSION_ATTRIBUTES = [
+        'koli_length_cm' => 'panjang koli',
+        'koli_width_cm' => 'lebar koli',
+        'koli_height_cm' => 'tinggi koli',
+    ];
+
     public function index()
     {
         $categories = Category::orderBy('name')->get(['id', 'name']);
@@ -52,6 +58,10 @@ class ItemController extends Controller
             'category_id' => $item->category_id,
             'procurement_source' => $item->procurement_source,
             'procurement_source_label' => $item->procurement_source_label,
+            'koli_length_cm' => $item->koli_length_cm,
+            'koli_width_cm' => $item->koli_width_cm,
+            'koli_height_cm' => $item->koli_height_cm,
+            'cbm_per_koli' => $item->cbm_per_koli,
             'description' => $item->description ?? '',
             'is_active' => (bool) $item->is_active,
             'warehouse_settings' => $item->warehouseSettings->map(fn ($setting) => [
@@ -103,6 +113,10 @@ class ItemController extends Controller
                 'category_id' => $i->category_id,
                 'procurement_source' => $i->procurement_source,
                 'procurement_source_label' => $i->procurement_source_label,
+                'koli_length_cm' => $i->koli_length_cm,
+                'koli_width_cm' => $i->koli_width_cm,
+                'koli_height_cm' => $i->koli_height_cm,
+                'cbm_per_koli' => $i->cbm_per_koli,
                 'default_location' => $i->warehouseSettings->first()?->location ?? '',
                 'description' => $i->description ?? '',
                 'default_safety_stock' => (int) ($i->warehouseSettings->first()?->safety_stock ?? 0),
@@ -132,6 +146,7 @@ class ItemController extends Controller
                 }
             }],
             'procurement_source' => ['nullable', 'string', Rule::in(array_keys(Item::procurementSources()))],
+            ...$this->koliDimensionRules(),
             'description' => ['nullable', 'string'],
             'is_bundle' => ['nullable', 'boolean'],
             'components' => ['nullable', 'array'],
@@ -146,7 +161,7 @@ class ItemController extends Controller
             'warehouse_settings.*.warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
             'warehouse_settings.*.safety_stock' => ['nullable', 'integer', 'min:0'],
             'warehouse_settings.*.location' => ['nullable', 'string', 'max:255'],
-        ]);
+        ], [], self::KOLI_DIMENSION_ATTRIBUTES);
 
         $isBundle = filter_var($request->input('is_bundle', false), FILTER_VALIDATE_BOOLEAN);
         $components = $isBundle ? ($validated['components'] ?? []) : [];
@@ -215,6 +230,7 @@ class ItemController extends Controller
                 }
             }],
             'procurement_source' => ['nullable', 'string', Rule::in(array_keys(Item::procurementSources()))],
+            ...$this->koliDimensionRules(),
             'description' => ['nullable', 'string'],
             'is_bundle' => ['nullable', 'boolean'],
             'components' => ['nullable', 'array'],
@@ -229,7 +245,7 @@ class ItemController extends Controller
             'warehouse_settings.*.warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
             'warehouse_settings.*.safety_stock' => ['nullable', 'integer', 'min:0'],
             'warehouse_settings.*.location' => ['nullable', 'string', 'max:255'],
-        ]);
+        ], [], self::KOLI_DIMENSION_ATTRIBUTES);
 
         $isBundle = filter_var($request->input('is_bundle', false), FILTER_VALIDATE_BOOLEAN);
         $components = $isBundle ? ($validated['components'] ?? []) : [];
@@ -558,6 +574,16 @@ class ItemController extends Controller
         if (array_key_exists((string) $procurementSource, Item::procurementSources())) {
             $query->where('procurement_source', $procurementSource);
         }
+    }
+
+    /**
+     * Dimensi koli (cm) bersifat opsional; kosong disimpan sebagai null.
+     */
+    private function koliDimensionRules(): array
+    {
+        return collect(Item::KOLI_DIMENSION_FIELDS)
+            ->mapWithKeys(fn (string $field) => [$field => ['nullable', 'numeric', 'gt:0', 'max:'.Item::KOLI_DIMENSION_MAX, 'decimal:0,2']])
+            ->all();
     }
 
     /**
