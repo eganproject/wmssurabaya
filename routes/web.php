@@ -299,6 +299,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
 
         Route::get('/returns', [InboundController::class, 'returns'])->name('returns.index');
         Route::get('/returns/data', [InboundController::class, 'returnsData'])->name('returns.data');
+        Route::get('/returns/export', [InboundController::class, 'returnsExport'])->name('returns.export');
         Route::get('/returns/lookup-resi', [InboundController::class, 'returnsLookupResi'])->name('returns.lookup-resi');
         Route::get('/returns/create', [InboundController::class, 'returnsCreate'])->name('returns.create');
         Route::post('/returns', [InboundController::class, 'returnsStore'])->name('returns.store');

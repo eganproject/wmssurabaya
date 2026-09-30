@@ -2,21 +2,22 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exports\InboundReceiptsReportExport;
+use App\Exports\InboundReceiptsTemplateExport;
+use App\Exports\InboundReturnsReportExport;
+use App\Exports\InboundReturnsTemplateExport;
 use App\Http\Controllers\Controller;
+use App\Imports\InboundReceiptsImport;
+use App\Imports\InboundReturnsImport;
+use App\Models\DamagedGood;
+use App\Models\DamagedGoodItem;
 use App\Models\InboundItem;
 use App\Models\InboundTransaction;
 use App\Models\Item;
 use App\Models\ItemUnit;
-use App\Models\DamagedGood;
-use App\Models\DamagedGoodItem;
 use App\Models\Resi;
 use App\Models\StockMutation;
 use App\Models\Warehouse;
-use App\Exports\InboundReceiptsTemplateExport;
-use App\Exports\InboundReceiptsReportExport;
-use App\Exports\InboundReturnsTemplateExport;
-use App\Imports\InboundReceiptsImport;
-use App\Imports\InboundReturnsImport;
 use App\Support\DamagedStockService;
 use App\Support\Permission;
 use App\Support\StockService;
@@ -112,6 +113,56 @@ class InboundController extends Controller
         return $this->data($request, 'return');
     }
 
+    public function returnsExport(Request $request)
+    {
+        abort_unless(
+            Permission::can($request->user(), 'admin.inbound.returns.index', 'view'),
+            403,
+            'Anda tidak memiliki akses ke laporan retur inbound'
+        );
+
+        $query = InboundTransaction::query()
+            ->with([
+                'items.item.baseUnit',
+                'items.unit',
+                'creator',
+                'approver',
+                'finalizer',
+                'warehouse',
+            ])
+            ->where('inbound_transactions.type', 'return')
+            ->orderByDesc('inbound_transactions.transacted_at')
+            ->orderByDesc('inbound_transactions.id');
+
+        $status = $request->input('status');
+        if (in_array($status, ['pending', 'approved', 'finalized'], true)) {
+            $query->where('inbound_transactions.status', $status);
+        }
+
+        $search = trim((string) $request->input('q', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('inbound_transactions.code', 'like', "%{$search}%")
+                    ->orWhere('inbound_transactions.ref_no', 'like', "%{$search}%")
+                    ->orWhere('inbound_transactions.note', 'like', "%{$search}%")
+                    ->orWhereHas('items.item', function ($itemQ) use ($search) {
+                        $itemQ->where('sku', 'like', "%{$search}%")
+                            ->orWhere('name', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $this->applyDateFilter($query, $request);
+
+        $filters = $request->only(['q', 'status', 'date_from', 'date_to']);
+        $filename = 'laporan-retur-inbound-'.now()->format('Ymd-His').'.xlsx';
+
+        return Excel::download(
+            new InboundReturnsReportExport($query->get(), $filters, $request->user()?->name),
+            $filename
+        );
+    }
+
     public function receiptsStore(Request $request)
     {
         return $this->store($request, 'receipt');
@@ -190,7 +241,7 @@ class InboundController extends Controller
             ->orWhere('id_pesanan', $noResi)
             ->first();
 
-        if (!$resi) {
+        if (! $resi) {
             return response()->json([
                 'found' => false,
                 'message' => 'Resi tidak ditemukan pada database import. Silakan input SKU dan qty secara manual.',
@@ -221,6 +272,7 @@ class InboundController extends Controller
             ],
             'items' => $details->map(function ($row) use ($itemMap) {
                 $item = $itemMap->get($row['sku']);
+
                 return [
                     'sku' => $row['sku'],
                     'qty' => $row['qty'],
@@ -235,7 +287,7 @@ class InboundController extends Controller
     public function returnsTemplate()
     {
         return Excel::download(
-            new InboundReturnsTemplateExport(),
+            new InboundReturnsTemplateExport,
             'template-import-retur-inbound.xlsx'
         );
     }
@@ -243,7 +295,7 @@ class InboundController extends Controller
     public function receiptsTemplate()
     {
         return Excel::download(
-            new InboundReceiptsTemplateExport(),
+            new InboundReceiptsTemplateExport,
             'template-import-penerimaan-barang.xlsx'
         );
     }
@@ -254,7 +306,7 @@ class InboundController extends Controller
             'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
         ]);
 
-        $import = new InboundReturnsImport();
+        $import = new InboundReturnsImport;
         DB::beginTransaction();
         try {
             Excel::import($import, $request->file('file'));
@@ -269,7 +321,7 @@ class InboundController extends Controller
             $createdItems = 0;
             foreach ($groups as $group) {
                 $transactedAt = now();
-                if (!empty($group['transacted_at'])) {
+                if (! empty($group['transacted_at'])) {
                     try {
                         $transactedAt = Carbon::parse($group['transacted_at']);
                     } catch (\Throwable $e) {
@@ -322,6 +374,7 @@ class InboundController extends Controller
             throw $e;
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Gagal import retur inbound',
                 'error' => $e->getMessage(),
@@ -337,7 +390,7 @@ class InboundController extends Controller
         ]);
         $warehouseId = $request->integer('warehouse_id');
 
-        $import = new InboundReceiptsImport();
+        $import = new InboundReceiptsImport;
         DB::beginTransaction();
         try {
             Excel::import($import, $request->file('file'));
@@ -352,7 +405,7 @@ class InboundController extends Controller
             $createdItems = 0;
             foreach ($groups as $group) {
                 $transactedAt = now();
-                if (!empty($group['transacted_at'])) {
+                if (! empty($group['transacted_at'])) {
                     try {
                         $transactedAt = Carbon::parse($group['transacted_at']);
                     } catch (\Throwable $e) {
@@ -408,6 +461,7 @@ class InboundController extends Controller
             throw $e;
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Gagal import penerimaan barang',
                 'error' => $e->getMessage(),
@@ -476,9 +530,11 @@ class InboundController extends Controller
                 'return' => route('admin.inbound.returns.template'),
                 default => null,
             },
-            'exportUrl' => $type === 'receipt'
-                ? route('admin.inbound.receipts.export')
-                : null,
+            'exportUrl' => match ($type) {
+                'receipt' => route('admin.inbound.receipts.export'),
+                'return' => route('admin.inbound.returns.export'),
+                default => null,
+            },
         ]);
     }
 
@@ -592,6 +648,7 @@ class InboundController extends Controller
             })->filter()->values();
             $itemLabel = $labels->implode(', ');
             $totalQty = (int) $items->sum(fn ($it) => (int) ($it->qty_received ?? $it->qty ?? 0));
+
             return [
                 'id' => $row->id,
                 'code' => $row->code,
@@ -738,6 +795,7 @@ class InboundController extends Controller
             throw $e;
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Gagal menyimpan inbound',
                 'error' => $e->getMessage(),
@@ -760,8 +818,9 @@ class InboundController extends Controller
             $tx = InboundTransaction::where('type', $type)->findOrFail($id);
             $status = $tx->status ?? 'pending';
             $isEditableApprovedReturn = $type === 'return' && $status === 'approved';
-            if ($status === 'finalized' || ($status === 'approved' && !$isEditableApprovedReturn)) {
+            if ($status === 'finalized' || ($status === 'approved' && ! $isEditableApprovedReturn)) {
                 DB::rollBack();
+
                 return response()->json(['message' => 'Data sudah diproses dan tidak bisa diubah'], 422);
             }
 
@@ -799,6 +858,7 @@ class InboundController extends Controller
             throw $e;
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Gagal memperbarui inbound',
                 'error' => $e->getMessage(),
@@ -819,6 +879,7 @@ class InboundController extends Controller
             $isDeletableApprovedReturn = $type === 'return' && $status === 'approved';
             if ($status === 'finalized' || ($status === 'approved' && ! $isDeletableApprovedReturn)) {
                 DB::rollBack();
+
                 return response()->json(['message' => 'Data sudah diproses dan tidak bisa dihapus'], 422);
             }
 
@@ -830,11 +891,13 @@ class InboundController extends Controller
         } catch (ValidationException $e) {
             DB::rollBack();
             $msg = collect($e->errors())->flatten()->first() ?? $e->getMessage();
+
             return response()->json([
                 'message' => $msg,
             ], 422);
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Gagal menghapus inbound',
                 'error' => $e->getMessage(),
@@ -856,10 +919,12 @@ class InboundController extends Controller
 
             if (($tx->status ?? 'pending') === 'approved') {
                 DB::commit();
+
                 return response()->json(['message' => 'Data sudah disetujui']);
             }
             if (($tx->status ?? 'pending') === 'finalized') {
                 DB::commit();
+
                 return response()->json(['message' => 'Data sudah finalisasi']);
             }
 
@@ -880,6 +945,7 @@ class InboundController extends Controller
             throw $e;
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Gagal menyetujui inbound',
                 'error' => $e->getMessage(),
@@ -903,11 +969,13 @@ class InboundController extends Controller
 
             if (($tx->status ?? 'pending') === 'finalized') {
                 DB::commit();
+
                 return response()->json(['message' => 'Retur sudah finalisasi']);
             }
 
             if (($tx->status ?? 'pending') !== 'approved') {
                 DB::rollBack();
+
                 return response()->json([
                     'message' => 'Retur harus disetujui dan masuk Gudang Retur sebelum finalisasi.',
                 ], 422);
@@ -927,6 +995,7 @@ class InboundController extends Controller
             throw $e;
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Gagal finalisasi retur',
                 'error' => $e->getMessage(),
@@ -940,6 +1009,7 @@ class InboundController extends Controller
     {
         if ($type === 'return') {
             $this->postInboundReturnToDamagedStock($tx);
+
             return;
         }
 
@@ -997,7 +1067,7 @@ class InboundController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if (!$damage) {
+            if (! $damage) {
                 $damage = DamagedGood::create([
                     'warehouse_id' => $tx->warehouse_id ?: Warehouse::defaultId(),
                     'code' => $this->generateCode('DMG-RET'),
@@ -1108,6 +1178,7 @@ class InboundController extends Controller
                     $good = (int) ($row['qty_good'] ?? 0);
                     $damaged = (int) ($row['qty_damaged'] ?? 0);
                     $missing = max(0, $resiQty - $received);
+
                     return [
                         'item_id' => (int) $row['item_id'],
                         'unit_id' => null,
@@ -1129,7 +1200,7 @@ class InboundController extends Controller
                     $unit = ItemUnit::whereKey($unitId)
                         ->where('item_id', (int) $row['item_id'])
                         ->first();
-                    if (!$unit) {
+                    if (! $unit) {
                         throw ValidationException::withMessages([
                             'items' => 'Satuan item inbound tidak valid.',
                         ]);
@@ -1137,6 +1208,7 @@ class InboundController extends Controller
                     $conversionQty = (int) $unit->conversion_qty;
                 }
                 $qty = $qtyInput * $conversionQty;
+
                 return [
                     'item_id' => (int) $row['item_id'],
                     'unit_id' => $unitId ?: null,
@@ -1193,7 +1265,7 @@ class InboundController extends Controller
             foreach ($items as $idx => $row) {
                 // Jangan biarkan qty koli tanpa satuan kemasan diproses sebagai PCS.
                 // Tanpa unit_id, qty input tidak dapat dikonversi ke satuan dasar.
-                if ($warehouseType === Warehouse::TYPE_BULK && !$row['unit_id']) {
+                if ($warehouseType === Warehouse::TYPE_BULK && ! $row['unit_id']) {
                     throw ValidationException::withMessages([
                         "items.{$idx}.unit_id" => 'Satuan koli belum dikonfigurasi untuk item ini. Atur satuan kemasan di Master Item terlebih dahulu.',
                     ]);
@@ -1202,7 +1274,7 @@ class InboundController extends Controller
                 if (
                     $warehouseType === Warehouse::TYPE_FULFILLMENT
                     && $row['unit_id']
-                    && !ItemUnit::whereKey($row['unit_id'])->where('is_base', true)->exists()
+                    && ! ItemUnit::whereKey($row['unit_id'])->where('is_base', true)->exists()
                 ) {
                     throw ValidationException::withMessages([
                         'items' => 'Penerimaan Gudang Kecil wajib menggunakan satuan PCS/SET.',
@@ -1232,6 +1304,7 @@ class InboundController extends Controller
             $qtyDamaged = $rows->sum('qty_damaged');
             $qtyMissing = $rows->sum('qty_missing');
             $note = $rows->pluck('note')->first(fn ($n) => $n !== null && $n !== '') ?? null;
+
             return [
                 'item_id' => (int) $itemId,
                 'unit_id' => $first['unit_id'] ?? null,
@@ -1247,7 +1320,7 @@ class InboundController extends Controller
         })->values()->all();
 
         $validated['items'] = $normalized;
-        if (!empty($validated['transacted_at'])) {
+        if (! empty($validated['transacted_at'])) {
             $validated['transacted_at'] = Carbon::parse($validated['transacted_at']);
         } else {
             $validated['transacted_at'] = null;
@@ -1273,7 +1346,7 @@ class InboundController extends Controller
             ->orderBy('conversion_qty')
             ->first();
 
-        if (!$unit) {
+        if (! $unit) {
             throw ValidationException::withMessages([
                 'file' => $warehouse->type === Warehouse::TYPE_BULK
                     ? 'Item import belum memiliki satuan koli.'
