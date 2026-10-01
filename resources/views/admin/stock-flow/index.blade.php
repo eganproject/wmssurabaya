@@ -12,11 +12,13 @@
                 'create' => Perm::can(auth()->user(), 'admin.inbound.receipts.index', 'create'),
                 'update' => Perm::can(auth()->user(), 'admin.inbound.receipts.index', 'update'),
                 'delete' => Perm::can(auth()->user(), 'admin.inbound.receipts.index', 'delete'),
+                'approve' => Perm::can(auth()->user(), 'admin.inbound.receipts.index', 'approve'),
             ],
             'return' => [
                 'create' => Perm::can(auth()->user(), 'admin.inbound.returns.index', 'create'),
                 'update' => Perm::can(auth()->user(), 'admin.inbound.returns.index', 'update'),
                 'delete' => Perm::can(auth()->user(), 'admin.inbound.returns.index', 'delete'),
+                'approve' => Perm::can(auth()->user(), 'admin.inbound.returns.index', 'approve'),
             ],
         ];
     } elseif (isset($routeMap['picker'])) {
@@ -25,16 +27,19 @@
                 'create' => Perm::can(auth()->user(), 'admin.outbound.pickers.index', 'create'),
                 'update' => Perm::can(auth()->user(), 'admin.outbound.pickers.index', 'update'),
                 'delete' => Perm::can(auth()->user(), 'admin.outbound.pickers.index', 'delete'),
+                'approve' => Perm::can(auth()->user(), 'admin.outbound.pickers.index', 'approve'),
             ],
             'manual' => [
                 'create' => Perm::can(auth()->user(), 'admin.outbound.manuals.index', 'create'),
                 'update' => Perm::can(auth()->user(), 'admin.outbound.manuals.index', 'update'),
                 'delete' => Perm::can(auth()->user(), 'admin.outbound.manuals.index', 'delete'),
+                'approve' => Perm::can(auth()->user(), 'admin.outbound.manuals.index', 'approve'),
             ],
             'return' => [
                 'create' => Perm::can(auth()->user(), 'admin.outbound.returns.index', 'create'),
                 'update' => Perm::can(auth()->user(), 'admin.outbound.returns.index', 'update'),
                 'delete' => Perm::can(auth()->user(), 'admin.outbound.returns.index', 'delete'),
+                'approve' => Perm::can(auth()->user(), 'admin.outbound.returns.index', 'approve'),
             ],
         ];
     }
@@ -1293,8 +1298,8 @@
                     const perms = permMap?.[rowType] || {};
                     const isApproved = row?.status === 'approved';
                     const isFinalized = row?.status === 'finalized';
-                    const canFinalizeReturn = isInboundReturnFlow && rowType === 'return' && isApproved && perms.update;
-                    const canApprove = !(isInboundReturnFlow && rowType === 'return') && !isApproved && !isFinalized && perms.update;
+                    const canFinalizeReturn = isInboundReturnFlow && rowType === 'return' && isApproved && perms.approve;
+                    const canApprove = !(isInboundReturnFlow && rowType === 'return') && !isApproved && !isFinalized && perms.approve;
                     const detailItem = `<div class="menu-item px-3"><a href="${resolveRoute(rowType, 'detail').replace(':id', data)}" class="menu-link px-3">Detail</a></div>`;
                     const scanUrl = resolveRoute(rowType, 'scan');
                     const scanItem = rowType === 'manual' && perms.update && !isApproved && !isFinalized && scanUrl

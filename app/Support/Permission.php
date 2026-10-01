@@ -5,10 +5,13 @@ namespace App\Support;
 use App\Models\Menu;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
 class Permission
 {
+    private static ?bool $hasApproveColumn = null;
+
     public static function resolveBaseRoute(string $routeName): string
     {
         $base = preg_replace('/\.scan(\.(store|finish))?$/', '.index', $routeName);
@@ -16,15 +19,16 @@ class Permission
             return $base;
         }
 
-        $base = preg_replace('/\.(create|store|edit|update|status|destroy|show|data|forecast-data|forecast-export|stocks|import|detail|approve|ship|receive|cancel)$/', '.index', $routeName);
+        $base = preg_replace('/\.(create|store|edit|update|status|destroy|show|data|forecast-data|forecast-export|stocks|import|detail|approve|finalize|ship|receive|cancel)$/', '.index', $routeName);
         return $base;
     }
 
     public static function actionFromRoute(string $routeName): string
     {
         if (preg_match('/\.scan\.(store|finish)$/', $routeName)) return 'update';
+        if (preg_match('/\.(approve|finalize)$/', $routeName)) return 'approve';
         if (preg_match('/\.(create|store|import)$/', $routeName)) return 'create';
-        if (preg_match('/\.(edit|update|status|approve|ship|receive|scan|finish)$/', $routeName)) return 'update';
+        if (preg_match('/\.(edit|update|status|ship|receive|scan|finish)$/', $routeName)) return 'update';
         if (preg_match('/\.(destroy|cancel)$/', $routeName)) return 'delete';
         // index, show, data, others default to view
         return 'view';
@@ -58,6 +62,7 @@ class Permission
             'create' => 'can_create',
             'update' => 'can_update',
             'delete' => 'can_delete',
+            'approve' => self::approveColumn(),
             default => 'can_view',
         };
 
@@ -66,6 +71,32 @@ class Permission
             ->whereIn('role_id', $roleIds)
             ->where($col, true)
             ->exists();
+    }
+
+    /**
+     * Menu dianggap memiliki aksi approve jika punya route pasangan
+     * ".approve" atau ".finalize" (mis. admin.inbound.receipts.approve).
+     */
+    public static function isApprovable(?string $menuRoute): bool
+    {
+        if (!$menuRoute || !str_ends_with($menuRoute, '.index')) {
+            return false;
+        }
+
+        $prefix = substr($menuRoute, 0, -strlen('.index'));
+
+        return Route::has($prefix.'.approve') || Route::has($prefix.'.finalize');
+    }
+
+    public static function hasApproveColumn(): bool
+    {
+        return self::$hasApproveColumn ??= Schema::hasColumn('permission_menu', 'can_approve');
+    }
+
+    // Fallback ke can_update selama migration can_approve belum dijalankan.
+    private static function approveColumn(): string
+    {
+        return self::hasApproveColumn() ? 'can_approve' : 'can_update';
     }
 
     public static function viewableMenuIds(User $user)

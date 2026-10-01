@@ -30,6 +30,7 @@
                                     <th class="text-center">Tambah</th>
                                     <th class="text-center">Ubah</th>
                                     <th class="text-center">Hapus</th>
+                                    <th class="text-center">Approve</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -43,6 +44,13 @@
                                         <td class="text-center"><input type="checkbox" name="can_create[{{ $parent->id }}]" @checked($p?->can_create)></td>
                                         <td class="text-center"><input type="checkbox" name="can_update[{{ $parent->id }}]" @checked($p?->can_update)></td>
                                         <td class="text-center"><input type="checkbox" name="can_delete[{{ $parent->id }}]" @checked($p?->can_delete)></td>
+                                        <td class="text-center">
+                                            @if(in_array($parent->id, $approvableMenuIds))
+                                                <input type="checkbox" name="can_approve[{{ $parent->id }}]" @checked($p?->can_approve ?? false)>
+                                            @else
+                                                <span class="text-muted">-</span>
+                                            @endif
+                                        </td>
                                     </tr>
                                     @foreach($parent->children()->orderBy('sort_order')->orderBy('name')->get() as $child)
                                         @php $c = $permissions->get($child->id); @endphp
@@ -52,11 +60,21 @@
                                             <td class="text-center"><input type="checkbox" name="can_create[{{ $child->id }}]" @checked($c?->can_create)></td>
                                             <td class="text-center"><input type="checkbox" name="can_update[{{ $child->id }}]" @checked($c?->can_update)></td>
                                             <td class="text-center"><input type="checkbox" name="can_delete[{{ $child->id }}]" @checked($c?->can_delete)></td>
+                                            <td class="text-center">
+                                                @if(in_array($child->id, $approvableMenuIds))
+                                                    <input type="checkbox" name="can_approve[{{ $child->id }}]" @checked($c?->can_approve ?? false)>
+                                                @else
+                                                    <span class="text-muted">-</span>
+                                                @endif
+                                            </td>
                                         </tr>
                                     @endforeach
                                 @endforeach
                             </tbody>
                         </table>
+                    </div>
+                    <div class="text-muted fs-7 mb-5">
+                        Kolom <strong>Approve</strong> mengatur hak menyetujui / menyelesaikan / finalisasi transaksi. Tanda "-" berarti menu tersebut tidak memiliki proses approve.
                     </div>
                     <div class="d-flex justify-content-end">
                         <a href="{{ route('admin.masterdata.permissions.index') }}" class="btn btn-light me-3">Kembali</a>

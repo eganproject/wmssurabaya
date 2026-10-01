@@ -24,7 +24,7 @@ class Menu extends Model
     public function roles()
     {
         return $this->belongsToMany(Role::class, 'permission_menu')
-            ->withPivot(['can_view','can_create','can_update','can_delete'])
+            ->withPivot(['can_view','can_create','can_update','can_delete','can_approve'])
             ->withTimestamps();
     }
 }

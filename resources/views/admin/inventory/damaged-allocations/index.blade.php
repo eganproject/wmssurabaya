@@ -8,6 +8,7 @@
     $canCreate = Perm::can(auth()->user(), 'admin.inventory.damaged-allocations.index', 'create');
     $canUpdate = Perm::can(auth()->user(), 'admin.inventory.damaged-allocations.index', 'update');
     $canDelete = Perm::can(auth()->user(), 'admin.inventory.damaged-allocations.index', 'delete');
+    $canApprove = Perm::can(auth()->user(), 'admin.inventory.damaged-allocations.index', 'approve');
 @endphp
 
 @section('content')
@@ -133,6 +134,7 @@
     const csrfToken = '{{ csrf_token() }}';
     const canUpdate = {{ $canUpdate ? 'true' : 'false' }};
     const canDelete = {{ $canDelete ? 'true' : 'false' }};
+    const canApprove = {{ $canApprove ? 'true' : 'false' }};
     const damagedItems = @json($items);
     const initialDamagedStocks = @json($damagedStocks);
 
@@ -386,7 +388,7 @@
                 { data: 'note' },
                 { data: 'id', orderable: false, searchable: false, className: 'text-end', render: (id, type, row) => {
                     const approved = row.status === 'approved';
-                    const approve = !approved && canUpdate ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-success btn-approve" data-id="${id}" data-type="${row.allocation_type_code || ''}">Setujui</a></div>` : '';
+                    const approve = !approved && canApprove ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-success btn-approve" data-id="${id}" data-type="${row.allocation_type_code || ''}">Setujui</a></div>` : '';
                     const edit = !approved && canUpdate ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${id}">Edit</a></div>` : '';
                     const del = !approved && canDelete ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-danger btn-delete" data-id="${id}">Hapus</a></div>` : '';
                     const actions = approve + edit + del;

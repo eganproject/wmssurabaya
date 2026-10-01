@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Support\Permission;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -270,7 +271,7 @@ class MenuSeeder extends Seeder
         DB::table('permission_menu')->where('role_id', $role->id)->delete();
 
         foreach (DB::table('menus')->get() as $menu) {
-            $this->grantMenuPermission((int) $role->id, (int) $menu->id, true, true, true, true);
+            $this->grantMenuPermission((int) $role->id, (int) $menu->id, true, true, true, true, Permission::isApprovable($menu->route));
         }
     }
 
@@ -286,23 +287,31 @@ class MenuSeeder extends Seeder
 
         DB::table('permission_menu')->where('role_id', $role->id)->delete();
 
-        $this->grantMenus((int) $role->id, $sets['view'] ?? [], true, false, false, false);
-        $this->grantMenus((int) $role->id, $sets['operate'] ?? [], true, true, true, false);
-        $this->grantMenus((int) $role->id, $sets['full'] ?? [], true, true, true, true);
+        $this->grantMenus((int) $role->id, $sets['view'] ?? [], true, false, false, false, false);
+        $this->grantMenus((int) $role->id, $sets['operate'] ?? [], true, true, true, false, true);
+        $this->grantMenus((int) $role->id, $sets['full'] ?? [], true, true, true, true, true);
     }
 
     /**
      * @param array<int,string> $menuSlugs
      */
-    private function grantMenus(int $roleId, array $menuSlugs, bool $canView, bool $canCreate, bool $canUpdate, bool $canDelete): void
+    private function grantMenus(int $roleId, array $menuSlugs, bool $canView, bool $canCreate, bool $canUpdate, bool $canDelete, bool $canApprove): void
     {
         if (empty($menuSlugs)) {
             return;
         }
 
-        $menus = DB::table('menus')->whereIn('slug', $menuSlugs)->get(['id']);
+        $menus = DB::table('menus')->whereIn('slug', $menuSlugs)->get(['id', 'route']);
         foreach ($menus as $menu) {
-            $this->grantMenuPermission($roleId, (int) $menu->id, $canView, $canCreate, $canUpdate, $canDelete);
+            $this->grantMenuPermission(
+                $roleId,
+                (int) $menu->id,
+                $canView,
+                $canCreate,
+                $canUpdate,
+                $canDelete,
+                $canApprove && Permission::isApprovable($menu->route)
+            );
         }
     }
 
@@ -312,7 +321,8 @@ class MenuSeeder extends Seeder
         bool $canView,
         bool $canCreate,
         bool $canUpdate,
-        bool $canDelete
+        bool $canDelete,
+        bool $canApprove = false
     ): void {
         DB::table('permission_menu')->updateOrInsert(
             ['role_id' => $roleId, 'menu_id' => $menuId],
@@ -321,6 +331,7 @@ class MenuSeeder extends Seeder
                 'can_create' => $canCreate,
                 'can_update' => $canUpdate,
                 'can_delete' => $canDelete,
+                'can_approve' => $canApprove,
                 'updated_at' => now(),
                 'created_at' => now(),
             ]

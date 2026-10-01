@@ -8,6 +8,7 @@
     $canCreate = Perm::can(auth()->user(), 'admin.inventory.damaged-goods.index', 'create');
     $canUpdate = Perm::can(auth()->user(), 'admin.inventory.damaged-goods.index', 'update');
     $canDelete = Perm::can(auth()->user(), 'admin.inventory.damaged-goods.index', 'delete');
+    $canApprove = Perm::can(auth()->user(), 'admin.inventory.damaged-goods.index', 'approve');
 @endphp
 
 @section('content')
@@ -221,6 +222,7 @@
     const csrfToken = '{{ csrf_token() }}';
     const canUpdate = {{ $canUpdate ? 'true' : 'false' }};
     const canDelete = {{ $canDelete ? 'true' : 'false' }};
+    const canApprove = {{ $canApprove ? 'true' : 'false' }};
     const itemOptionsHtml = `@foreach($items as $item)<option value="{{ $item->id }}">{{ $item->sku }} - {{ $item->name }}</option>@endforeach`;
     const damagedGoodsItems = @json($items);
 
@@ -512,7 +514,7 @@
                 { data: 'note' },
                 { data: 'id', orderable: false, searchable: false, className: 'text-end', render: (data, type, row) => {
                     const isApproved = row?.status === 'approved';
-                    const approveItem = (!isApproved && canUpdate)
+                    const approveItem = (!isApproved && canApprove)
                         ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 text-success btn-approve" data-id="${data}">Approve</a></div>`
                         : '';
                     const editItem = (!isApproved && canUpdate) ? `<div class="menu-item px-3"><a href="#" class="menu-link px-3 btn-edit" data-id="${data}">Edit</a></div>` : '';
