@@ -76,7 +76,7 @@ class StockReportController extends Controller
             'draw' => (int) $request->input('draw'),
             'recordsTotal' => $report['summary']['total_sku'],
             'recordsFiltered' => $recordsFiltered,
-            'summary' => $report['summary'],
+            'summary' => $report['filtered_summary'],
             'trend' => $report['trend'],
             'data' => $paged,
         ]);

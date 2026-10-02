@@ -332,12 +332,13 @@
                     </select>
                 </div>
                 <div class="col-xl-2 col-md-4">
-                    <label>Days Cover (hari)</label>
+                    <label for="movement_cover_min">Days Cover (hari)</label>
                     <div class="input-group input-group-solid">
-                        <input id="movement_cover_min" type="number" min="0" step="0.1" class="form-control form-control-solid" placeholder="Min">
+                        <input id="movement_cover_min" type="number" min="0" step="0.1" class="form-control form-control-solid" placeholder="Min" aria-label="Days Cover minimum (hari)" aria-describedby="movement_cover_help">
                         <span class="input-group-text">-</span>
-                        <input id="movement_cover_max" type="number" min="0" step="0.1" class="form-control form-control-solid" placeholder="Max">
+                        <input id="movement_cover_max" type="number" min="0" step="0.1" class="form-control form-control-solid" placeholder="Max" aria-label="Days Cover maksimum (hari)" aria-describedby="movement_cover_help">
                     </div>
+                    <div id="movement_cover_help" class="text-muted fs-8 mt-2">Isi salah satu atau kedua batas, termasuk nilai batas. Contoh: Max 30 untuk cover ≤ 30 hari. Kosongkan untuk semua; cover tidak terukur dikecualikan saat filter diisi.</div>
                 </div>
                 <div class="col-xl-2 col-md-4">
                     <label>Status Produk</label>
@@ -610,6 +611,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let movementChart = null;
     let movementChartTrend = [];
 
+    function validateMovementCover() {
+        const min = movementFilters.coverMin;
+        const max = movementFilters.coverMax;
+        max.setCustomValidity('');
+        if (min.value !== '' && max.value !== '' && Number(max.value) < Number(min.value)) {
+            max.setCustomValidity('Days Cover maksimum harus sama dengan atau lebih besar dari minimum.');
+        }
+        return min.reportValidity() && max.reportValidity();
+    }
+
     function movementRequestData(params) {
         params.category_id = movementFilters.category.value;
         params.movement = movementFilters.movement.value;
@@ -815,6 +826,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const reloadMovement = () => {
+        if (!validateMovementCover()) return;
         if (movementDt) {
             movementDt.ajax.reload();
         } else {
@@ -823,6 +835,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     document.getElementById('movement_apply').addEventListener('click', reloadMovement);
     document.getElementById('movement_export').addEventListener('click', () => {
+        if (!validateMovementCover()) return;
         const params = {};
         movementRequestData(params);
         const query = new URLSearchParams(params).toString();
@@ -832,11 +845,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (event.key === 'Enter') reloadMovement();
     });
     [movementFilters.category, movementFilters.movement, movementFilters.itemStatus]
-        .forEach(el => el?.addEventListener('change', () => movementDt?.ajax.reload()));
+        .forEach(el => el?.addEventListener('change', reloadMovement));
     [movementFilters.coverMin, movementFilters.coverMax].forEach(el => el.addEventListener('keyup', event => {
         if (event.key === 'Enter') reloadMovement();
     }));
+    [movementFilters.coverMin, movementFilters.coverMax].forEach(el => el.addEventListener('input', () => {
+        movementFilters.coverMax.setCustomValidity('');
+    }));
     movementFilters.limit.addEventListener('change', () => {
+        if (!validateMovementCover()) return;
         initializeMovementTable();
         movementDt.page.len(Number(movementFilters.limit.value || 10)).draw();
     });
@@ -845,6 +862,7 @@ document.addEventListener('DOMContentLoaded', () => {
         movementFilters.movement.value = '';
         movementFilters.coverMin.value = '';
         movementFilters.coverMax.value = '';
+        movementFilters.coverMax.setCustomValidity('');
         movementFilters.itemStatus.value = '1';
         movementFilters.dateFrom.value = movementDefaults.dateFrom;
         movementFilters.dateTo.value = movementDefaults.dateTo;

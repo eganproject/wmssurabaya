@@ -299,7 +299,17 @@ class InventoryAnalyticsReportsTest extends TestCase
         $this->actingAs($user)
             ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover_min' => 60.5]))
             ->assertOk()
+            ->assertJsonPath('summary.total_sku', 0)
+            ->assertJsonPath('summary.total_outbound_qty', 0)
             ->assertJsonMissing(['sku' => 'MOVE-COMBINED']);
+        $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover_min' => 60, 'cover_max' => 60]))
+            ->assertOk()
+            ->assertJsonPath('data.0.sku', 'MOVE-COMBINED');
+        $this->actingAs($user)
+            ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover_max' => -1]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('cover_max');
         $this->actingAs($user)
             ->getJson(route('admin.reports.stock.movement-data', $coverParams + ['cover_min' => 30, 'cover_max' => 10]))
             ->assertUnprocessable();
