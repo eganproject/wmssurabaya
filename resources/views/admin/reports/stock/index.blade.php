@@ -333,12 +333,14 @@
                 </div>
                 <div class="col-xl-2 col-md-4">
                     <label for="movement_cover_min">Days Cover (hari)</label>
+                    <span id="movement_cover_help" class="d-inline-block ms-1 text-muted" tabindex="0" data-bs-toggle="tooltip" data-bs-placement="top" aria-label="Informasi filter Days Cover" title="Isi salah satu atau kedua batas, termasuk nilai batas. Contoh: Max 30 untuk cover ≤ 30 hari. Kosongkan untuk semua; cover tidak terukur dikecualikan saat filter diisi.">
+                        <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+                    </span>
                     <div class="input-group input-group-solid">
                         <input id="movement_cover_min" type="number" min="0" step="0.1" class="form-control form-control-solid" placeholder="Min" aria-label="Days Cover minimum (hari)" aria-describedby="movement_cover_help">
                         <span class="input-group-text">-</span>
                         <input id="movement_cover_max" type="number" min="0" step="0.1" class="form-control form-control-solid" placeholder="Max" aria-label="Days Cover maksimum (hari)" aria-describedby="movement_cover_help">
                     </div>
-                    <div id="movement_cover_help" class="text-muted fs-8 mt-2">Isi salah satu atau kedua batas, termasuk nilai batas. Contoh: Max 30 untuk cover ≤ 30 hari. Kosongkan untuk semua; cover tidak terukur dikecualikan saat filter diisi.</div>
                 </div>
                 <div class="col-xl-2 col-md-4">
                     <label>Status Produk</label>
@@ -475,6 +477,9 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    if (window.bootstrap?.Tooltip) {
+        window.bootstrap.Tooltip.getOrCreateInstance(document.getElementById('movement_cover_help'));
+    }
     const dataUrl = @json($dataUrl);
     const tableEl = $('#stock_report_table');
     const filters = {
