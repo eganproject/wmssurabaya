@@ -221,7 +221,8 @@
         const now = ctx.currentTime;
         const seconds = duration / 1000;
         const peak = Math.max(0.0001, volume);
-        osc.type = 'sine';
+        // Nada square lebih tegas pada speaker perangkat dengan gain tetap 1.
+        osc.type = 'square';
         osc.frequency.value = frequency;
         // attack/release singkat supaya volume penuh tidak berbunyi "klik"
         gain.gain.setValueAtTime(0.0001, now);

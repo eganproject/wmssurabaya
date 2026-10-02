@@ -491,10 +491,13 @@
             tones.forEach(({ f, t, d }) => {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
-                osc.type = kind === 'ok' ? 'sine' : 'triangle';
+                // Nada square lebih tegas; frekuensi tetap membedakan sukses dan gagal.
+                osc.type = 'square';
                 osc.frequency.setValueAtTime(f, now + t);
                 gain.gain.setValueAtTime(0.0001, now + t);
                 gain.gain.exponentialRampToValueAtTime(1, now + t + 0.01);
+                // Pertahankan volume penuh sebelum release singkat agar beep terdengar jelas.
+                gain.gain.setValueAtTime(1, now + t + d - 0.01);
                 gain.gain.exponentialRampToValueAtTime(0.0001, now + t + d);
                 osc.connect(gain);
                 gain.connect(ctx.destination);
