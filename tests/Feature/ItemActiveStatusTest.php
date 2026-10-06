@@ -15,6 +15,25 @@ class ItemActiveStatusTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_sale_status_can_be_saved_and_invalid_values_are_rejected(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $payload = ['sku' => 'SALE-001', 'name' => 'Item Jual', 'sale_status' => 'tidak_lanjut_jual'];
+        $this->actingAs($user)->postJson(route('admin.masterdata.items.store'), $payload)
+            ->assertOk()->assertJsonPath('item.sale_status', 'tidak_lanjut_jual');
+        $item = Item::where('sku', 'SALE-001')->firstOrFail();
+        $this->assertTrue($item->is_active);
+        $payload['sale_status'] = 'lanjut_jual';
+        $this->actingAs($user)->putJson(route('admin.masterdata.items.update', $item), $payload)
+            ->assertOk()->assertJsonPath('item.sale_status', 'lanjut_jual');
+        $this->actingAs($user)->getJson(route('admin.masterdata.items.data', ['length' => -1]))
+            ->assertOk()->assertJsonPath('data.0.sale_status_label', 'Lanjut Jual');
+        $payload['sale_status'] = 'salah';
+        $this->actingAs($user)->putJson(route('admin.masterdata.items.update', $item), $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('sale_status');
+        $this->assertSame('lanjut_jual', $item->refresh()->sale_status);
+    }
+
     public function test_status_route_uses_master_item_update_permission(): void
     {
         $this->assertSame(

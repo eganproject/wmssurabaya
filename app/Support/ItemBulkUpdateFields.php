@@ -33,6 +33,11 @@ class ItemBulkUpdateFields
                 'group' => 'Identitas Item',
                 'hint' => 'Isi nanggewer (produksi) atau import.',
             ],
+            'sale_status' => [
+                'label' => 'Status Jual',
+                'group' => 'Identitas Item',
+                'hint' => 'Isi Lanjut Jual atau Tidak Lanjut Jual. Wajib diisi.',
+            ],
             'status' => [
                 'label' => 'Status Produk',
                 'group' => 'Identitas Item',

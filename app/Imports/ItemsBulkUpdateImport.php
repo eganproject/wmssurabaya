@@ -156,6 +156,19 @@ class ItemsBulkUpdateImport implements ToCollection, WithHeadingRow, WithMultipl
                     }
                     break;
 
+                case 'sale_status':
+                    $saleStatus = match (mb_strtolower($value)) {
+                        'lanjut jual', 'lanjut_jual' => 'lanjut_jual',
+                        'tidak lanjut jual', 'tidak_lanjut_jual' => 'tidak_lanjut_jual',
+                        default => null,
+                    };
+                    if ($saleStatus === null) {
+                        $this->addError($rowNumber, $sku, 'Status jual harus Lanjut Jual atau Tidak Lanjut Jual.');
+                    } else {
+                        $attributes['sale_status'] = $saleStatus;
+                    }
+                    break;
+
                 case 'status':
                     $status = match (mb_strtolower($value)) {
                         'aktif', 'active', '1', 'ya', 'yes', 'true' => true,

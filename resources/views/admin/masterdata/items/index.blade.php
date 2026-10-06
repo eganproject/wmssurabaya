@@ -119,6 +119,7 @@
                     <tr class="text-start text-gray-600 fw-bolder fs-7 text-uppercase gs-0">
                         <th>No</th>
                         <th>Identitas Item</th>
+                        <th>Status Jual</th>
                         <th>Kategori, UOM & Deskripsi</th>
                         <th>Pengaturan Gudang Kecil</th>
                         <th class="text-end">Aksi</th>
@@ -168,6 +169,15 @@
                             @endforeach
                         </select>
                         <div class="invalid-feedback" id="error_category_id"></div>
+                    </div>
+                    <div class="fv-row mb-7">
+                        <label class="required fs-6 fw-bold form-label mb-2">Status Jual</label>
+                        <select name="sale_status" id="item_sale_status" class="form-select form-select-solid" required>
+                            @foreach(\App\Models\Item::saleStatuses() as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        <div class="invalid-feedback" id="error_sale_status"></div>
                     </div>
                     <div class="fv-row mb-7">
                         <label class="required fs-6 fw-bold form-label mb-2">Sumber Pengadaan</label>
@@ -616,7 +626,7 @@
         };
         koliDimensionInputs.forEach(el => el?.addEventListener('input', updateCbmPreview));
 
-        const errorIds = ['error_sku','error_name','error_category_id','error_procurement_source','error_address','error_description','error_safety_stock','error_is_bundle','error_components','error_koli_length_cm','error_koli_width_cm','error_koli_height_cm'];
+        const errorIds = ['error_sku','error_name','error_category_id','error_sale_status','error_procurement_source','error_address','error_description','error_safety_stock','error_is_bundle','error_components','error_koli_length_cm','error_koli_width_cm','error_koli_height_cm'];
         const clearErrors = () => {
             errorIds.forEach(id => {
                 const el = document.getElementById(id);
@@ -810,6 +820,7 @@
                             </div>
                         </div>`
                 },
+                { data: 'sale_status_label', orderable: false, render: (value, type, row) => `<span class="badge ${row.sale_status === 'tidak_lanjut_jual' ? 'badge-light-danger' : 'badge-light-success'}">${escapeHtml(value || 'Lanjut Jual')}</span>` },
                 {
                     data: 'category',
                     render: (value, type, row) => `
@@ -896,6 +907,7 @@
             if (!form) return;
             form.reset();
             formId.value = '';
+            document.getElementById('item_sale_status').value = 'lanjut_jual';
             if (formProcurementSource) formProcurementSource.value = 'nanggewer';
             document.querySelectorAll('.warehouse-location').forEach(el => el.value = '');
             document.querySelectorAll('.warehouse-safety').forEach(el => el.value = 0);
@@ -931,6 +943,7 @@
 
                 form.reset();
                 formId.value = id;
+                document.getElementById('item_sale_status').value = json.sale_status || 'lanjut_jual';
                 formProcurementSource && (formProcurementSource.value = json.procurement_source || 'nanggewer');
                 formSku && (formSku.value = json.sku || '');
                 formName && (formName.value = json.name || '');

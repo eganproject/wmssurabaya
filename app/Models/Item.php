@@ -19,6 +19,7 @@ class Item extends Model
         'name',
         'category_id',
         'procurement_source',
+        'sale_status',
         'koli_length_cm',
         'koli_width_cm',
         'koli_height_cm',
@@ -87,6 +88,16 @@ class Item extends Model
         }
 
         return $value;
+    }
+
+    public static function saleStatuses(): array
+    {
+        return ['lanjut_jual' => 'Lanjut Jual', 'tidak_lanjut_jual' => 'Tidak Lanjut Jual'];
+    }
+
+    public function getSaleStatusLabelAttribute(): string
+    {
+        return self::saleStatuses()[$this->sale_status] ?? 'Lanjut Jual';
     }
 
     public static function procurementSources(): array

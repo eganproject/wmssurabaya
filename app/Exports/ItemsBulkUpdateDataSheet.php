@@ -81,6 +81,7 @@ class ItemsBulkUpdateDataSheet extends DefaultValueBinder implements FromArray, 
                 ItemBulkUpdateFields::REFERENCE_COLUMN, 'name' => (string) $item->name,
                 'category' => (string) ($item->category?->name ?? ''),
                 'procurement_source' => (string) ($item->procurement_source ?: 'nanggewer'),
+                'sale_status' => $item->sale_status_label,
                 'status' => $item->is_active ? 'aktif' : 'nonaktif',
                 'description' => (string) ($item->description ?? ''),
                 'base_unit' => $item->is_bundle ? '' : (string) ($item->units->firstWhere('is_base', true)?->name ?? 'PCS'),
@@ -150,6 +151,7 @@ class ItemsBulkUpdateDataSheet extends DefaultValueBinder implements FromArray, 
             }
 
             $list = match ($column) {
+                'sale_status' => '"Lanjut Jual,Tidak Lanjut Jual"',
                 'status' => '"aktif,nonaktif"',
                 'procurement_source' => '"nanggewer,import"',
                 'category' => $this->categoryCount > 0 ? "'Referensi'!\$A\$2:\$A\$".($this->categoryCount + 1) : null,

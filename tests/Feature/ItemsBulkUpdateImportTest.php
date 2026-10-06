@@ -158,6 +158,41 @@ class ItemsBulkUpdateImportTest extends TestCase
         $this->assertSame('PCS', ItemUnit::where('item_id', $this->item->id)->where('is_base', true)->value('name'));
     }
 
+    public function test_sale_status_template_contains_current_value_and_dropdown(): void
+    {
+        $response = $this->actingAs($this->user)->get(route('admin.masterdata.items.bulk-update.template', [
+            'fields' => ['sale_status'], 'prefill' => 'all',
+        ]))->assertOk();
+
+        $sheet = IOFactory::load($response->getFile()->getPathname())->getSheet(0);
+        $this->assertSame(['sku', 'reference_name', 'sale_status'], $sheet->toArray()[0]);
+        $this->assertSame('Lanjut Jual', $sheet->getCell('C2')->getValue());
+        $this->assertContains('"Lanjut Jual,Tidak Lanjut Jual"', array_map(
+            fn ($validation) => $validation->getFormula1(), $sheet->getDataValidationCollection()
+        ));
+    }
+
+    public function test_bulk_update_changes_sale_status_without_changing_active_status(): void
+    {
+        foreach (['Tidak Lanjut Jual' => 'tidak_lanjut_jual', 'Lanjut Jual' => 'lanjut_jual'] as $label => $value) {
+            $this->importFile(['sale_status'], [
+                ['sku', 'sale_status'], ['BULK-001', $label],
+            ])->assertOk()->assertJsonPath('updated', 1);
+            $this->assertSame($value, $this->item->refresh()->sale_status);
+            $this->assertTrue($this->item->is_active);
+        }
+    }
+
+    public function test_invalid_sale_status_rejects_entire_bulk_update(): void
+    {
+        $other = Item::create(['sku' => 'BULK-002', 'name' => 'Item Lain']);
+        $this->importFile(['sale_status'], [
+            ['sku', 'sale_status'], ['BULK-001', 'Tidak Lanjut Jual'], ['BULK-002', 'salah'],
+        ])->assertStatus(422);
+        $this->assertSame('lanjut_jual', $this->item->refresh()->sale_status);
+        $this->assertSame('lanjut_jual', $other->refresh()->sale_status);
+    }
+
     private function importFile(array $fields, array $rows)
     {
         $path = tempnam(sys_get_temp_dir(), 'items-bulk-').'.xlsx';

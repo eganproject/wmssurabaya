@@ -57,6 +57,8 @@ class ItemController extends Controller
             'name' => $item->name,
             'category_id' => $item->category_id,
             'procurement_source' => $item->procurement_source,
+            'sale_status' => $item->sale_status,
+            'sale_status_label' => $item->sale_status_label,
             'procurement_source_label' => $item->procurement_source_label,
             'koli_length_cm' => $item->koli_length_cm,
             'koli_width_cm' => $item->koli_width_cm,
@@ -112,6 +114,8 @@ class ItemController extends Controller
                 'category' => $i->category?->name ?? '-',
                 'category_id' => $i->category_id,
                 'procurement_source' => $i->procurement_source,
+                'sale_status' => $i->sale_status,
+                'sale_status_label' => $i->sale_status_label,
                 'procurement_source_label' => $i->procurement_source_label,
                 'koli_length_cm' => $i->koli_length_cm,
                 'koli_width_cm' => $i->koli_width_cm,
@@ -146,6 +150,7 @@ class ItemController extends Controller
                 }
             }],
             'procurement_source' => ['nullable', 'string', Rule::in(array_keys(Item::procurementSources()))],
+            'sale_status' => ['sometimes', 'required', Rule::in(array_keys(Item::saleStatuses()))],
             ...$this->koliDimensionRules(),
             'description' => ['nullable', 'string'],
             'is_bundle' => ['nullable', 'boolean'],
@@ -176,6 +181,7 @@ class ItemController extends Controller
         $validated['category_id'] = ($catId === null || (int)$catId === 0) ? null : (int) $catId;
         $validated['procurement_source'] = $validated['procurement_source'] ?? Item::PROCUREMENT_NANGGEWER;
         $validated['is_bundle'] = $isBundle;
+        $validated['sale_status'] = $validated['sale_status'] ?? 'lanjut_jual';
         $validated['is_active'] = true;
         $warehouseSettings = $validated['warehouse_settings'] ?? [];
         $unitPayload = $this->unitPayload($validated);
@@ -203,6 +209,8 @@ class ItemController extends Controller
                     'name' => $item->name,
                     'category_id' => $item->category_id,
                     'procurement_source' => $item->procurement_source,
+                    'sale_status' => $item->sale_status,
+                    'sale_status_label' => $item->sale_status_label,
                     'is_bundle' => $item->is_bundle,
                     'is_active' => $item->is_active,
                 ]
@@ -230,6 +238,7 @@ class ItemController extends Controller
                 }
             }],
             'procurement_source' => ['nullable', 'string', Rule::in(array_keys(Item::procurementSources()))],
+            'sale_status' => ['sometimes', 'required', Rule::in(array_keys(Item::saleStatuses()))],
             ...$this->koliDimensionRules(),
             'description' => ['nullable', 'string'],
             'is_bundle' => ['nullable', 'boolean'],
@@ -295,6 +304,8 @@ class ItemController extends Controller
                     'name' => $item->name,
                     'category_id' => $item->category_id,
                     'procurement_source' => $item->procurement_source,
+                    'sale_status' => $item->sale_status,
+                    'sale_status_label' => $item->sale_status_label,
                     'is_bundle' => $item->is_bundle,
                     'is_active' => $item->is_active,
                 ]
