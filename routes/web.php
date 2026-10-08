@@ -27,6 +27,7 @@ use App\Http\Controllers\Admin\PackerScanOutInputController;
 use App\Http\Controllers\Admin\PickerReportController;
 use App\Http\Controllers\Admin\LowStockReportController;
 use App\Http\Controllers\Admin\ActivityLogController;
+use App\Http\Controllers\Admin\CbmForecastController;
 use App\Http\Controllers\Admin\StockOpnameReportController;
 use App\Http\Controllers\Admin\StockPlanningReportController;
 use App\Http\Controllers\Admin\StockReportController;
@@ -408,5 +409,10 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         Route::get('/stock-planning/data', [StockPlanningReportController::class, 'data'])->name('stock-planning.data');
         Route::get('/stock-planning/forecast-data', [StockPlanningReportController::class, 'forecastData'])->name('stock-planning.forecast-data');
         Route::get('/stock-planning/forecast-export', [StockPlanningReportController::class, 'forecastExport'])->name('stock-planning.forecast-export');
+        Route::get('/cbm-forecast', [CbmForecastController::class, 'index'])->name('cbm-forecast.index');
+        Route::get('/cbm-forecast/data', [CbmForecastController::class, 'data'])->name('cbm-forecast.data');
+        Route::get('/cbm-forecast/lookup', [CbmForecastController::class, 'lookup'])->name('cbm-forecast.lookup');
+        Route::post('/cbm-forecast/export', [CbmForecastController::class, 'export'])->name('cbm-forecast.export');
+        Route::post('/cbm-forecast/print', [CbmForecastController::class, 'print'])->name('cbm-forecast.print');
     });
 });
