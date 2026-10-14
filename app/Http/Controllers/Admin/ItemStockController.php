@@ -8,6 +8,7 @@ use App\Models\Item;
 use App\Models\StockMutation;
 use App\Models\Warehouse;
 use App\Support\BundleService;
+use App\Support\ItemStockOverview;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Maatwebsite\Excel\Facades\Excel;
@@ -16,10 +17,7 @@ class ItemStockController extends Controller
 {
     public function index()
     {
-        $warehouses = Warehouse::where('is_active', true)
-            ->orderByDesc('is_default')
-            ->orderBy('name')
-            ->get(['id', 'name', 'type', 'is_default']);
+        $warehouses = ItemStockOverview::warehouses();
 
         return view('admin.inventory.item-stocks.index', compact('warehouses'));
     }
@@ -91,31 +89,12 @@ class ItemStockController extends Controller
 
     public function data(Request $request)
     {
-        $warehouseId = $request->integer('warehouse_id') ?: Warehouse::defaultId();
-        $query = Item::with([
-            'units' => fn ($q) => $q->orderByDesc('is_base')->orderBy('conversion_qty'),
-            'stocks' => fn ($q) => $q->where('warehouse_id', $warehouseId),
-            'warehouseSettings' => fn ($q) => $q->where('warehouse_id', $warehouseId),
-        ])->orderBy('name');
-
-        $activeStatus = (string) $request->input('is_active', '1');
-        if (in_array($activeStatus, ['0', '1'], true)) {
-            $query->where('is_active', (int) $activeStatus === 1);
-        }
+        $warehouses = ItemStockOverview::warehouses();
+        $query = ItemStockOverview::query($warehouses, (string) $request->input('is_active', '1'));
 
         $recordsTotal = (clone $query)->count();
 
-        $search = trim((string) $request->input('q', ''));
-        if ($search !== '') {
-            $query->where(function ($q) use ($search, $warehouseId) {
-                $q->where('sku', 'like', "%{$search}%")
-                    ->orWhere('name', 'like', "%{$search}%")
-                    ->orWhereHas('warehouseSettings', fn ($settings) => $settings
-                        ->where('warehouse_id', $warehouseId)
-                        ->where('location', 'like', "%{$search}%"))
-                    ->orWhere('description', 'like', "%{$search}%");
-            });
-        }
+        ItemStockOverview::applySearch($query, $warehouses, (string) $request->input('q', ''));
 
         $recordsFiltered = (clone $query)->count();
 
@@ -125,60 +104,20 @@ class ItemStockController extends Controller
             $query->skip($start)->take($length);
         }
 
-        $items = $query->get();
-
-        $bundleItemIds = $items->where('is_bundle', true)->pluck('id')->all();
-        $virtualStocks = BundleService::getVirtualStockBatch($bundleItemIds, $warehouseId);
-
-        $data = $items->map(function ($i) use ($virtualStocks) {
-            $isBundle = (bool) $i->is_bundle;
-            $stock = $isBundle
-                ? ($virtualStocks[$i->id] ?? 0)
-                : ($i->stocks->first()?->stock ?? 0);
-            $setting = $i->warehouseSettings->first();
-            $safetyStock = (int) ($setting?->safety_stock ?? 0);
-            $baseUnit = $i->units->firstWhere('is_base', true);
-            $packageUnit = $i->units
-                ->where('is_base', false)
-                ->sortByDesc('conversion_qty')
-                ->first();
-            $packageConversion = max(1, (int) ($packageUnit?->conversion_qty ?? 1));
-
-            return [
-                'id' => $i->id,
-                'sku' => $i->sku,
-                'name' => $i->name,
-                'stock' => $stock,
-                'location' => $setting?->location ?? '',
-                'safety_stock' => $safetyStock,
-                'is_bundle' => $isBundle,
-                'is_active' => (bool) $i->is_active,
-                'base_unit' => $baseUnit?->name ?? 'PCS',
-                'package_unit' => $packageUnit?->name,
-                'package_conversion' => $packageConversion,
-                'package_qty' => $packageUnit ? intdiv((int) $stock, $packageConversion) : null,
-                'package_remainder' => $packageUnit ? (int) $stock % $packageConversion : null,
-                'stock_status' => $stock <= 0
-                    ? 'empty'
-                    : ($safetyStock > 0 && $stock <= $safetyStock ? 'low' : 'safe'),
-            ];
-        });
-
         return response()->json([
             'draw' => (int) $request->input('draw'),
             'recordsTotal' => $recordsTotal,
             'recordsFiltered' => $recordsFiltered,
-            'data' => $data,
+            'data' => ItemStockOverview::rows($query->get(), $warehouses)->values(),
         ]);
     }
 
     public function export(Request $request)
     {
         $search = trim((string) $request->input('q', ''));
-        $warehouseId = $request->integer('warehouse_id') ?: Warehouse::defaultId();
         $activeStatus = (string) $request->input('is_active', '1');
         $filename = 'item-stocks-'.now()->format('YmdHis').'.xlsx';
 
-        return Excel::download(new ItemStocksExport($search, $warehouseId, $activeStatus), $filename);
+        return Excel::download(new ItemStocksExport($search, $activeStatus), $filename);
     }
 }
