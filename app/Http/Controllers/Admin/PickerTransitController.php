@@ -9,6 +9,7 @@ use App\Models\PackerTransitHistory;
 use App\Models\PackerScanException;
 use App\Models\QcScanResi;
 use App\Models\QcTransitItem;
+use App\Support\ResiStoreFilter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -23,13 +24,14 @@ class PickerTransitController extends Controller
             // Backward compatible: some legacy views/scripts expect this variable.
             'dataUrlPacker' => route('admin.inventory.picker-transit.packer-data'),
             'today' => now()->toDateString(),
+            'stores' => ResiStoreFilter::options(),
         ]);
     }
 
     public function data(Request $request)
     {
         $baseQuery = QcScanResi::query()
-            ->with(['scanner', 'resi', 'items.item'])
+            ->with(['scanner', 'resi.store', 'items.item'])
             ->whereHas('resi', function ($q) {
                 $q->whereNull('status')
                     ->orWhere('status', '!=', 'canceled');
@@ -42,7 +44,8 @@ class PickerTransitController extends Controller
             $baseQuery->where(function ($q) use ($search) {
                 $q->whereHas('resi', function ($resiQ) use ($search) {
                     $resiQ->where('no_resi', 'like', "%{$search}%")
-                        ->orWhere('id_pesanan', 'like', "%{$search}%");
+                        ->orWhere('id_pesanan', 'like', "%{$search}%")
+                        ->orWhereHas('store', fn ($storeQ) => $storeQ->where('name', 'like', "%{$search}%"));
                 })
                     ->orWhereHas('scanner', fn ($scannerQ) => $scannerQ->where('name', 'like', "%{$search}%"))
                     ->orWhereHas('items', function ($itemQ) use ($search) {
@@ -53,6 +56,7 @@ class PickerTransitController extends Controller
         }
 
         $this->applyDateFilter($baseQuery, $request);
+        ResiStoreFilter::applyViaResi($baseQuery, ResiStoreFilter::normalize($request->input('store_id')));
 
         $recordsTotal = (clone $baseQuery)->count();
         $summaryQuery = clone $baseQuery;
@@ -93,6 +97,7 @@ class PickerTransitController extends Controller
                 'date' => $row->scanned_at?->format('Y-m-d') ?? '-',
                 'id_pesanan' => $row->resi?->id_pesanan ?? '-',
                 'no_resi' => $row->resi?->no_resi ?? '-',
+                'store_name' => ResiStoreFilter::label($row->resi?->store),
                 'scanner_name' => $row->scanner?->name ?? '-',
                 'sku_count' => $row->items->count(),
                 'sku_summary' => $skuSummary ?: '-',
@@ -123,7 +128,7 @@ class PickerTransitController extends Controller
         ]);
 
         $search = strtolower(trim((string) ($validated['q'] ?? '')));
-        $qcResi = QcScanResi::with(['scanner', 'resi', 'items.item'])
+        $qcResi = QcScanResi::with(['scanner', 'resi.store', 'items.item'])
             ->findOrFail((int) $validated['qc_resi_id']);
 
         $items = $qcResi->items;
@@ -163,6 +168,7 @@ class PickerTransitController extends Controller
                 'date'          => $qcResi->scanned_at?->format('Y-m-d') ?? '-',
                 'id_pesanan'    => $qcResi->resi?->id_pesanan ?? '-',
                 'no_resi'       => $qcResi->resi?->no_resi ?? '-',
+                'store_name'    => ResiStoreFilter::label($qcResi->resi?->store),
                 'qc_status'     => $qcResi->status,
                 'total_sku'     => (int) $mapped->count(),
                 'qc_scanned'    => $qcScannedCount,
@@ -380,6 +386,7 @@ class PickerTransitController extends Controller
     public function dataPacker(Request $request)
     {
         $baseQuery = PackerTransitHistory::query()
+            ->with('resi.store')
             ->orderByDesc('created_at')
             ->orderByDesc('id');
 
@@ -388,11 +395,13 @@ class PickerTransitController extends Controller
             $baseQuery->where(function ($q) use ($search) {
                 $q->where('id_pesanan', 'like', "%{$search}%")
                     ->orWhere('no_resi', 'like', "%{$search}%")
-                    ->orWhere('status', 'like', "%{$search}%");
+                    ->orWhere('status', 'like', "%{$search}%")
+                    ->orWhereHas('resi.store', fn ($storeQ) => $storeQ->where('name', 'like', "%{$search}%"));
             });
         }
 
         $this->applyPackerDateFilter($baseQuery, $request);
+        ResiStoreFilter::applyViaResi($baseQuery, ResiStoreFilter::normalize($request->input('store_id')));
 
         $recordsTotal = PackerTransitHistory::count();
         $summaryQuery = clone $baseQuery;
@@ -416,6 +425,7 @@ class PickerTransitController extends Controller
                 'created_at' => $row->created_at?->format('Y-m-d H:i') ?? '-',
                 'id_pesanan' => $row->id_pesanan ?? '-',
                 'no_resi' => $row->no_resi ?? '-',
+                'store_name' => ResiStoreFilter::label($row->resi?->store),
                 'status' => $row->status ?? '-',
             ];
         });
@@ -435,6 +445,7 @@ class PickerTransitController extends Controller
             'q' => $request->input('q', ''),
             'date' => $request->input('date'),
             'status' => $request->input('status', ''),
+            'store_id' => ResiStoreFilter::normalize($request->input('store_id')),
         ];
 
         $date = $filters['date'] ?: now()->toDateString();
@@ -450,6 +461,7 @@ class PickerTransitController extends Controller
             'q' => $request->input('q', ''),
             'date' => $request->input('date'),
             'status' => $request->input('status', ''),
+            'store_id' => ResiStoreFilter::normalize($request->input('store_id')),
         ];
 
         $date = $filters['date'] ?: now()->toDateString();

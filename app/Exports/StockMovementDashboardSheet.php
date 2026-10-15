@@ -47,7 +47,7 @@ class StockMovementDashboardSheet extends DefaultValueBinder implements FromArra
             ['', '', '', '', '', '', '', '', '', '', '', ''],
             ['FILTER LAPORAN', '', '', '', '', '', '', '', '', '', '', ''],
             ['Periode', $this->summary['date_from'].' s.d. '.$this->summary['date_to'].' ('.$this->summary['period_days'].' hari)', '', '', '', '', '', '', '', '', '', ''],
-            ['Cakupan & Sumber', $this->warehouseLabel().' | Outbound manual + import resi selesai', '', '', '', '', '', '', '', '', '', ''],
+            ['Cakupan & Sumber', $this->warehouseLabel().' | '.($this->summary['outbound_source'] ?? 'Outbound manual + import resi selesai'), '', '', '', '', '', '', '', '', '', ''],
             ['Kategori', $this->categoryLabel(), '', '', '', '', '', '', '', '', '', ''],
             ['Klasifikasi & Days Cover', $this->movementLabel().' | Days cover: '.$this->coverLabel(), '', '', '', '', '', '', '', '', '', ''],
             ['Status Produk', $this->statusLabel(), '', '', '', '', '', '', '', '', '', ''],

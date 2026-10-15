@@ -77,7 +77,7 @@
                         <path d="M11 19C6.55556 19 3 15.4444 3 11C3 6.55556 6.55556 3 11 3C15.4444 3 19 6.55556 19 11C19 15.4444 15.4444 19 11 19ZM11 5C7.53333 5 5 7.53333 5 11C5 14.4667 7.53333 17 11 17C14.4667 17 17 14.4667 17 11C17 7.53333 14.4667 5 11 5Z" fill="black" />
                     </svg>
                 </span>
-                <input type="text" class="form-control form-control-solid w-250px ps-14" id="picker_filter_search" placeholder="Search Resi / Pesanan / SKU" />
+                <input type="text" class="form-control form-control-solid w-250px ps-14" id="picker_filter_search" placeholder="Search Resi / Pesanan / SKU / Toko" />
             </div>
 
             <input type="text" class="form-control form-control-solid w-150px" id="picker_filter_date" placeholder="Tanggal" value="{{ $today ?? '' }}" />
@@ -86,6 +86,14 @@
                 <option value="">Semua Status</option>
                 <option value="ongoing">Belum Scan Out</option>
                 <option value="done">Selesai</option>
+            </select>
+
+            <select class="form-select form-select-solid w-200px" id="picker_filter_store">
+                <option value="">Semua Toko</option>
+                @foreach(($stores ?? []) as $store)
+                    <option value="{{ $store->id }}">{{ $store->name }}</option>
+                @endforeach
+                <option value="none">Tanpa Toko</option>
             </select>
 
             <button type="button" class="btn btn-light" id="picker_filter_apply">Filter</button>
@@ -105,6 +113,7 @@
                         <th>Tanggal</th>
                         <th>ID Pesanan</th>
                         <th>No Resi</th>
+                        <th>Toko</th>
                         <th>SKU Dalam Resi</th>
                         <th>Progres QC Resi</th>
                         <th class="text-end">Scan / Wajib</th>
@@ -137,7 +146,7 @@
             </div>
             <div class="modal-body">
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
-                    <input type="text" class="form-control form-control-solid w-250px" id="picker_status_search" placeholder="Search Resi / Pesanan / SKU" />
+                    <input type="text" class="form-control form-control-solid w-250px" id="picker_status_search" placeholder="Search Resi / Pesanan / SKU / Toko" />
                     <button type="button" class="btn btn-light-primary" id="picker_status_export">Export Excel</button>
                 </div>
                 <div class="table-responsive">
@@ -148,6 +157,7 @@
                                 <th>Tanggal</th>
                                 <th>ID Pesanan</th>
                                 <th>No Resi</th>
+                                <th>Toko</th>
                                 <th>SKU</th>
                                 <th>Progres QC</th>
                                 <th class="text-end">Scan / Wajib</th>
@@ -284,6 +294,7 @@
         const applyBtn = document.getElementById('picker_filter_apply');
         const resetBtn = document.getElementById('picker_filter_reset');
         const statusEl = document.getElementById('picker_filter_status');
+        const storeEl = document.getElementById('picker_filter_store');
         const recalcBtn = document.getElementById('picker_recalculate_today');
         const auditBtn = document.getElementById('picker_audit_remaining');
 
@@ -344,6 +355,7 @@
                     params.q = searchInput?.value || '';
                     if (dateEl?.value) params.date = dateEl.value;
                     if (statusEl?.value) params.status = statusEl.value;
+                    if (storeEl?.value) params.store_id = storeEl.value;
                 }
             },
             columns: [
@@ -351,6 +363,7 @@
                 { data: 'date' },
                 { data: 'id_pesanan', render: (data) => `<span class="fw-semibold text-gray-700">${data || '-'}</span>` },
                 { data: 'no_resi', render: (data) => `<span class="fw-bold font-monospace text-primary">${data || '-'}</span>` },
+                { data: 'store_name', orderable: false, render: (data) => `<span class="badge badge-light-info">${data || '-'}</span>` },
                 { data: 'sku_summary', orderable: false, render: (data, type, row) => {
                     return `<div class="fw-semibold">${Number(row.sku_count || 0)} SKU</div><div class="text-muted fs-9 text-truncate" style="max-width:260px">${data || '-'}</div>`;
                 }},
@@ -406,9 +419,11 @@
             }
             if (searchInput) searchInput.value = '';
             if (statusEl) statusEl.value = '';
+            if (storeEl) storeEl.value = '';
             reloadMain();
         });
         statusEl?.addEventListener('change', reloadMain);
+        storeEl?.addEventListener('change', reloadMain);
 
         const initStatusTable = () => {
             if (!statusTableEl.length || dtStatus) return;
@@ -426,6 +441,7 @@
                         params.q = statusSearchEl?.value || '';
                         if (dateEl?.value) params.date = dateEl.value;
                         if (statusFilter) params.status = statusFilter;
+                        if (storeEl?.value) params.store_id = storeEl.value;
                     }
                 },
                 columns: [
@@ -433,6 +449,7 @@
                     { data: 'date' },
                     { data: 'id_pesanan' },
                     { data: 'no_resi' },
+                    { data: 'store_name', orderable: false },
                     { data: 'sku_summary', orderable: false },
                     { data: 'qc_progress', orderable: false, render: (data, type, row) => `${Number(data || 0)}% (${row.qc_status === 'completed' ? 'QC selesai' : 'Belum selesai QC'})` },
                     { data: 'qc_scanned_qty', className: 'text-end', orderable: false, render: (data, type, row) => `${Number(data || 0)} / ${Number(row.qc_required_qty || 0)}` },
@@ -470,6 +487,7 @@
             if (q) params.set('q', q);
             if (dateEl?.value) params.set('date', dateEl.value);
             if (statusFilter) params.set('status', statusFilter);
+            if (storeEl?.value) params.set('store_id', storeEl.value);
             const url = params.toString() ? `${exportPickerUrl}?${params.toString()}` : exportPickerUrl;
             window.location.href = url;
         });
@@ -652,7 +670,7 @@
 
                 const meta = payload?.meta || {};
                 if (pickerTransitDetailSubtitleEl) {
-                    pickerTransitDetailSubtitleEl.textContent = `${meta.no_resi || '-'} | ${meta.id_pesanan || '-'} | ${meta.date || '-'}`;
+                    pickerTransitDetailSubtitleEl.textContent = `${meta.no_resi || '-'} | ${meta.id_pesanan || '-'} | ${meta.store_name || '-'} | ${meta.date || '-'}`;
                 }
                 if (pickerTransitDetailTotalResiEl) pickerTransitDetailTotalResiEl.textContent = Number(meta.total_sku || 0).toLocaleString('id-ID');
                 if (pickerTransitDetailTotalQtyEl) {

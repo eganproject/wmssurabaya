@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PackerResiScan;
 use App\Models\Resi;
 use App\Models\User;
+use App\Support\ResiStoreFilter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -28,6 +29,7 @@ class PackerPackingReportController extends Controller
             'dataUrl' => route('admin.reports.packer-packing-reports.data'),
             'packers' => $packers,
             'today' => now()->toDateString(),
+            'stores' => ResiStoreFilter::options(),
         ]);
     }
 
@@ -49,6 +51,12 @@ class PackerPackingReportController extends Controller
         $packerId = $request->input('packer_id');
         if ($packerId) {
             $query->where('ps.scanned_by', $packerId);
+        }
+
+        $storeFilter = ResiStoreFilter::normalize($request->input('store_id'));
+        if ($storeFilter !== null) {
+            $query->join('resis as r', 'r.id', '=', 'ps.resi_id');
+            ResiStoreFilter::apply($query, $storeFilter, 'r.store_id');
         }
 
         $dateFrom = $this->parseDate($request->input('date_from'));
@@ -90,7 +98,7 @@ class PackerPackingReportController extends Controller
             ];
         });
 
-        $comparison = $this->buildComparisonData($dateFrom, $dateTo);
+        $comparison = $this->buildComparisonData($dateFrom, $dateTo, $storeFilter);
 
         return response()->json([
             'data' => $data,
@@ -106,7 +114,7 @@ class PackerPackingReportController extends Controller
         ]);
 
         $rows = PackerResiScan::query()
-            ->with(['resi', 'scanner'])
+            ->with(['resi.store', 'scanner'])
             ->where('scanned_by', (int) $validated['packer_id'])
             ->whereDate('scan_date', $validated['date'])
             ->orderByDesc('scanned_at')
@@ -117,6 +125,7 @@ class PackerPackingReportController extends Controller
             return [
                 'id_pesanan' => $row->resi?->id_pesanan ?? '-',
                 'no_resi' => $row->resi?->no_resi ?? '-',
+                'store_name' => ResiStoreFilter::label($row->resi?->store),
                 'scan_type' => $row->scan_type ?? '-',
                 'scan_code' => $row->scan_code ?? '-',
                 'scanned_at' => $row->scanned_at
@@ -144,7 +153,7 @@ class PackerPackingReportController extends Controller
         }
 
         $scan = PackerResiScan::query()
-            ->with(['resi', 'scanner'])
+            ->with(['resi.store', 'scanner'])
             ->whereHas('resi', function ($q) use ($keyword) {
                 $q->where('no_resi', $keyword)
                     ->orWhere('id_pesanan', $keyword);
@@ -169,6 +178,7 @@ class PackerPackingReportController extends Controller
                     : '-',
                 'id_pesanan' => $scan->resi?->id_pesanan ?? '-',
                 'no_resi' => $scan->resi?->no_resi ?? '-',
+                'store_name' => ResiStoreFilter::label($scan->resi?->store),
             ],
         ]);
     }
@@ -185,7 +195,7 @@ class PackerPackingReportController extends Controller
         }
     }
 
-    private function buildComparisonData(?string $dateFrom, ?string $dateTo): array
+    private function buildComparisonData(?string $dateFrom, ?string $dateTo, ?string $storeFilter = null): array
     {
         $resiQuery = Resi::query();
         if ($dateFrom) {
@@ -194,6 +204,7 @@ class PackerPackingReportController extends Controller
         if ($dateTo) {
             $resiQuery->whereDate('tanggal_upload', '<=', $dateTo);
         }
+        ResiStoreFilter::apply($resiQuery, $storeFilter, 'resis.store_id');
 
         $importTotal = (clone $resiQuery)->count();
 
@@ -207,8 +218,9 @@ class PackerPackingReportController extends Controller
 
         $missingBase = (clone $resiQuery)
             ->leftJoin('packer_resi_scans as ps', 'ps.resi_id', '=', 'resis.id')
+            ->leftJoin('stores as st', 'st.id', '=', 'resis.store_id')
             ->whereNull('ps.id')
-            ->select('resis.id_pesanan', 'resis.no_resi', 'resis.tanggal_upload');
+            ->select('resis.id_pesanan', 'resis.no_resi', 'resis.tanggal_upload', 'st.name as store_name');
 
         $missingTotal = (clone $missingBase)->count();
         $missingSamples = (clone $missingBase)
@@ -219,6 +231,7 @@ class PackerPackingReportController extends Controller
                 return [
                     'id_pesanan' => (string) ($row->id_pesanan ?? '-'),
                     'no_resi' => (string) ($row->no_resi ?? '-'),
+                    'store_name' => (string) ($row->store_name ?? '-'),
                     'tanggal_upload' => $row->tanggal_upload
                         ? Carbon::parse($row->tanggal_upload)->format('Y-m-d')
                         : '-',
@@ -230,6 +243,7 @@ class PackerPackingReportController extends Controller
             'scanned_total' => $packedTotal,
             'missing_total' => $missingTotal,
             'missing_samples' => $missingSamples,
+            'per_store' => ResiStoreFilter::breakdown($resiQuery, 'packer_resi_scans'),
         ];
     }
 }

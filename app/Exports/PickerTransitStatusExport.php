@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Models\QcScanResi;
+use App\Support\ResiStoreFilter;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,7 @@ class PickerTransitStatusExport implements FromCollection, WithHeadings, WithMap
     public function collection(): Collection
     {
         $query = QcScanResi::query()
-            ->with(['scanner', 'resi', 'items.item'])
+            ->with(['scanner', 'resi.store', 'items.item'])
             ->whereHas('resi', function ($q) {
                 $q->whereNull('status')
                     ->orWhere('status', '!=', 'canceled');
@@ -35,7 +36,8 @@ class PickerTransitStatusExport implements FromCollection, WithHeadings, WithMap
             $query->where(function ($q) use ($search) {
                 $q->whereHas('resi', function ($resiQ) use ($search) {
                     $resiQ->where('no_resi', 'like', "%{$search}%")
-                        ->orWhere('id_pesanan', 'like', "%{$search}%");
+                        ->orWhere('id_pesanan', 'like', "%{$search}%")
+                        ->orWhereHas('store', fn ($storeQ) => $storeQ->where('name', 'like', "%{$search}%"));
                 })
                     ->orWhereHas('scanner', fn ($scannerQ) => $scannerQ->where('name', 'like', "%{$search}%"))
                     ->orWhereHas('items', function ($itemQ) use ($search) {
@@ -55,6 +57,8 @@ class PickerTransitStatusExport implements FromCollection, WithHeadings, WithMap
         } catch (\Throwable) {
             // ignore invalid date
         }
+
+        ResiStoreFilter::applyViaResi($query, ResiStoreFilter::normalize($this->filters['store_id'] ?? null));
 
         $status = (string) ($this->filters['status'] ?? '');
         if ($status === 'ongoing') {
@@ -76,7 +80,7 @@ class PickerTransitStatusExport implements FromCollection, WithHeadings, WithMap
 
     public function headings(): array
     {
-        return ['Tanggal QC', 'ID Pesanan', 'No Resi', 'Petugas QC', 'SKU Dalam Resi', 'Qty Scan', 'Qty Wajib', 'Progress QC', 'Status QC', 'Status Scan Out', 'Scan Out At'];
+        return ['Tanggal QC', 'ID Pesanan', 'No Resi', 'Toko', 'Petugas QC', 'SKU Dalam Resi', 'Qty Scan', 'Qty Wajib', 'Progress QC', 'Status QC', 'Status Scan Out', 'Scan Out At'];
     }
 
     public function map($row): array
@@ -99,6 +103,7 @@ class PickerTransitStatusExport implements FromCollection, WithHeadings, WithMap
             $row->scanned_at?->format('Y-m-d H:i') ?? '-',
             $row->resi?->id_pesanan ?? '-',
             $row->resi?->no_resi ?? '-',
+            ResiStoreFilter::label($row->resi?->store),
             $row->scanner?->name ?? '-',
             $skuSummary ?: '-',
             $scannedQty,

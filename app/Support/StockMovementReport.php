@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Store;
 use App\Models\Warehouse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -17,8 +18,9 @@ class StockMovementReport
     {
         [$warehouseIds, $warehouseLabel] = self::warehouseScope();
         [$dateFrom, $dateTo, $periodDays] = self::period($filters);
+        $storeFilter = ResiStoreFilter::normalize($filters['store_id'] ?? null);
 
-        $usage = self::eligibleOutboundQuery($warehouseIds, $dateFrom, $dateTo)
+        $usage = self::eligibleOutboundQuery($warehouseIds, $dateFrom, $dateTo, $storeFilter)
             ->select('item_id')
             ->selectRaw('SUM(qty) as outbound_qty')
             ->selectRaw('COUNT(*) as outbound_transactions')
@@ -125,9 +127,9 @@ class StockMovementReport
         return [
             'all_rows' => $allRows,
             'rows' => $rows,
-            'summary' => self::summary($allRows, $periodDays, $dateFrom, $dateTo, $warehouseLabel),
-            'filtered_summary' => self::summary($rows, $periodDays, $dateFrom, $dateTo, $warehouseLabel),
-            'trend' => $includeTrend ? self::dailyOutboundTrend($rows, $dateFrom, $dateTo, $warehouseIds) : [],
+            'summary' => self::summary($allRows, $periodDays, $dateFrom, $dateTo, $warehouseLabel, $storeFilter),
+            'filtered_summary' => self::summary($rows, $periodDays, $dateFrom, $dateTo, $warehouseLabel, $storeFilter),
+            'trend' => $includeTrend ? self::dailyOutboundTrend($rows, $dateFrom, $dateTo, $warehouseIds, $storeFilter) : [],
             'date_from' => $dateFrom,
             'date_to' => $dateTo,
             'period_days' => $periodDays,
@@ -174,17 +176,96 @@ class StockMovementReport
         ];
     }
 
-    private static function eligibleOutboundQuery(array $warehouseIds, Carbon $dateFrom, Carbon $dateTo)
+    /**
+     * Per toko Pareto classification. Only resi outbound carries a toko, so manual outbound is
+     * excluded here; each toko is classified against its own total qty keluar.
+     */
+    public static function storeBreakdown(array $filters = []): array
     {
-        return DB::table('stock_mutations')
-            ->whereIn('warehouse_id', $warehouseIds)
-            ->where('direction', 'out')
+        [$warehouseIds] = self::warehouseScope();
+        [$dateFrom, $dateTo, $periodDays] = self::period($filters);
+        $storeFilter = ResiStoreFilter::normalize($filters['store_id'] ?? null);
+
+        $query = self::eligibleOutboundQuery($warehouseIds, $dateFrom, $dateTo, $storeFilter)
+            ->where('stock_mutations.source_type', 'qc_resi')
+            ->join('qc_scan_resis as breakdown_qc', 'breakdown_qc.id', '=', 'stock_mutations.source_id')
+            ->join('resis as breakdown_resi', 'breakdown_resi.id', '=', 'breakdown_qc.resi_id')
+            ->join('items as breakdown_item', 'breakdown_item.id', '=', 'stock_mutations.item_id')
+            ->where('breakdown_item.is_bundle', false)
+            ->select('breakdown_resi.store_id', 'stock_mutations.item_id', 'breakdown_item.sku', 'breakdown_item.name')
+            ->selectRaw('SUM(stock_mutations.qty) as outbound_qty')
+            ->groupBy('breakdown_resi.store_id', 'stock_mutations.item_id', 'breakdown_item.sku', 'breakdown_item.name');
+
+        $activeStatus = (string) ($filters['is_active'] ?? '1');
+        if (in_array($activeStatus, ['0', '1'], true)) {
+            $query->where('breakdown_item.is_active', $activeStatus === '1');
+        }
+        if (array_key_exists('category_id', $filters) && $filters['category_id'] !== null && $filters['category_id'] !== '') {
+            if ((int) $filters['category_id'] === 0) {
+                $query->whereNull('breakdown_item.category_id');
+            } else {
+                $query->where('breakdown_item.category_id', (int) $filters['category_id']);
+            }
+        }
+
+        $storeNames = Store::query()->pluck('name', 'id');
+
+        $stores = $query->get()
+            ->groupBy(fn ($row) => (string) ($row->store_id ?? ''))
+            ->map(function (Collection $items, string $storeId) use ($storeNames, $periodDays) {
+                $total = (int) $items->sum('outbound_qty');
+                $cumulative = 0;
+                $classified = $items->sortBy([['outbound_qty', 'desc'], ['sku', 'asc']])->values()
+                    ->map(function ($row) use (&$cumulative, $total, $periodDays) {
+                        $qty = (int) $row->outbound_qty;
+                        [$key, $label] = self::movementBand($qty, $total > 0 ? ($cumulative / $total) * 100 : 100);
+                        $cumulative += $qty;
+
+                        return [
+                            'sku' => $row->sku ?: '-',
+                            'name' => $row->name ?: '-',
+                            'outbound_qty' => $qty,
+                            'average_daily_outbound' => round($qty / max(1, $periodDays), 2),
+                            'contribution_percent' => $total > 0 ? round($qty / $total * 100, 2) : 0,
+                            'movement_key' => $key,
+                            'movement_label' => $label,
+                        ];
+                    });
+
+                return [
+                    'store_id' => $storeId === '' ? null : (int) $storeId,
+                    'store_name' => $storeId === '' ? 'Tanpa Toko' : ($storeNames[(int) $storeId] ?? '-'),
+                    'total_outbound_qty' => $total,
+                    'moving_sku' => $classified->count(),
+                    'fast_sku' => $classified->where('movement_key', 'fast')->count(),
+                    'medium_sku' => $classified->where('movement_key', 'medium')->count(),
+                    'slow_sku' => $classified->where('movement_key', 'slow')->count(),
+                    'top_fast' => $classified->where('movement_key', 'fast')->take(5)->values()->all(),
+                    'items' => $classified->all(),
+                ];
+            })
+            ->sortBy([['total_outbound_qty', 'desc'], ['store_name', 'asc']])
+            ->values();
+
+        return [
+            'stores' => $stores,
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'period_days' => $periodDays,
+        ];
+    }
+
+    private static function eligibleOutboundQuery(array $warehouseIds, Carbon $dateFrom, Carbon $dateTo, ?string $storeFilter = null)
+    {
+        $query = DB::table('stock_mutations')
+            ->whereIn('stock_mutations.warehouse_id', $warehouseIds)
+            ->where('stock_mutations.direction', 'out')
             ->where(function ($query) {
                 $query->where(function ($manual) {
-                    $manual->where('source_type', 'outbound')
-                        ->where('source_subtype', 'manual');
+                    $manual->where('stock_mutations.source_type', 'outbound')
+                        ->where('stock_mutations.source_subtype', 'manual');
                 })->orWhere(function ($resi) {
-                    $resi->where('source_type', 'qc_resi')
+                    $resi->where('stock_mutations.source_type', 'qc_resi')
                         ->whereExists(function ($completed) {
                             $completed->selectRaw('1')
                                 ->from('qc_scan_resis')
@@ -193,7 +274,21 @@ class StockMovementReport
                         });
                 });
             })
-            ->whereBetween('occurred_at', [$dateFrom, $dateTo]);
+            ->whereBetween('stock_mutations.occurred_at', [$dateFrom, $dateTo]);
+
+        if ($storeFilter !== null) {
+            // Toko only exists on resi, so a toko filter limits outbound to resi mutations of that toko.
+            $query->where('stock_mutations.source_type', 'qc_resi')
+                ->whereExists(function ($store) use ($storeFilter) {
+                    $store->selectRaw('1')
+                        ->from('qc_scan_resis as store_qc')
+                        ->join('resis as store_resi', 'store_resi.id', '=', 'store_qc.resi_id')
+                        ->whereColumn('store_qc.id', 'stock_mutations.source_id');
+                    ResiStoreFilter::apply($store, $storeFilter, 'store_resi.store_id');
+                });
+        }
+
+        return $query;
     }
 
     private static function period(array $filters): array
@@ -220,16 +315,7 @@ class StockMovementReport
         return $rows->sortByDesc('outbound_qty')->values()->map(function (array $row) use (&$cumulativeOutbound, $totalOutbound) {
             $qty = (int) $row['outbound_qty'];
             $startingContribution = $totalOutbound > 0 ? ($cumulativeOutbound / $totalOutbound) * 100 : 100;
-
-            if ($qty <= 0) {
-                [$key, $label, $order] = ['non_moving', 'Non-moving', 4];
-            } elseif ($startingContribution < 70) {
-                [$key, $label, $order] = ['fast', 'Fast moving', 1];
-            } elseif ($startingContribution < 90) {
-                [$key, $label, $order] = ['medium', 'Medium moving', 2];
-            } else {
-                [$key, $label, $order] = ['slow', 'Slow moving', 3];
-            }
+            [$key, $label, $order] = self::movementBand($qty, $startingContribution);
 
             $cumulativeOutbound += $qty;
             $row['movement_key'] = $key;
@@ -242,11 +328,30 @@ class StockMovementReport
         });
     }
 
+    /**
+     * Pareto band from the cumulative contribution before this SKU: <70% fast, <90% medium, rest slow.
+     */
+    private static function movementBand(int $qty, float $startingContribution): array
+    {
+        if ($qty <= 0) {
+            return ['non_moving', 'Non-moving', 4];
+        }
+        if ($startingContribution < 70) {
+            return ['fast', 'Fast moving', 1];
+        }
+        if ($startingContribution < 90) {
+            return ['medium', 'Medium moving', 2];
+        }
+
+        return ['slow', 'Slow moving', 3];
+    }
+
     private static function dailyOutboundTrend(
         Collection $rows,
         Carbon $dateFrom,
         Carbon $dateTo,
-        array $warehouseIds
+        array $warehouseIds,
+        ?string $storeFilter = null
     ): array {
         $dailyTotals = [];
         $cursor = $dateFrom->copy()->startOfDay();
@@ -260,7 +365,7 @@ class StockMovementReport
         $allowedItemIds = $rows->pluck('id')->map(fn ($id) => (int) $id)->unique()->values();
 
         if ($allowedItemIds->isNotEmpty()) {
-            $trend = self::eligibleOutboundQuery($warehouseIds, $dateFrom, $dateTo)
+            $trend = self::eligibleOutboundQuery($warehouseIds, $dateFrom, $dateTo, $storeFilter)
                 ->whereIn('item_id', $allowedItemIds->all())
                 ->selectRaw('DATE(occurred_at) as movement_date')
                 ->selectRaw('SUM(qty) as outbound_qty')
@@ -289,7 +394,8 @@ class StockMovementReport
         int $periodDays,
         Carbon $dateFrom,
         Carbon $dateTo,
-        string $warehouseLabel
+        string $warehouseLabel,
+        ?string $storeFilter = null
     ): array {
         return [
             'total_sku' => $rows->count(),
@@ -308,8 +414,28 @@ class StockMovementReport
             'date_from' => $dateFrom->toDateString(),
             'date_to' => $dateTo->toDateString(),
             'warehouse' => $warehouseLabel,
-            'outbound_source' => 'Outbound manual + import resi selesai',
+            'outbound_source' => self::outboundSourceLabel($storeFilter),
+            'store' => self::storeLabel($storeFilter),
         ];
+    }
+
+    public static function storeLabel(?string $storeFilter): string
+    {
+        if ($storeFilter === null) {
+            return 'Semua toko';
+        }
+        if ($storeFilter === ResiStoreFilter::NONE) {
+            return 'Tanpa Toko';
+        }
+
+        return Store::query()->whereKey((int) $storeFilter)->value('name') ?? '-';
+    }
+
+    private static function outboundSourceLabel(?string $storeFilter): string
+    {
+        return $storeFilter === null
+            ? 'Outbound manual + import resi selesai'
+            : 'Import resi selesai · '.self::storeLabel($storeFilter);
     }
 
     private static function recommendedAction(array $row): string

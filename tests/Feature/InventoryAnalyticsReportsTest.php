@@ -367,7 +367,7 @@ class InventoryAnalyticsReportsTest extends TestCase
         try {
             $workbookXml = $zip->getFromName('xl/workbook.xml');
             $this->assertIsString($workbookXml);
-            $this->assertSame(6, substr_count($workbookXml, '<sheet '));
+            $this->assertSame(7, substr_count($workbookXml, '<sheet '));
             $this->assertNotFalse($zip->locateName('xl/charts/chart1.xml'));
             $this->assertNotFalse($zip->locateName('xl/charts/chart2.xml'));
         } finally {
