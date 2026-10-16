@@ -90,7 +90,7 @@ class ResiImportStoreTest extends TestCase
         $this->assertEqualsCanonicalizing(['PACK1' => 4, 'PEMB8' => 4], $resi->details->pluck('qty', 'sku')->all());
     }
 
-    public function test_reimport_without_toko_keeps_existing_store_and_unknown_toko_is_rejected(): void
+    public function test_reimport_without_toko_keeps_existing_store_and_new_toko_is_created(): void
     {
         $alpha = Store::create(['name' => 'Toko Alpha']);
         $date = now()->toDateString();
@@ -108,9 +108,17 @@ class ResiImportStoreTest extends TestCase
 
         $this->importFile([
             [...$header, 'Toko'],
-            ['ORD-9', 'SKU-A', 1, $date, 'Toko Salah'],
-        ])->assertStatus(422)->assertJsonValidationErrors('file');
-        $this->assertFalse(Resi::where('id_pesanan', 'ORD-9')->exists());
+            ['ORD-8', 'SKU-B', 1, $date, 'Toko Baru'],
+            ['ORD-9', 'SKU-C', 1, $date, 'TOKO BARU'],
+            ['ORD-10', 'SKU-D', 1, $date, 'toko alpha'],
+        ])->assertOk()->assertJsonPath('created_stores', ['Toko Baru']);
+
+        $this->assertSame(1, Store::where('name', 'Toko Baru')->count());
+        $this->assertSame(2, Store::count());
+        $newId = Store::where('name', 'Toko Baru')->value('id');
+        $this->assertSame($newId, Resi::where('id_pesanan', 'ORD-8')->value('store_id'));
+        $this->assertSame($newId, Resi::where('id_pesanan', 'ORD-9')->value('store_id'));
+        $this->assertSame($alpha->id, Resi::where('id_pesanan', 'ORD-10')->value('store_id'));
 
         $this->actingAs($this->user)
             ->get(route('admin.inventory.resi-import.index'))

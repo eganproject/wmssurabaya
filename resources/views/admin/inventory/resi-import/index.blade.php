@@ -195,7 +195,7 @@
                             <li><strong>AWB/No. Tracking</strong> (opsional)</li>
                             <li><strong>Kurir</strong> (opsional)</li>
                             <li><strong>Catatan Pembeli</strong> (opsional)</li>
-                            <li><strong>Toko</strong> (opsional, nama harus sama dengan Master Data &gt; Stores)</li>
+                            <li><strong>Toko</strong> / <strong>Nama Toko</strong> (opsional, toko baru otomatis dibuat di Master Data &gt; Stores)</li>
                         </ul>
                         <p class="text-muted small mb-0">Header akan dibaca otomatis menjadi: <code>id_pesanan, awb_no_tracking, kurir, sku, jumlah, tanggal_pembuatan, catatan_pembeli, toko</code></p>
                         <a href="{{ $templateUrl }}" class="btn btn-sm btn-light-success mt-4">Download Template Excel</a>

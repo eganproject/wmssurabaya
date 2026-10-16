@@ -392,7 +392,7 @@ class ResiImportController extends Controller
             $createdDetails = 0;
             $today = now()->toDateString();
             $defaultKurirId = $this->resolveDefaultKurirId();
-            $storeIdsByName = $this->resolveStoreIds($groups);
+            [$storeIdsByName, $createdStores] = $this->resolveStoreIds($groups);
             $batch = ResiImportBatch::create([
                 'batch_code' => $this->generateBatchCode(),
                 'file_name' => $request->file('file')->getClientOriginalName(),
@@ -498,7 +498,10 @@ class ResiImportController extends Controller
             DB::commit();
 
             return response()->json([
-                'message' => 'Import resi berhasil',
+                'message' => 'Import resi berhasil'.($createdStores
+                    ? '. Toko baru dibuat: '.implode(', ', $createdStores)
+                    : ''),
+                'created_stores' => $createdStores,
                 'resis' => $createdResi,
                 'details' => $createdDetails,
                 'batch_code' => $batch->batch_code,
@@ -1197,10 +1200,10 @@ class ResiImportController extends Controller
     }
 
     /**
-     * Map toko names in the file to store ids (case-insensitive). Unknown names fail the
-     * whole import so a typo never silently drops the toko; stores are master data.
+     * Map toko names in the file to store ids, matching existing stores case-insensitively
+     * and creating the ones that do not exist yet (rolled back with the import on failure).
      *
-     * @return array<string,int>
+     * @return array{0: array<string,int>, 1: array<int,string>} [ids by lowercase name, created names]
      */
     private function resolveStoreIds(array $groups): array
     {
@@ -1211,20 +1214,20 @@ class ResiImportController extends Controller
             ->unique(fn ($name) => mb_strtolower($name))
             ->values();
         if ($names->isEmpty()) {
-            return [];
+            return [[], []];
         }
 
         $stores = Store::query()->get(['id', 'name'])
             ->mapWithKeys(fn (Store $store) => [mb_strtolower(trim($store->name)) => (int) $store->id]);
-        $unknown = $names->reject(fn ($name) => $stores->has(mb_strtolower($name)))->values();
-        if ($unknown->isNotEmpty()) {
-            throw ValidationException::withMessages([
-                'file' => 'Toko tidak ditemukan di master Toko: '.$unknown->take(10)->implode(', ')
-                    .'. Tambahkan toko tersebut di Master Data > Stores atau perbaiki nama toko di file.',
-            ]);
+        $created = [];
+        foreach ($names as $name) {
+            if (! $stores->has(mb_strtolower($name))) {
+                $stores[mb_strtolower($name)] = (int) Store::create(['name' => $name])->id;
+                $created[] = $name;
+            }
         }
 
-        return $stores->only($names->map(fn ($name) => mb_strtolower($name))->all())->all();
+        return [$stores->only($names->map(fn ($name) => mb_strtolower($name))->all())->all(), $created];
     }
 
     private function resolveKurirId($rawName, ?int $defaultId): ?int
