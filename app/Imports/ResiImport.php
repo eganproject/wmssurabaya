@@ -10,9 +10,10 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
 class ResiImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
 {
-    /** @var array<string,array{id_pesanan:string,no_resi:?string,kurir:?string,tanggal_pesanan:string,catatan_pembeli:?string,items:array<string,array{sku:string,qty:int}>}> */
+    /** @var array<string,array{id_pesanan:string,no_resi:?string,kurir:?string,tanggal_pesanan:string,catatan_pembeli:?string,toko?:?string,items:array<string,array{sku:string,qty:int}>}> */
     public array $groups = [];
     public bool $hasBuyerNotesHeader = false;
+    public bool $hasStoreHeader = false;
     /** @var array<int,string> */
     private array $requiredHeaders = [
         'id_pesanan',
@@ -33,12 +34,13 @@ class ResiImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
         $headersRaw = array_keys($first?->toArray() ?? []);
         $headers = array_map(fn ($h) => $this->normalizeKey((string) $h), $headersRaw);
         $this->hasBuyerNotesHeader = in_array('catatan_pembeli', $headers, true);
+        $this->hasStoreHeader = in_array('toko', $headers, true);
         $missing = array_diff($this->requiredHeaders, $headers);
         if (!empty($missing)) {
             $detected = implode(', ', array_filter($headers));
             throw ValidationException::withMessages([
                 'file' => 'Header wajib: ID Pesanan, SKU, Jumlah, Tanggal Pembuatan. '
-                    .'AWB/No. Tracking dan Kurir opsional. Pastikan header berada di baris pertama. '
+                    .'AWB/No. Tracking, Kurir, dan Toko opsional. Pastikan header berada di baris pertama. '
                     .($detected !== '' ? 'Header terdeteksi: '.$detected : ''),
             ]);
         }
@@ -53,6 +55,9 @@ class ResiImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
             $kurir = trim((string) ($rowData['kurir'] ?? ''));
             $catatanPembeli = $this->hasBuyerNotesHeader
                 ? trim((string) ($rowData['catatan_pembeli'] ?? ''))
+                : '';
+            $toko = $this->hasStoreHeader
+                ? trim((string) ($rowData['toko'] ?? ''))
                 : '';
             $sku = trim((string) ($rowData['sku'] ?? ''));
             $qty = $this->parseQty($rowData['jumlah'] ?? null);
@@ -80,6 +85,9 @@ class ResiImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
                 if ($this->hasBuyerNotesHeader) {
                     $group['catatan_pembeli'] = $catatanPembeli !== '' ? $catatanPembeli : null;
                 }
+                if ($this->hasStoreHeader) {
+                    $group['toko'] = $toko !== '' ? $toko : null;
+                }
                 $this->groups[$groupKey] = $group;
             } elseif ($this->groups[$groupKey]['no_resi'] === null && $noResi !== '') {
                 $this->groups[$groupKey]['no_resi'] = $noResi;
@@ -89,6 +97,10 @@ class ResiImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
             }
             if ($this->hasBuyerNotesHeader && ($this->groups[$groupKey]['catatan_pembeli'] ?? null) === null && $catatanPembeli !== '') {
                 $this->groups[$groupKey]['catatan_pembeli'] = $catatanPembeli;
+            }
+
+            if ($this->hasStoreHeader && ($this->groups[$groupKey]['toko'] ?? null) === null && $toko !== '') {
+                $this->groups[$groupKey]['toko'] = $toko;
             }
 
             if (!isset($this->groups[$groupKey]['items'][$sku])) {
@@ -163,6 +175,9 @@ class ResiImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
         }
         if (in_array($key, ['catatan_pembeli', 'buyer_note', 'buyer_notes', 'buyer_remark', 'buyer_remarks', 'customer_note', 'customer_notes'], true)) {
             return 'catatan_pembeli';
+        }
+        if (in_array($key, ['toko', 'nama_toko', 'store', 'store_name', 'shop', 'shop_name', 'nama_shop'], true)) {
+            return 'toko';
         }
         return $key;
     }

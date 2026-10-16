@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Models\Item;
+use App\Models\Store;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
@@ -20,6 +21,7 @@ class ResiTemplateExport implements FromArray, WithHeadings, ShouldAutoSize, Wit
             'Jumlah',
             'Tanggal Pembuatan',
             'Catatan Pembeli',
+            'Toko',
         ];
     }
 
@@ -28,10 +30,11 @@ class ResiTemplateExport implements FromArray, WithHeadings, ShouldAutoSize, Wit
         $samples = Item::orderBy('name')->limit(2)->pluck('sku')->all();
         $defaults = $samples ?: ['SKU-CONTOH-1', 'SKU-CONTOH-2'];
         $date = now()->format('Y-m-d');
+        $store = Store::orderBy('name')->value('name') ?? 'Nama Toko';
 
         return [
-            ['ORD-001', 'RESI001', 'JNE', $defaults[0], 2, $date, 'Tolong packing aman'],
-            ['ORD-001', 'RESI001', 'JNE', $defaults[1] ?? $defaults[0], 1, $date, ''],
+            ['ORD-001', 'RESI001', 'JNE', $defaults[0], 2, $date, 'Tolong packing aman', $store],
+            ['ORD-001', 'RESI001', 'JNE', $defaults[1] ?? $defaults[0], 1, $date, '', $store],
         ];
     }
 

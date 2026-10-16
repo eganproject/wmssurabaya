@@ -114,7 +114,7 @@
                         <path d="M11 19C6.55556 19 3 15.4444 3 11C3 6.55556 6.55556 3 11 3C15.4444 3 19 6.55556 19 11C19 15.4444 15.4444 19 11 19ZM11 5C7.53333 5 5 7.53333 5 11C5 14.4667 7.53333 17 11 17C14.4667 17 17 14.4667 17 11C17 7.53333 14.4667 5 11 5Z" fill="black" />
                     </svg>
                 </span>
-                <input type="text" class="form-control form-control-solid w-250px ps-14" id="filter_search" placeholder="Search no resi / SKU / ID Pesanan / Kurir" value="{{ $filterSearch ?? '' }}" />
+                <input type="text" class="form-control form-control-solid w-250px ps-14" id="filter_search" placeholder="Search no resi / SKU / ID Pesanan / Kurir / Toko" value="{{ $filterSearch ?? '' }}" />
             </div>
         </div>
         <div class="card-toolbar">
@@ -123,6 +123,13 @@
                     <option value="">Semua Status</option>
                     <option value="active" {{ ($filterStatus ?? '') === 'active' ? 'selected' : '' }}>Aktif</option>
                     <option value="canceled" {{ ($filterStatus ?? '') === 'canceled' ? 'selected' : '' }}>Cancel</option>
+                </select>
+                <select class="form-select form-select-solid w-175px" id="filter_store">
+                    <option value="">Semua Toko</option>
+                    @foreach(($stores ?? []) as $store)
+                        <option value="{{ $store->id }}" {{ (string) ($filterStore ?? '') === (string) $store->id ? 'selected' : '' }}>{{ $store->name }}</option>
+                    @endforeach
+                    <option value="none" {{ ($filterStore ?? '') === 'none' ? 'selected' : '' }}>Tanpa Toko</option>
                 </select>
                 <input type="text" class="form-control form-control-solid w-150px" id="filter_date" placeholder="Tanggal" value="{{ $filterDate ?? '' }}" />
                 <button type="button" class="btn btn-light" id="filter_apply">Filter</button>
@@ -147,6 +154,7 @@
                         <th>No</th>
                         <th>No Resi</th>
                         <th>Kurir</th>
+                        <th>Toko</th>
                         <th>ID Pesanan</th>
                         <th>SKU</th>
                         <th>Tanggal Order</th>
@@ -187,9 +195,20 @@
                             <li><strong>AWB/No. Tracking</strong> (opsional)</li>
                             <li><strong>Kurir</strong> (opsional)</li>
                             <li><strong>Catatan Pembeli</strong> (opsional)</li>
+                            <li><strong>Toko</strong> (opsional, nama harus sama dengan Master Data &gt; Stores)</li>
                         </ul>
-                        <p class="text-muted small mb-0">Header akan dibaca otomatis menjadi: <code>id_pesanan, awb_no_tracking, kurir, sku, jumlah, tanggal_pembuatan, catatan_pembeli</code></p>
+                        <p class="text-muted small mb-0">Header akan dibaca otomatis menjadi: <code>id_pesanan, awb_no_tracking, kurir, sku, jumlah, tanggal_pembuatan, catatan_pembeli, toko</code></p>
                         <a href="{{ $templateUrl }}" class="btn btn-sm btn-light-success mt-4">Download Template Excel</a>
+                    </div>
+                    <div class="mb-7">
+                        <label class="fs-6 fw-bold form-label mb-2">Toko</label>
+                        <select class="form-select form-select-solid" id="import_resi_store">
+                            <option value="">Ikuti kolom Toko di file</option>
+                            @foreach(($stores ?? []) as $store)
+                                <option value="{{ $store->id }}">{{ $store->name }}</option>
+                            @endforeach
+                        </select>
+                        <div class="form-text">Dipakai untuk resi yang kolom Toko-nya kosong di file. Kolom Toko di file selalu didahulukan.</div>
                     </div>
                     <div class="mb-10">
                         <label class="required fs-6 fw-bold form-label mb-2">File Excel</label>
@@ -273,12 +292,13 @@
                                 <th>No Resi</th>
                                 <th>ID Pesanan</th>
                                 <th>Kurir</th>
+                                <th>Toko</th>
                                 <th>Catatan Pembeli</th>
                             </tr>
                         </thead>
                         <tbody id="buyer_notes_body">
                             <tr>
-                                <td colspan="5" class="text-center text-muted py-6">Memuat data...</td>
+                                <td colspan="6" class="text-center text-muted py-6">Memuat data...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -363,13 +383,14 @@
                                 <th>ID Pesanan</th>
                                 <th>No Resi</th>
                                 <th>Kurir</th>
+                                <th>Toko</th>
                                 <th>SKU</th>
                                 <th>Status DB</th>
                             </tr>
                         </thead>
                         <tbody id="batch_detail_body">
                             <tr>
-                                <td colspan="6" class="text-center text-muted py-6">Memuat data...</td>
+                                <td colspan="7" class="text-center text-muted py-6">Memuat data...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -412,6 +433,7 @@
         const filterDateEl = document.getElementById('filter_date');
         const filterSearchEl = document.getElementById('filter_search');
         const filterStatusEl = document.getElementById('filter_status');
+        const filterStoreEl = document.getElementById('filter_store');
         const filterApplyBtn = document.getElementById('filter_apply');
         const filterResetBtn = document.getElementById('filter_reset');
         const rekapBtn = document.getElementById('btn_rekap_sku');
@@ -583,7 +605,7 @@
             if (!batchDetailUrl || !id) return;
             if (batchDetailCodeEl) batchDetailCodeEl.textContent = '-';
             if (batchDetailBodyEl) {
-                batchDetailBodyEl.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-6">Memuat data...</td></tr>';
+                batchDetailBodyEl.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-6">Memuat data...</td></tr>';
             }
             batchDetailModal?.show();
             try {
@@ -595,7 +617,7 @@
                 if (batchDetailCodeEl) batchDetailCodeEl.textContent = json?.batch?.batch_code || '-';
                 if (!rows.length) {
                     if (batchDetailBodyEl) {
-                        batchDetailBodyEl.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-6">Batch tidak memiliki item.</td></tr>';
+                        batchDetailBodyEl.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-6">Batch tidak memiliki item.</td></tr>';
                     }
                     return;
                 }
@@ -610,6 +632,7 @@
                                 <td>${escapeHtml(row.id_pesanan || '-')}</td>
                                 <td>${escapeHtml(row.no_resi || '-')}</td>
                                 <td>${escapeHtml(row.kurir || '-')}</td>
+                                <td>${escapeHtml(row.toko || '-')}</td>
                                 <td>${skuText || '-'}</td>
                                 <td>${row.deleted ? '<span class="badge badge-light-danger">Terhapus</span>' : '<span class="badge badge-light-success">Ada</span>'}</td>
                             </tr>
@@ -618,7 +641,7 @@
                 }
             } catch (err) {
                 if (batchDetailBodyEl) {
-                    batchDetailBodyEl.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-6">Gagal memuat detail batch.</td></tr>';
+                    batchDetailBodyEl.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-6">Gagal memuat detail batch.</td></tr>';
                 }
             }
         };
@@ -782,6 +805,7 @@
                         params.q = filterSearchEl?.value || '';
                         params.date = filterDateEl?.value || '';
                         params.status = filterStatusEl?.value || '';
+                        params.store_id = filterStoreEl?.value || '';
                     }
                 },
                 columns: [
@@ -790,6 +814,7 @@
                     }},
                     { data: 'no_resi' },
                     { data: 'kurir' },
+                    { data: 'toko', render: (data) => `<span class="badge badge-light-info">${escapeHtml(data || '-')}</span>` },
                         { data: 'id_pesanan' },
                         { data: 'sku' },
                         { data: 'tanggal_pesanan' },
@@ -842,6 +867,7 @@
             if (e.key === 'Enter') reloadTable();
         });
         filterStatusEl?.addEventListener('change', reloadTable);
+        filterStoreEl?.addEventListener('change', reloadTable);
         filterResetBtn?.addEventListener('click', () => {
             if (fpDate && todayStr) {
                 fpDate.setDate(todayStr, true);
@@ -850,6 +876,7 @@
             }
             if (filterSearchEl) filterSearchEl.value = '';
             if (filterStatusEl) filterStatusEl.value = '';
+            if (filterStoreEl) filterStoreEl.value = '';
             reloadTable();
         });
 
@@ -863,7 +890,7 @@
             if (buyerNotesBodyEl) {
                 buyerNotesBodyEl.innerHTML = `
                     <tr>
-                        <td colspan="5" class="text-center text-muted py-6">Memuat data...</td>
+                        <td colspan="6" class="text-center text-muted py-6">Memuat data...</td>
                     </tr>
                 `;
             }
@@ -873,6 +900,7 @@
                 const params = new URLSearchParams();
                 if (dateValue) params.set('date', dateValue);
                 if (statusValue) params.set('status', statusValue);
+                if (filterStoreEl?.value) params.set('store_id', filterStoreEl.value);
                 if (searchValue) params.set('q', searchValue);
                 const res = await fetch(`${buyerNotesUrl}?${params.toString()}`);
                 const json = await res.json();
@@ -888,7 +916,7 @@
                     if (buyerNotesBodyEl) {
                         buyerNotesBodyEl.innerHTML = `
                             <tr>
-                                <td colspan="5" class="text-center text-muted py-6">Tidak ada resi dengan catatan pembeli.</td>
+                                <td colspan="6" class="text-center text-muted py-6">Tidak ada resi dengan catatan pembeli.</td>
                             </tr>
                         `;
                     }
@@ -902,6 +930,7 @@
                             <td>${escapeHtml(row.no_resi || '-')}</td>
                             <td>${escapeHtml(row.id_pesanan || '-')}</td>
                             <td>${escapeHtml(row.kurir || '-')}</td>
+                            <td>${escapeHtml(row.toko || '-')}</td>
                             <td><div class="buyer-note-text">${escapeHtml(row.catatan_pembeli || '-')}</div></td>
                         </tr>
                     `).join('');
@@ -910,7 +939,7 @@
                 if (buyerNotesBodyEl) {
                     buyerNotesBodyEl.innerHTML = `
                         <tr>
-                            <td colspan="5" class="text-center text-danger py-6">Gagal memuat catatan pembeli.</td>
+                            <td colspan="6" class="text-center text-danger py-6">Gagal memuat catatan pembeli.</td>
                         </tr>
                     `;
                 }
@@ -939,6 +968,7 @@
                 const params = new URLSearchParams();
                 if (dateValue) params.set('date', dateValue);
                 if (statusValue) params.set('status', statusValue);
+                if (filterStoreEl?.value) params.set('store_id', filterStoreEl.value);
                 const res = await fetch(`${summaryUrl}?${params.toString()}`);
                 const json = await res.json();
                 if (!res.ok) {
@@ -1263,6 +1293,8 @@
 
             const formData = new FormData();
             formData.append('file', file);
+            const importStoreEl = document.getElementById('import_resi_store');
+            if (importStoreEl?.value) formData.append('store_id', importStoreEl.value);
 
             try {
                 setLoading(true);
