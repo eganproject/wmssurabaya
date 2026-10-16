@@ -19,6 +19,8 @@ use App\Models\ResiDetail;
 use App\Models\ResiImportBatch;
 use App\Models\ResiImportBatchItem;
 use App\Models\StockMutation;
+use App\Models\Store;
+use App\Support\ResiStoreFilter;
 use App\Support\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -40,9 +42,11 @@ class ResiImportController extends Controller
         $search = trim((string) $request->input('q', ''));
         $status = $this->normalizeStatusFilter($request->input('status'));
 
+        $storeFilter = ResiStoreFilter::normalize($request->input('store_id'));
         $baseQuery = Resi::query()->whereDate('tanggal_upload', $filterDate);
         $this->applySearch($baseQuery, $search);
         $this->applyStatusFilter($baseQuery, $status);
+        ResiStoreFilter::apply($baseQuery, $storeFilter);
 
         $summaryOrders = (clone $baseQuery)->count();
         $summarySkus = ResiDetail::whereIn('resi_id', (clone $baseQuery)->select('id'))->count();
@@ -63,6 +67,8 @@ class ResiImportController extends Controller
             'filterDate' => $filterDate,
             'filterSearch' => $search,
             'filterStatus' => $status,
+            'filterStore' => $storeFilter ?? '',
+            'stores' => ResiStoreFilter::options(),
             'today' => $today,
             'summaryOrders' => $summaryOrders,
             'summarySkus' => $summarySkus,
@@ -80,9 +86,11 @@ class ResiImportController extends Controller
         $search = trim((string) $request->input('q', ''));
         $status = $this->normalizeStatusFilter($request->input('status'));
 
+        $storeFilter = ResiStoreFilter::normalize($request->input('store_id'));
         $filterQuery = Resi::query()->whereDate('tanggal_upload', $filterDate);
         $this->applySearch($filterQuery, $search);
         $this->applyStatusFilter($filterQuery, $status);
+        ResiStoreFilter::apply($filterQuery, $storeFilter);
 
         $recordsTotal = Resi::whereDate('tanggal_upload', $filterDate)->count();
         $summaryOrders = (clone $filterQuery)->count();
@@ -93,7 +101,7 @@ class ResiImportController extends Controller
             ->count();
 
         $query = Resi::query()
-            ->select(['id', 'id_pesanan', 'no_resi', 'tanggal_pesanan', 'kurir_id', 'catatan_pembeli', 'status'])
+            ->select(['id', 'id_pesanan', 'no_resi', 'tanggal_pesanan', 'kurir_id', 'store_id', 'catatan_pembeli', 'status'])
             ->selectSub(function ($sub) {
                 $sub->from('packer_scan_outs')
                     ->selectRaw('count(1)')
@@ -111,12 +119,13 @@ class ResiImportController extends Controller
             }, 'packer_scan_count')
             ->with(['details' => function ($q) {
                 $q->select(['id', 'resi_id', 'sku', 'qty']);
-            }, 'kurir'])
+            }, 'kurir', 'store'])
             ->whereDate('tanggal_upload', $filterDate)
             ->orderByDesc('id');
 
         $this->applySearch($query, $search);
         $this->applyStatusFilter($query, $status);
+        ResiStoreFilter::apply($query, $storeFilter);
 
         $start = (int) $request->input('start', 0);
         $length = (int) $request->input('length', 10);
@@ -151,6 +160,7 @@ class ResiImportController extends Controller
                 'no_resi' => $row->no_resi ?? '-',
                 'id_pesanan' => $row->id_pesanan ?? '-',
                 'kurir' => $row->kurir?->name ?? '-',
+                'toko' => ResiStoreFilter::label($row->store),
                 'sku' => $skuList,
                 'tanggal_pesanan' => $tanggalOrder,
                 'catatan_pembeli' => $row->catatan_pembeli ?? '',
@@ -189,8 +199,8 @@ class ResiImportController extends Controller
         $status = $this->normalizeStatusFilter($request->input('status'));
 
         $query = Resi::query()
-            ->select(['id', 'id_pesanan', 'no_resi', 'tanggal_pesanan', 'kurir_id', 'catatan_pembeli', 'status'])
-            ->with('kurir')
+            ->select(['id', 'id_pesanan', 'no_resi', 'tanggal_pesanan', 'kurir_id', 'store_id', 'catatan_pembeli', 'status'])
+            ->with(['kurir', 'store'])
             ->whereDate('tanggal_upload', $filterDate)
             ->whereNotNull('catatan_pembeli')
             ->where('catatan_pembeli', '<>', '')
@@ -198,6 +208,7 @@ class ResiImportController extends Controller
 
         $this->applySearch($query, $search);
         $this->applyStatusFilter($query, $status);
+        ResiStoreFilter::apply($query, ResiStoreFilter::normalize($request->input('store_id')));
 
         $rows = $query->get()->map(function ($row) {
             return [
@@ -205,6 +216,7 @@ class ResiImportController extends Controller
                 'no_resi' => $row->no_resi ?? '-',
                 'id_pesanan' => $row->id_pesanan ?? '-',
                 'kurir' => $row->kurir?->name ?? '-',
+                'toko' => ResiStoreFilter::label($row->store),
                 'tanggal_pesanan' => $row->tanggal_pesanan?->format('Y-m-d') ?? $row->tanggal_pesanan ?? '-',
                 'status' => $row->status ?? 'active',
                 'catatan_pembeli' => $row->catatan_pembeli ?? '',
@@ -235,6 +247,7 @@ class ResiImportController extends Controller
         if ($status !== '') {
             $baseQuery->where('r.status', $status);
         }
+        ResiStoreFilter::apply($baseQuery, ResiStoreFilter::normalize($request->input('store_id')), 'r.store_id');
 
         $rows = (clone $baseQuery)
             ->select('rd.sku', DB::raw('SUM(rd.qty) as qty'))
@@ -336,6 +349,7 @@ class ResiImportController extends Controller
                     'action' => $item->action,
                     'deleted' => $item->resi_id ? ! Resi::whereKey($item->resi_id)->exists() : true,
                     'kurir' => $snapshot['kurir'] ?? '-',
+                    'toko' => $snapshot['toko'] ?? '-',
                     'tanggal_pesanan' => $snapshot['tanggal_pesanan'] ?? '-',
                     'items' => $snapshot['items'] ?? [],
                 ];
@@ -357,9 +371,11 @@ class ResiImportController extends Controller
 
     public function import(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
+            'store_id' => ['nullable', 'integer', 'exists:stores,id'],
         ]);
+        $defaultStoreId = isset($validated['store_id']) ? (int) $validated['store_id'] : null;
 
         $import = new ResiImport();
         DB::beginTransaction();
@@ -376,6 +392,7 @@ class ResiImportController extends Controller
             $createdDetails = 0;
             $today = now()->toDateString();
             $defaultKurirId = $this->resolveDefaultKurirId();
+            [$storeIdsByName, $createdStores] = $this->resolveStoreIds($groups);
             $batch = ResiImportBatch::create([
                 'batch_code' => $this->generateBatchCode(),
                 'file_name' => $request->file('file')->getClientOriginalName(),
@@ -419,6 +436,13 @@ class ResiImportController extends Controller
                 if ($kurirId) {
                     $payload['kurir_id'] = $kurirId;
                 }
+                // Toko from the file wins over the toko picked in the form; with neither, an
+                // existing resi keeps its toko.
+                $tokoName = trim((string) ($group['toko'] ?? ''));
+                $storeId = $tokoName !== '' ? $storeIdsByName[mb_strtolower($tokoName)] : $defaultStoreId;
+                if ($storeId) {
+                    $payload['store_id'] = $storeId;
+                }
                 $noResi = isset($group['no_resi']) ? trim((string) $group['no_resi']) : '';
                 if ($noResi !== '') {
                     $payload['no_resi'] = $noResi;
@@ -450,6 +474,7 @@ class ResiImportController extends Controller
                         'id_pesanan' => $resi->id_pesanan,
                         'no_resi' => $resi->no_resi,
                         'kurir' => $resi->kurir?->name,
+                        'toko' => $resi->store?->name,
                         'tanggal_pesanan' => $resi->tanggal_pesanan?->format('Y-m-d'),
                         'tanggal_upload' => $today,
                         'items' => collect($group['items'])->map(fn ($row) => [
@@ -473,7 +498,10 @@ class ResiImportController extends Controller
             DB::commit();
 
             return response()->json([
-                'message' => 'Import resi berhasil',
+                'message' => 'Import resi berhasil'.($createdStores
+                    ? '. Toko baru dibuat: '.implode(', ', $createdStores)
+                    : ''),
+                'created_stores' => $createdStores,
                 'resis' => $createdResi,
                 'details' => $createdDetails,
                 'batch_code' => $batch->batch_code,
@@ -1108,6 +1136,9 @@ class ResiImportController extends Controller
                 ->orWhereHas('kurir', function ($kurirQ) use ($search) {
                     $kurirQ->where('name', 'like', "%{$search}%");
                 })
+                ->orWhereHas('store', function ($storeQ) use ($search) {
+                    $storeQ->where('name', 'like', "%{$search}%");
+                })
                 ->orWhereHas('details', function ($detailQ) use ($search) {
                     $detailQ->where('sku', 'like', "%{$search}%");
                 });
@@ -1166,6 +1197,37 @@ class ResiImportController extends Controller
 
         $kurir = Kurir::create(['name' => $defaultName]);
         return $kurir->id;
+    }
+
+    /**
+     * Map toko names in the file to store ids, matching existing stores case-insensitively
+     * and creating the ones that do not exist yet (rolled back with the import on failure).
+     *
+     * @return array{0: array<string,int>, 1: array<int,string>} [ids by lowercase name, created names]
+     */
+    private function resolveStoreIds(array $groups): array
+    {
+        $names = collect($groups)
+            ->pluck('toko')
+            ->filter(fn ($name) => trim((string) $name) !== '')
+            ->map(fn ($name) => trim((string) $name))
+            ->unique(fn ($name) => mb_strtolower($name))
+            ->values();
+        if ($names->isEmpty()) {
+            return [[], []];
+        }
+
+        $stores = Store::query()->get(['id', 'name'])
+            ->mapWithKeys(fn (Store $store) => [mb_strtolower(trim($store->name)) => (int) $store->id]);
+        $created = [];
+        foreach ($names as $name) {
+            if (! $stores->has(mb_strtolower($name))) {
+                $stores[mb_strtolower($name)] = (int) Store::create(['name' => $name])->id;
+                $created[] = $name;
+            }
+        }
+
+        return [$stores->only($names->map(fn ($name) => mb_strtolower($name))->all())->all(), $created];
     }
 
     private function resolveKurirId($rawName, ?int $defaultId): ?int
