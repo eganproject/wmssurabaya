@@ -67,6 +67,29 @@ class ResiImportStoreTest extends TestCase
             ->assertJsonPath('data.0.id_pesanan', 'ORD-2');
     }
 
+    public function test_marketplace_export_with_merged_order_cells_and_nama_toko_header(): void
+    {
+        $store = Store::create(['name' => 'Media Gudang Acc']);
+
+        $this->importFile([
+            ['NO.', 'Tanggal Pembuatan', 'ID Pesanan', 'SKU', 'Jumlah', 'Kurir', 'AWB/No. Tracking', 'Metode Pengiriman', 'Catatan Pembeli', 'Nama Toko', 'Channel'],
+            [1, '08-09-2026 20:33', '260908GP7169MR', 'TRIP1', 1, 'SPX Hemat', 'SPXID062325577529', '', '', 'Media Gudang Acc', 'Shopee'],
+            [2, '10-09-2026 21:30', '260910NTAWE64P', 'PACK1', 4, 'SPX Hemat', 'SPXID066841516909', '', '', 'Media Gudang Acc', 'Shopee'],
+            ['', '', '', 'PEMB8', 4, '', '', '', '', '', ''],
+            [3, '04-10-2026 09:24', '261004PPAFCE6G', 'BILL1', 6, 'SPX Hemat', 'SPXID06678002573A', '', '', 'Media Gudang Acc', 'Shopee'],
+            ['', '', '', '', 6, '', '', '', '', '', ''],
+            ['', '', '', '', 3, '', '', '', '', '', ''],
+        ])->assertOk()->assertJsonPath('resis', 3)->assertJsonPath('details', 4);
+
+        $this->assertSame(15, (int) Resi::with('details')->where('id_pesanan', '261004PPAFCE6G')->firstOrFail()->details->sum('qty'));
+
+        $resi = Resi::with('details')->where('id_pesanan', '260910NTAWE64P')->firstOrFail();
+        $this->assertSame($store->id, $resi->store_id);
+        $this->assertSame('SPXID066841516909', $resi->no_resi);
+        $this->assertSame('2026-09-10', $resi->tanggal_pesanan->format('Y-m-d'));
+        $this->assertEqualsCanonicalizing(['PACK1' => 4, 'PEMB8' => 4], $resi->details->pluck('qty', 'sku')->all());
+    }
+
     public function test_reimport_without_toko_keeps_existing_store_and_unknown_toko_is_rejected(): void
     {
         $alpha = Store::create(['name' => 'Toko Alpha']);

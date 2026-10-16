@@ -47,6 +47,7 @@ class ResiImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
 
         $errors = [];
         $rowIndex = 1;
+        $previous = null;
         foreach ($rows as $row) {
             $rowIndex++;
             $rowData = $this->normalizeRow($row);
@@ -62,6 +63,23 @@ class ResiImport implements ToCollection, WithHeadingRow, SkipsEmptyRows
             $sku = trim((string) ($rowData['sku'] ?? ''));
             $qty = $this->parseQty($rowData['jumlah'] ?? null);
             $tanggalPesanan = trim((string) ($rowData['tanggal_pembuatan'] ?? ''));
+
+            // Marketplace exports merge cells over the rows of one order, and merged cells are
+            // read as empty after the first row. A row with no ID Pesanan therefore continues
+            // the order above; an empty SKU there means the SKU cell was merged too (same SKU,
+            // its qty is added up below).
+            if ($idPesanan === '' && $previous !== null && ($sku !== '' || $qty > 0)) {
+                $idPesanan = $previous['id_pesanan'];
+                if ($tanggalPesanan === '') {
+                    $tanggalPesanan = $previous['tanggal_pesanan'];
+                }
+                if ($sku === '') {
+                    $sku = $previous['sku'];
+                }
+            }
+            if ($idPesanan !== '' && $tanggalPesanan !== '' && $sku !== '') {
+                $previous = ['id_pesanan' => $idPesanan, 'tanggal_pesanan' => $tanggalPesanan, 'sku' => $sku];
+            }
 
             if ($idPesanan === '' || $sku === '' || $tanggalPesanan === '') {
                 $errors[] = "Baris {$rowIndex}: ID Pesanan, SKU, dan Tanggal Pembuatan wajib diisi";
