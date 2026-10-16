@@ -343,6 +343,16 @@
                     </div>
                 </div>
                 <div class="col-xl-2 col-md-4">
+                    <label>Toko</label>
+                    <select id="movement_store" class="form-select form-select-solid">
+                        <option value="">Semua Toko</option>
+                        @foreach(($stores ?? []) as $store)
+                            <option value="{{ $store->id }}">{{ $store->name }}</option>
+                        @endforeach
+                        <option value="none">Tanpa Toko</option>
+                    </select>
+                </div>
+                <div class="col-xl-2 col-md-4">
                     <label>Status Produk</label>
                     <select id="movement_item_status" class="form-select form-select-solid">
                         <option value="1" selected>Produk Aktif</option>
@@ -438,6 +448,35 @@
         </div>
         <div class="card-body px-3 px-md-6 pt-2 pb-5">
             <div id="movement_trend_chart" aria-label="Grafik tren jumlah barang keluar per tanggal"></div>
+        </div>
+    </div>
+
+    <div class="card mb-6">
+        <div class="card-header border-0 pt-6">
+            <div>
+                <h3 class="fw-bolder mb-1">Fast / Medium / Slow Moving per Toko</h3>
+                <div class="text-muted fs-7">Klasifikasi dihitung terpisah per toko dari qty keluar resi yang selesai (outbound manual tidak memiliki toko). Klik nama toko untuk memfilter detail SKU.</div>
+            </div>
+        </div>
+        <div class="card-body py-5">
+            <div class="table-responsive">
+                <table class="table align-middle table-row-dashed fs-7 gy-3" id="movement_store_table">
+                    <thead>
+                        <tr class="text-muted text-uppercase">
+                            <th>Toko</th>
+                            <th class="text-end">Qty Keluar</th>
+                            <th class="text-end">SKU Bergerak</th>
+                            <th class="text-end">Fast</th>
+                            <th class="text-end">Medium</th>
+                            <th class="text-end">Slow</th>
+                            <th>SKU Fast Teratas</th>
+                        </tr>
+                    </thead>
+                    <tbody id="movement_store_body">
+                        <tr><td colspan="7" class="text-center text-muted py-5">Memuat data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -590,6 +629,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const movementDataUrl = @json($movementDataUrl);
     const movementExportUrl = @json($movementExportUrl);
+    const movementStoreDataUrl = @json($movementStoreDataUrl);
+    const movementStoreBody = document.getElementById('movement_store_body');
+    let movementStoreKey = null;
     const movementTableEl = $('#stock_movement_table');
     const movementFilters = {
         category: document.getElementById('movement_category'),
@@ -597,6 +639,7 @@ document.addEventListener('DOMContentLoaded', () => {
         coverMin: document.getElementById('movement_cover_min'),
         coverMax: document.getElementById('movement_cover_max'),
         itemStatus: document.getElementById('movement_item_status'),
+        store: document.getElementById('movement_store'),
         dateFrom: document.getElementById('movement_date_from'),
         dateTo: document.getElementById('movement_date_to'),
         search: document.getElementById('movement_search'),
@@ -635,7 +678,54 @@ document.addEventListener('DOMContentLoaded', () => {
         params.date_from = movementFilters.dateFrom.value;
         params.date_to = movementFilters.dateTo.value;
         params.q = movementFilters.search.value;
+        params.store_id = movementFilters.store.value;
     }
+
+    // Per-toko breakdown ignores paging/sorting, so only refetch when the filters change.
+    async function loadMovementStoreBreakdown() {
+        const params = {};
+        movementRequestData(params);
+        delete params.movement;
+        delete params.cover_min;
+        delete params.cover_max;
+        delete params.q;
+        const query = new URLSearchParams(params).toString();
+        if (query === movementStoreKey) return;
+        movementStoreKey = query;
+        movementStoreBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-5">Memuat data...</td></tr>';
+        try {
+            const response = await fetch(`${movementStoreDataUrl}?${query}`, {headers: {Accept: 'application/json'}});
+            const json = await response.json();
+            if (!response.ok) throw new Error(json?.message || 'Gagal memuat data per toko.');
+            if (query !== movementStoreKey) return;
+            const rows = json.data || [];
+            movementStoreBody.innerHTML = rows.length ? rows.map(row => {
+                const storeValue = row.store_id === null ? 'none' : String(row.store_id);
+                const topFast = (row.top_fast || []).map(item => `<span class="badge badge-light-primary me-1 mb-1" title="${escapeHtml(item.name)}">${escapeHtml(item.sku)} · ${number(item.outbound_qty)}</span>`).join('') || '<span class="text-muted">-</span>';
+                return `<tr>
+                    <td><a href="#" class="fw-bold movement-store-link" data-store="${escapeHtml(storeValue)}">${escapeHtml(row.store_name)}</a></td>
+                    <td class="text-end fw-bolder">${number(row.total_outbound_qty)}</td>
+                    <td class="text-end">${number(row.moving_sku)}</td>
+                    <td class="text-end text-primary fw-bold">${number(row.fast_sku)}</td>
+                    <td class="text-end text-success fw-bold">${number(row.medium_sku)}</td>
+                    <td class="text-end text-warning fw-bold">${number(row.slow_sku)}</td>
+                    <td>${topFast}</td>
+                </tr>`;
+            }).join('') : '<tr><td colspan="7" class="text-center text-muted py-5">Belum ada qty keluar dari resi pada periode ini.</td></tr>';
+        } catch (error) {
+            movementStoreKey = null;
+            movementStoreBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-5">${escapeHtml(error.message || 'Gagal memuat data per toko.')}</td></tr>`;
+        }
+    }
+
+    movementStoreBody.addEventListener('click', event => {
+        const link = event.target.closest('.movement-store-link');
+        if (!link) return;
+        event.preventDefault();
+        movementFilters.store.value = link.dataset.store || '';
+        if ($(movementFilters.store).data('select2')) $(movementFilters.store).trigger('change.select2');
+        reloadMovement();
+    });
 
     function updateMovementSummary(summary = {}) {
         document.getElementById('movement_kpi_total').textContent = number(summary.total_sku);
@@ -644,7 +734,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('movement_kpi_medium').textContent = number(summary.medium_sku);
         document.getElementById('movement_kpi_slow').textContent = number(summary.slow_sku);
         document.getElementById('movement_kpi_non_moving').textContent = number(summary.non_moving_sku);
-        document.getElementById('movement_period_hint').textContent = `${number(summary.period_days)} hari · ${summary.warehouse || 'Gudang Besar + Gudang Kecil'}`;
+        document.getElementById('movement_period_hint').textContent = `${number(summary.period_days)} hari · ${summary.warehouse || 'Gudang Besar + Gudang Kecil'}${summary.store && summary.store !== 'Semua toko' ? ` · ${summary.store}` : ''}`;
     }
 
     function movementDateLabel(value, includeYear = false) {
@@ -781,7 +871,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if ($.fn.select2) {
-            [movementFilters.category, movementFilters.movement, movementFilters.itemStatus]
+            [movementFilters.category, movementFilters.movement, movementFilters.itemStatus, movementFilters.store]
                 .forEach(el => $(el).select2({
                     width: '100%',
                     allowClear: el !== movementFilters.itemStatus,
@@ -798,6 +888,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 url: movementDataUrl,
                 data: movementRequestData,
                 dataSrc: json => {
+                    loadMovementStoreBreakdown();
                     updateMovementSummary(json.summary || {});
                     renderMovementChart(json.trend || []);
                     return json.data || [];
@@ -849,7 +940,7 @@ document.addEventListener('DOMContentLoaded', () => {
     movementFilters.search.addEventListener('keyup', event => {
         if (event.key === 'Enter') reloadMovement();
     });
-    [movementFilters.category, movementFilters.movement, movementFilters.itemStatus]
+    [movementFilters.category, movementFilters.movement, movementFilters.itemStatus, movementFilters.store]
         .forEach(el => el?.addEventListener('change', reloadMovement));
     [movementFilters.coverMin, movementFilters.coverMax].forEach(el => el.addEventListener('keyup', event => {
         if (event.key === 'Enter') reloadMovement();
@@ -869,11 +960,12 @@ document.addEventListener('DOMContentLoaded', () => {
         movementFilters.coverMax.value = '';
         movementFilters.coverMax.setCustomValidity('');
         movementFilters.itemStatus.value = '1';
+        movementFilters.store.value = '';
         movementFilters.dateFrom.value = movementDefaults.dateFrom;
         movementFilters.dateTo.value = movementDefaults.dateTo;
         movementFilters.search.value = '';
         movementFilters.limit.value = '10';
-        [movementFilters.category, movementFilters.movement, movementFilters.itemStatus].forEach(el => {
+        [movementFilters.category, movementFilters.movement, movementFilters.itemStatus, movementFilters.store].forEach(el => {
             if ($(el).data('select2')) $(el).val(el === movementFilters.itemStatus ? '1' : '').trigger('change.select2');
         });
         if (movementDt) {

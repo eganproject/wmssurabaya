@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Models\PackerTransitHistory;
+use App\Support\ResiStoreFilter;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Carbon;
 use Maatwebsite\Excel\Concerns\FromCollection;
@@ -21,6 +22,7 @@ class PackerTransitStatusExport implements FromCollection, WithHeadings, WithMap
     public function collection(): Collection
     {
         $query = PackerTransitHistory::query()
+            ->with('resi.store')
             ->orderByDesc('created_at')
             ->orderByDesc('id');
 
@@ -29,7 +31,8 @@ class PackerTransitStatusExport implements FromCollection, WithHeadings, WithMap
             $query->where(function ($q) use ($search) {
                 $q->where('id_pesanan', 'like', "%{$search}%")
                     ->orWhere('no_resi', 'like', "%{$search}%")
-                    ->orWhere('status', 'like', "%{$search}%");
+                    ->orWhere('status', 'like', "%{$search}%")
+                    ->orWhereHas('resi.store', fn ($storeQ) => $storeQ->where('name', 'like', "%{$search}%"));
             });
         }
 
@@ -44,6 +47,8 @@ class PackerTransitStatusExport implements FromCollection, WithHeadings, WithMap
             // ignore invalid date
         }
 
+        ResiStoreFilter::applyViaResi($query, ResiStoreFilter::normalize($this->filters['store_id'] ?? null));
+
         $status = (string) ($this->filters['status'] ?? '');
         if ($status === 'pending') {
             $query->where('status', 'menunggu scan out');
@@ -56,7 +61,7 @@ class PackerTransitStatusExport implements FromCollection, WithHeadings, WithMap
 
     public function headings(): array
     {
-        return ['Waktu Input', 'ID Pesanan', 'No Resi', 'Status'];
+        return ['Waktu Input', 'ID Pesanan', 'No Resi', 'Toko', 'Status'];
     }
 
     public function map($row): array
@@ -65,6 +70,7 @@ class PackerTransitStatusExport implements FromCollection, WithHeadings, WithMap
             $row->created_at?->format('Y-m-d H:i') ?? '-',
             (string) ($row->id_pesanan ?? '-'),
             (string) ($row->no_resi ?? '-'),
+            ResiStoreFilter::label($row->resi?->store),
             $row->status ?? '-',
         ];
     }

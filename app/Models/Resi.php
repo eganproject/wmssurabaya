@@ -15,6 +15,7 @@ class Resi extends Model
         'tanggal_upload',
         'no_resi',
         'kurir_id',
+        'store_id',
         'catatan_pembeli',
         'status',
         'canceled_at',
@@ -55,5 +56,10 @@ class Resi extends Model
     public function kurir()
     {
         return $this->belongsTo(Kurir::class, 'kurir_id');
+    }
+
+    public function store()
+    {
+        return $this->belongsTo(Store::class, 'store_id');
     }
 }

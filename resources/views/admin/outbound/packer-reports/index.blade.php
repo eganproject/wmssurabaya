@@ -44,6 +44,13 @@
                         <option value="{{ $packer->id }}">{{ $packer->name }}</option>
                     @endforeach
                 </select>
+                <select class="form-select form-select-solid w-200px" id="filter_store">
+                    <option value="">Semua Toko</option>
+                    @foreach(($stores ?? []) as $store)
+                        <option value="{{ $store->id }}">{{ $store->name }}</option>
+                    @endforeach
+                    <option value="none">Tanpa Toko</option>
+                </select>
                 <button type="button" class="btn btn-light" id="filter_apply">Terapkan</button>
                 <button type="button" class="btn btn-light" id="filter_reset">Reset</button>
             </div>
@@ -151,18 +158,38 @@
                     </div>
                 </div>
             </div>
+            <div class="table-responsive mb-6">
+                <div class="fw-bold mb-2">Rekap per Toko</div>
+                <table class="table table-row-dashed align-middle fs-7">
+                    <thead>
+                        <tr class="text-start text-gray-400 fw-bolder fs-7 text-uppercase gs-0">
+                            <th>Toko</th>
+                            <th class="text-end">Import</th>
+                            <th class="text-end">Sudah Scan Out</th>
+                            <th class="text-end">Sisa</th>
+                            <th class="text-end">Progres</th>
+                        </tr>
+                    </thead>
+                    <tbody id="store_breakdown_body">
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">Belum ada data.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
             <div class="table-responsive">
                 <table class="table table-row-dashed align-middle">
                     <thead>
                         <tr class="text-start text-gray-400 fw-bolder fs-7 text-uppercase gs-0">
-                            <th width="35%">ID Pesanan</th>
-                            <th width="35%">No Resi</th>
-                            <th width="30%">Tanggal Upload</th>
+                            <th width="28%">ID Pesanan</th>
+                            <th width="28%">No Resi</th>
+                            <th width="22%">Toko</th>
+                            <th width="22%">Tanggal Upload</th>
                         </tr>
                     </thead>
                     <tbody id="missing_transit_body">
                         <tr>
-                            <td colspan="3" class="text-center text-muted py-6" id="missing_transit_empty">
+                            <td colspan="4" class="text-center text-muted py-6" id="missing_transit_empty">
                                 Tidak ada data tertinggal.
                             </td>
                         </tr>
@@ -218,6 +245,8 @@
         const dateFromEl = document.getElementById('filter_date_from');
         const dateToEl = document.getElementById('filter_date_to');
         const packerSelect = document.getElementById('filter_packer');
+        const storeSelect = document.getElementById('filter_store');
+        const storeBreakdownBody = document.getElementById('store_breakdown_body');
         const searchInput = document.querySelector('[data-kt-filter="search"]');
         const applyBtn = document.getElementById('filter_apply');
         const resetBtn = document.getElementById('filter_reset');
@@ -274,7 +303,7 @@
             if (!paginated.length) {
                 missingBody.innerHTML = `
                     <tr>
-                        <td colspan="3" class="text-center text-muted py-6">Tidak ada data tertinggal.</td>
+                        <td colspan="4" class="text-center text-muted py-6">Tidak ada data tertinggal.</td>
                     </tr>
                 `;
             } else {
@@ -282,6 +311,7 @@
                     <tr>
                         <td>${sample.id_pesanan || '-'}</td>
                         <td>${sample.no_resi || '-'}</td>
+                        <td>${sample.store_name || '-'}</td>
                         <td>${sample.tanggal_upload || '-'}</td>
                     </tr>
                 `).join('');
@@ -303,6 +333,33 @@
             }
         };
 
+        const escapeText = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+        const renderStoreBreakdown = (rows) => {
+            if (!storeBreakdownBody) return;
+            const list = Array.isArray(rows) ? rows : [];
+            if (!list.length) {
+                storeBreakdownBody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">Belum ada data.</td>
+                    </tr>
+                `;
+                return;
+            }
+            storeBreakdownBody.innerHTML = list.map((row) => {
+                const missing = Number(row.missing_total || 0);
+                return `
+                    <tr>
+                        <td class="fw-semibold">${escapeText(row.store_name || '-')}</td>
+                        <td class="text-end">${Number(row.import_total || 0).toLocaleString('id-ID')}</td>
+                        <td class="text-end">${Number(row.scanned_total || 0).toLocaleString('id-ID')}</td>
+                        <td class="text-end ${missing > 0 ? 'text-warning fw-bold' : ''}">${missing.toLocaleString('id-ID')}</td>
+                        <td class="text-end">${Number(row.progress || 0).toLocaleString('id-ID')}%</td>
+                    </tr>
+                `;
+            }).join('');
+        };
+
         const updateComparison = (comparison) => {
             const importTotal = Number(comparison?.import_total ?? 0);
             const scannedTotal = Number(comparison?.scanned_total ?? 0);
@@ -317,6 +374,7 @@
                 : [];
             comparisonState.page = 1;
             renderMissingRows();
+            renderStoreBreakdown(comparison?.per_store);
         };
 
         const dt = tableEl.DataTable({
@@ -335,6 +393,7 @@
                     params.date_from = dateFromEl?.value || '';
                     params.date_to = dateToEl?.value || '';
                     params.packer_id = packerSelect?.value || '';
+                    params.store_id = storeSelect?.value || '';
                     params.q = searchInput?.value || '';
                 }
             },
@@ -363,6 +422,7 @@
         });
 
         packerSelect?.addEventListener('change', reloadTable);
+        storeSelect?.addEventListener('change', reloadTable);
 
         searchInput?.addEventListener('keyup', (e) => {
             if (e.key === 'Enter') {
@@ -374,6 +434,7 @@
             if (fpFrom) fpFrom.clear(); else if (dateFromEl) dateFromEl.value = todayStr || '';
             if (fpTo) fpTo.clear(); else if (dateToEl) dateToEl.value = todayStr || '';
             if (packerSelect) packerSelect.value = '';
+            if (storeSelect) storeSelect.value = '';
             if (searchInput) searchInput.value = '';
             reloadTable();
         });

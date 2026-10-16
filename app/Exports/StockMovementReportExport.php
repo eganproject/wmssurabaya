@@ -12,6 +12,7 @@ class StockMovementReportExport implements WithMultipleSheets
         private readonly array $summary,
         private readonly array $filters = [],
         private readonly ?string $generatedBy = null,
+        private readonly ?Collection $storeBreakdown = null,
     ) {}
 
     public function sheets(): array
@@ -21,6 +22,7 @@ class StockMovementReportExport implements WithMultipleSheets
             new StockMovementSummarySheet($this->rows, 'movement_label', 'Klasifikasi'),
             new StockMovementSummarySheet($this->rows, 'warehouse', 'Cakupan Gudang'),
             new StockMovementSummarySheet($this->rows, 'category', 'Per Kategori'),
+            new StockMovementStoreSheet($this->storeBreakdown ?? collect()),
             new StockMovementDetailSheet($this->rows),
             new StockMovementMethodologySheet,
         ];

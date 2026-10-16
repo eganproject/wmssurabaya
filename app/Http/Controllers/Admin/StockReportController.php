@@ -6,6 +6,7 @@ use App\Exports\StockMovementReportExport;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\Warehouse;
+use App\Support\ResiStoreFilter;
 use App\Support\StockMovementReport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,11 +20,26 @@ class StockReportController extends Controller
             'dataUrl' => route('admin.reports.stock.data'),
             'movementDataUrl' => route('admin.reports.stock.movement-data'),
             'movementExportUrl' => route('admin.reports.stock.movement-export'),
+            'movementStoreDataUrl' => route('admin.reports.stock.movement-store-data'),
+            'stores' => ResiStoreFilter::options(),
             'warehouses' => Warehouse::where('is_active', true)
                 ->orderByRaw("CASE WHEN type = 'bulk' THEN 0 ELSE 1 END")
                 ->orderBy('name')
                 ->get(['id', 'name', 'type', 'is_default']),
             'categories' => Category::orderBy('name')->get(['id', 'name']),        ]);
+    }
+
+    public function movementStoreData(Request $request)
+    {
+        $filters = $request->validate($this->movementValidationRules());
+        $breakdown = StockMovementReport::storeBreakdown($filters);
+
+        return response()->json([
+            'date_from' => $breakdown['date_from']->toDateString(),
+            'date_to' => $breakdown['date_to']->toDateString(),
+            'period_days' => $breakdown['period_days'],
+            'data' => $breakdown['stores']->map(fn (array $store) => collect($store)->except('items')->all())->values(),
+        ]);
     }
 
     public function movementData(Request $request)
@@ -86,10 +102,11 @@ class StockReportController extends Controller
     {
         $filters = $request->validate($this->movementValidationRules());
         $report = StockMovementReport::generate($filters);
+        $storeBreakdown = StockMovementReport::storeBreakdown($filters)['stores'];
         $filename = 'analisis-pergerakan-stok-'.$report['date_from']->format('Ymd').'-'.$report['date_to']->format('Ymd').'.xlsx';
 
         return Excel::download(
-            new StockMovementReportExport($report['rows'], $report['filtered_summary'], $filters, $request->user()?->name),
+            new StockMovementReportExport($report['rows'], $report['filtered_summary'], $filters, $request->user()?->name, $storeBreakdown),
             $filename,
         );
     }
@@ -108,6 +125,7 @@ class StockReportController extends Controller
             'cover_max' => array_merge(['nullable', 'numeric', 'min:0'], is_numeric($coverMin) ? ['gte:cover_min'] : []),
             'is_active' => ['nullable', 'in:0,1'],
             'q' => ['nullable', 'string', 'max:150'],
+            'store_id' => ['nullable', 'string', 'max:20'],
         ];
     }
 
