@@ -1,5 +1,7 @@
 # API Stok Gudang
 
+> Panduan pemakaian langkah demi langkah (setup, contoh request, langkah deploy) ada di [PANDUAN_API.md](PANDUAN_API.md).
+
 API ini memiliki format respons yang sama dengan API `warehouse29`. `qty` dan `min_qty` adalah total dari seluruh gudang aktif WMS Surabaya.
 
 ## Konfigurasi
