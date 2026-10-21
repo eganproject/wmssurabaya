@@ -11,6 +11,60 @@ use Illuminate\Support\Facades\DB;
 class StockMovementReport
 {
     /**
+     * Sort keys shared by the web table (DataTables column index) and the API (?sort=).
+     */
+    public const SORTS = [
+        'sku' => ['sku', 'name'],
+        'location' => ['warehouse', 'location'],
+        'movement' => ['movement_order'],
+        'stock' => ['stock'],
+        'outbound_qty' => ['outbound_qty'],
+        'average_daily_outbound' => ['average_daily_outbound'],
+        'contribution_percent' => ['contribution_percent'],
+        'outbound_transactions' => ['outbound_transactions', 'active_days'],
+        'days_cover' => ['days_cover'],
+        'last_outbound_at' => ['last_outbound_at'],
+    ];
+
+    /**
+     * Filter validation shared by the web report, Excel export and API.
+     */
+    public static function validationRules(mixed $coverMin = null): array
+    {
+        return [
+            'category_id' => ['nullable', 'integer'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+            'movement' => ['nullable', 'in:fast,medium,slow,non_moving'],
+            'cover_min' => ['nullable', 'numeric', 'min:0'],
+            // gte:cover_min fails when cover_min is empty, so only compare when Min is a number.
+            'cover_max' => array_merge(['nullable', 'numeric', 'min:0'], is_numeric($coverMin) ? ['gte:cover_min'] : []),
+            'is_active' => ['nullable', 'in:0,1'],
+            'q' => ['nullable', 'string', 'max:150'],
+            'store_id' => ['nullable', 'string', 'max:20'],
+        ];
+    }
+
+    /**
+     * Sort rows by a key from SORTS; without a key, use the report default
+     * (movement band, then highest outbound, then SKU).
+     */
+    public static function sortRows(Collection $rows, ?string $sort = null, string $direction = 'asc'): Collection
+    {
+        if ($sort === null) {
+            $sorts = [['movement_order', 'asc'], ['outbound_qty', 'desc'], ['sku', 'asc']];
+        } else {
+            $direction = $direction === 'desc' ? 'desc' : 'asc';
+            $sorts = collect(self::SORTS[$sort] ?? ['sku'])
+                ->map(fn (string $key) => [$key, $direction])
+                ->push(['sku', 'asc'])
+                ->all();
+        }
+
+        return $rows->sortBy($sorts)->values();
+    }
+
+    /**
      * Build the stock-movement dataset once so the web table and Excel export
      * always use the same combined-warehouse and eligible-outbound rules.
      */

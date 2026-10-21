@@ -53,35 +53,15 @@ class StockReportController extends Controller
         $report = StockMovementReport::generate($validated, includeTrend: true);
         $rows = $report['rows'];
 
-        $movementSorts = [
-            0 => ['sku', 'name'],
-            1 => ['warehouse', 'location'],
-            2 => ['movement_order'],
-            3 => ['stock'],
-            4 => ['outbound_qty'],
-            5 => ['average_daily_outbound'],
-            6 => ['contribution_percent'],
-            7 => ['outbound_transactions', 'active_days'],
-            8 => ['days_cover'],
-            9 => ['last_outbound_at'],
-        ];
-
+        $sortKeys = array_keys(StockMovementReport::SORTS);
+        $sort = null;
+        $direction = 'asc';
         if ($request->has('order.0.column')) {
-            $orderColumn = (int) $request->input('order.0.column');
-            $orderDirection = $request->input('order.0.dir') === 'desc' ? 'desc' : 'asc';
-            $sorts = collect($movementSorts[$orderColumn] ?? ['sku'])
-                ->map(fn (string $key) => [$key, $orderDirection])
-                ->push(['sku', 'asc'])
-                ->all();
-        } else {
-            $sorts = [
-                ['movement_order', 'asc'],
-                ['outbound_qty', 'desc'],
-                ['sku', 'asc'],
-            ];
+            $sort = $sortKeys[(int) $request->input('order.0.column')] ?? 'sku';
+            $direction = $request->input('order.0.dir') === 'desc' ? 'desc' : 'asc';
         }
 
-        $rows = $rows->sortBy($sorts)->values();
+        $rows = StockMovementReport::sortRows($rows, $sort, $direction);
 
         $recordsFiltered = $rows->count();
         $start = max(0, (int) $request->input('start', 0));
@@ -113,20 +93,7 @@ class StockReportController extends Controller
 
     private function movementValidationRules(): array
     {
-        $coverMin = request()->input('cover_min');
-
-        return [
-            'category_id' => ['nullable', 'integer'],
-            'date_from' => ['nullable', 'date'],
-            'date_to' => ['nullable', 'date'],
-            'movement' => ['nullable', 'in:fast,medium,slow,non_moving'],
-            'cover_min' => ['nullable', 'numeric', 'min:0'],
-            // gte:cover_min fails when cover_min is empty, so only compare when Min is a number.
-            'cover_max' => array_merge(['nullable', 'numeric', 'min:0'], is_numeric($coverMin) ? ['gte:cover_min'] : []),
-            'is_active' => ['nullable', 'in:0,1'],
-            'q' => ['nullable', 'string', 'max:150'],
-            'store_id' => ['nullable', 'string', 'max:20'],
-        ];
+        return StockMovementReport::validationRules(request()->input('cover_min'));
     }
 
     public function data(Request $request)
