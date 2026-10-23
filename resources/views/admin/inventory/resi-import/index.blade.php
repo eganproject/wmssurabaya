@@ -201,14 +201,9 @@
                         <a href="{{ $templateUrl }}" class="btn btn-sm btn-light-success mt-4">Download Template Excel</a>
                     </div>
                     <div class="mb-7">
-                        <label class="fs-6 fw-bold form-label mb-2">Toko</label>
-                        <select class="form-select form-select-solid" id="import_resi_store">
-                            <option value="">Ikuti kolom Toko di file</option>
-                            @foreach(($stores ?? []) as $store)
-                                <option value="{{ $store->id }}">{{ $store->name }}</option>
-                            @endforeach
-                        </select>
-                        <div class="form-text">Dipakai untuk resi yang kolom Toko-nya kosong di file. Kolom Toko di file selalu didahulukan.</div>
+                        <label class="fs-6 fw-bold form-label mb-2">Catatan Batch</label>
+                        <textarea class="form-control form-control-solid" id="import_resi_note" rows="2" maxlength="500" placeholder="Contoh: Pesanan Shopee gelombang pagi, prioritas kirim siang"></textarea>
+                        <div class="form-text">Opsional. Catatan tampil di daftar batch import dan di Picking List per batch.</div>
                     </div>
                     <div class="mb-10">
                         <label class="required fs-6 fw-bold form-label mb-2">File Excel</label>
@@ -375,6 +370,10 @@
                 </div>
             </div>
             <div class="modal-body mx-5 mx-xl-10 my-7">
+                <div class="notice d-none bg-light-warning rounded border-warning border border-dashed p-4 mb-6" id="batch_detail_note_wrap">
+                    <div class="fw-bold text-gray-800 mb-1">Catatan Batch</div>
+                    <div class="text-gray-700 text-break" id="batch_detail_note" style="white-space: pre-line;"></div>
+                </div>
                 <div class="table-responsive">
                     <table class="table table-row-dashed align-middle">
                         <thead>
@@ -572,7 +571,10 @@
                     return `
                         <tr>
                             <td class="fw-bold">${escapeHtml(row.batch_code || '-')}</td>
-                            <td>${escapeHtml(row.file_name || '-')}</td>
+                            <td>
+                                ${escapeHtml(row.file_name || '-')}
+                                ${row.note ? `<div class="text-gray-700 fs-7 mt-1 text-break"><i class="fa-regular fa-note-sticky text-warning me-1"></i>${escapeHtml(row.note)}</div>` : ''}
+                            </td>
                             <td>${escapeHtml(row.uploaded_at || '-')}<br><span class="text-muted">${escapeHtml(row.uploaded_by || '-')}</span></td>
                             <td>${row.total_resis ?? 0}</td>
                             <td>${row.total_details ?? 0}</td>
@@ -607,6 +609,7 @@
             if (batchDetailBodyEl) {
                 batchDetailBodyEl.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-6">Memuat data...</td></tr>';
             }
+            document.getElementById('batch_detail_note_wrap')?.classList.add('d-none');
             batchDetailModal?.show();
             try {
                 const url = batchDetailUrl.replace('__BATCH__', encodeURIComponent(id));
@@ -615,6 +618,12 @@
                 if (!res.ok) throw new Error(json?.message || 'Gagal memuat detail batch.');
                 const rows = Array.isArray(json?.data) ? json.data : [];
                 if (batchDetailCodeEl) batchDetailCodeEl.textContent = json?.batch?.batch_code || '-';
+                const noteWrap = document.getElementById('batch_detail_note_wrap');
+                const noteText = (json?.batch?.note || '').trim();
+                if (noteWrap) {
+                    noteWrap.classList.toggle('d-none', !noteText);
+                    document.getElementById('batch_detail_note').textContent = noteText;
+                }
                 if (!rows.length) {
                     if (batchDetailBodyEl) {
                         batchDetailBodyEl.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-6">Batch tidak memiliki item.</td></tr>';
@@ -1293,8 +1302,9 @@
 
             const formData = new FormData();
             formData.append('file', file);
-            const importStoreEl = document.getElementById('import_resi_store');
-            if (importStoreEl?.value) formData.append('store_id', importStoreEl.value);
+            const importNoteEl = document.getElementById('import_resi_note');
+            const importNote = (importNoteEl?.value || '').trim();
+            if (importNote) formData.append('note', importNote);
 
             try {
                 setLoading(true);
@@ -1326,6 +1336,7 @@
                 }
 
                 if (importInput) importInput.value = '';
+                if (importNoteEl) importNoteEl.value = '';
                 importModal?.hide();
                 batchState.page = 1;
                 loadBatches();

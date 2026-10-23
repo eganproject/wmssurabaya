@@ -12,6 +12,7 @@ class ResiImportBatch extends Model
     protected $fillable = [
         'batch_code',
         'file_name',
+        'note',
         'uploaded_by',
         'uploaded_at',
         'total_resis',

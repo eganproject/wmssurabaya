@@ -306,6 +306,7 @@ class ResiImportController extends Controller
                     'id' => $batch->id,
                     'batch_code' => $batch->batch_code,
                     'file_name' => $batch->file_name,
+                    'note' => $batch->note,
                     'uploaded_by' => $batch->uploader?->name ?? '-',
                     'uploaded_at' => $batch->uploaded_at?->format('Y-m-d H:i'),
                     'total_resis' => (int) $batch->total_resis,
@@ -360,6 +361,7 @@ class ResiImportController extends Controller
                 'id' => $batch->id,
                 'batch_code' => $batch->batch_code,
                 'file_name' => $batch->file_name,
+                'note' => $batch->note,
                 'status' => $batch->status,
                 'uploaded_at' => $batch->uploaded_at?->format('Y-m-d H:i'),
                 'total_resis' => (int) $batch->total_resis,
@@ -374,6 +376,7 @@ class ResiImportController extends Controller
         $validated = $request->validate([
             'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
             'store_id' => ['nullable', 'integer', 'exists:stores,id'],
+            'note' => ['nullable', 'string', 'max:500'],
         ]);
         $defaultStoreId = isset($validated['store_id']) ? (int) $validated['store_id'] : null;
 
@@ -396,6 +399,7 @@ class ResiImportController extends Controller
             $batch = ResiImportBatch::create([
                 'batch_code' => $this->generateBatchCode(),
                 'file_name' => $request->file('file')->getClientOriginalName(),
+                'note' => trim((string) ($validated['note'] ?? '')) ?: null,
                 'uploaded_by' => auth()->id(),
                 'uploaded_at' => now(),
                 'status' => 'active',

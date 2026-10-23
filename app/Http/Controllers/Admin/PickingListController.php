@@ -235,6 +235,7 @@ class PickingListController extends Controller
                 'number' => $key ? $number : null,
                 'batch_code' => $batch?->batch_code ?? 'Tanpa Batch',
                 'file_name' => $batch?->file_name,
+                'note' => $batch?->note,
                 'uploaded_at' => $batch?->uploaded_at?->format('H:i'),
                 'uploaded_by' => $batch?->uploader?->name,
                 'total_resis' => count($resiCount[$key] ?? []),

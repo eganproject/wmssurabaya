@@ -446,6 +446,7 @@
                         <div class="flex-grow-1 min-w-200px">
                             <div class="fs-5 fw-bold text-gray-800">${title}</div>
                             <div class="d-flex flex-wrap gap-2 text-muted fs-7 mt-1">${meta}</div>
+                            ${batch.note ? `<div class="mt-2 fs-7 text-gray-800 bg-light-warning rounded px-3 py-2 d-inline-block text-break"><i class="fa-regular fa-note-sticky text-warning me-1"></i>${esc(batch.note)}</div>` : ''}
                         </div>
                         <div class="w-200px">
                             <div class="d-flex justify-content-between fs-7 mb-1">

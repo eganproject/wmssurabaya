@@ -123,7 +123,7 @@ class ResiImportStoreTest extends TestCase
         $this->actingAs($this->user)
             ->get(route('admin.inventory.resi-import.index'))
             ->assertOk()
-            ->assertSee('id="import_resi_store"', false)
+            ->assertDontSee('id="import_resi_store"', false)
             ->assertSee('id="filter_store"', false);
     }
 }

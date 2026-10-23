@@ -23,7 +23,7 @@ class PickingListBatchTest extends TestCase
         $this->user = User::factory()->create(['email_verified_at' => now()]);
     }
 
-    private function importFile(array $rows, string $name)
+    private function importFile(array $rows, string $name, ?string $note = null)
     {
         $spreadsheet = new Spreadsheet();
         $spreadsheet->getActiveSheet()->fromArray(array_merge([
@@ -34,6 +34,7 @@ class PickingListBatchTest extends TestCase
 
         return $this->actingAs($this->user)->postJson(route('admin.inventory.resi-import.import'), [
             'file' => new UploadedFile($path, $name, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+            'note' => $note,
         ]);
     }
 
@@ -44,7 +45,7 @@ class PickingListBatchTest extends TestCase
         $this->importFile([
             ['ORD-1', 'RESI-1', 'JNE', 'SKU-A', 3, $date],
             ['ORD-2', 'RESI-2', 'JNE', 'SKU-B', 1, $date],
-        ], 'pagi.xlsx')->assertOk();
+        ], 'pagi.xlsx', '  Shopee gelombang pagi  ')->assertOk();
         // SQLite stores the date cast with a time part; keep it a plain date like MySQL does.
         DB::table('picking_lists')->update(['list_date' => $date]);
 
@@ -70,6 +71,8 @@ class PickingListBatchTest extends TestCase
         $response
             ->assertJsonPath('data.0.number', 1)
             ->assertJsonPath('data.0.file_name', 'pagi.xlsx')
+            ->assertJsonPath('data.0.note', 'Shopee gelombang pagi')
+            ->assertJsonPath('data.1.note', null)
             ->assertJsonPath('data.0.total_resis', 1)
             ->assertJsonPath('data.0.rows.0.sku', 'SKU-A')
             ->assertJsonPath('data.0.rows.0.qty', 3)
@@ -100,5 +103,28 @@ class PickingListBatchTest extends TestCase
             ->get(route('admin.inventory.picking-list.index'))
             ->assertOk()
             ->assertSee('Per Batch Import');
+    }
+
+    public function test_import_batch_note_is_shown_in_batch_list_and_detail(): void
+    {
+        $date = now()->toDateString();
+        $this->importFile([['ORD-9', 'RESI-9', 'JNE', 'SKU-A', 1, $date]], 'resi.xlsx', 'Prioritas kirim siang')->assertOk();
+
+        $batch = $this->actingAs($this->user)
+            ->getJson(route('admin.inventory.resi-import.batches'))
+            ->assertOk()
+            ->assertJsonPath('data.0.note', 'Prioritas kirim siang')
+            ->json('data.0');
+
+        $this->actingAs($this->user)
+            ->getJson(route('admin.inventory.resi-import.batches.show', ['batch' => $batch['id']]))
+            ->assertOk()
+            ->assertJsonPath('batch.note', 'Prioritas kirim siang');
+
+        $this->actingAs($this->user)
+            ->get(route('admin.inventory.resi-import.index'))
+            ->assertOk()
+            ->assertSee('Catatan Batch')
+            ->assertDontSee('Ikuti kolom Toko di file');
     }
 }
