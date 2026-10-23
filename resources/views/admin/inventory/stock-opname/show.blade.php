@@ -99,6 +99,10 @@
                             <td class="fw-bold text-gray-900">: {{ $opname->code }}</td>
                         </tr>
                         <tr>
+                            <td class="text-gray-600 fw-semibold">Gudang</td>
+                            <td class="fw-bold text-gray-900">: {{ $opname->warehouse?->name ?? '-' }}</td>
+                        </tr>
+                        <tr>
                             <td class="text-gray-600 fw-semibold">Tanggal</td>
                             <td class="text-gray-900">: {{ $opname->transacted_at?->format('d M Y H:i') ?? '-' }}</td>
                         </tr>

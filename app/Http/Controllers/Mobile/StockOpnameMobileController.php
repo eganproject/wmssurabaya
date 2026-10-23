@@ -251,6 +251,7 @@ class StockOpnameMobileController extends Controller
     private function serializeBatch(StockOpname $opname): array
     {
         $opname->load([
+            'warehouse:id,name',
             'creator:id,name',
             'completer:id,name',
             'items.item:id,sku,name',
@@ -261,6 +262,7 @@ class StockOpnameMobileController extends Controller
             'batch' => [
                 'id' => $opname->id,
                 'code' => $opname->code,
+                'warehouse' => $opname->warehouse?->name,
                 'transacted_at' => $opname->transacted_at?->format('Y-m-d H:i'),
                 'note' => $opname->note,
                 'creator' => $opname->creator?->name,
