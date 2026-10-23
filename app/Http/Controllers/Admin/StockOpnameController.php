@@ -144,6 +144,7 @@ class StockOpnameController extends Controller
     public function show(int $id)
     {
         $opname = StockOpname::with([
+            'warehouse:id,name',
             'creator:id,name',
             'completer:id,name',
             'items.item:id,sku,name',

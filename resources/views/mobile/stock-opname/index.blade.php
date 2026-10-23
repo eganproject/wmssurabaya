@@ -247,6 +247,7 @@
         const note = state.batch.note ? `<br>Catatan: ${state.batch.note}` : '';
         el.batchInfo.innerHTML = `
             <div><strong>Kode:</strong> ${state.batch.code}</div>
+            <div><strong>Gudang:</strong> ${state.batch.warehouse || '-'}</div>
             <div><strong>Tanggal:</strong> ${state.batch.transacted_at || '-'}</div>
             <div><strong>Dibuat oleh:</strong> ${state.batch.creator || '-'}</div>
             ${note}
