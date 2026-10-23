@@ -147,11 +147,11 @@ class QcScanController extends Controller
         $idempotencyKey = $this->requestIdempotencyKey('qc.scan-item', $validated['request_id'] ?? null);
 
         try {
-            $summary = DB::transaction(function () use ($validated, $code, $qty, $idempotencyKey) {
+            DB::transaction(function () use ($validated, $code, $qty, $idempotencyKey) {
                 // Idempotency check: if any mutation with this key (or derived key) exists, skip.
                 // For bundle scans the first component uses $idempotencyKey directly.
                 if ($idempotencyKey && StockMutation::where('idempotency_key', $idempotencyKey)->lockForUpdate()->exists()) {
-                    return $this->serializeDailyScanSummary();
+                    return;
                 }
 
                 $item = Item::where('sku', $code)->lockForUpdate()->first();
@@ -238,8 +238,6 @@ class QcScanController extends Controller
 
                 $this->adjustPickingRemaining($date, $item->sku, $qty);
                 $this->markCompletedIfReady($qcResi);
-
-                return $this->serializeDailyScanSummary();
             });
         } catch (ValidationException $e) {
             return response()->json([
@@ -253,9 +251,10 @@ class QcScanController extends Controller
             ], 500);
         }
 
+        // Ringkasan dihitung sesudah transaksi selesai, supaya lock tidak tertahan lama.
         return response()->json([
             'message' => 'Item berhasil discan.',
-            'session' => $summary,
+            'session' => $this->serializeDailyScanSummary(),
         ]);
     }
 
@@ -466,9 +465,12 @@ class QcScanController extends Controller
     private function serializeDailyScanSummary(): array
     {
         $exceptionLookup = $this->packerScanExceptionLookup();
+        $dayStart = now()->startOfDay();
         $resis = QcScanResi::with(['resi.kurir', 'items.item'])
             ->where('scanned_by', auth()->id())
-            ->whereDate('scanned_at', now()->toDateString())
+            // Rentang waktu (bukan whereDate) agar index (scanned_by, scanned_at) terpakai penuh.
+            ->where('scanned_at', '>=', $dayStart)
+            ->where('scanned_at', '<', $dayStart->copy()->addDay())
             ->orderByDesc('scanned_at')
             ->orderByDesc('id')
             ->get();
