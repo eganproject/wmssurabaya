@@ -9,6 +9,7 @@ use App\Models\PickingList;
 use App\Models\PickingListException;
 use App\Models\PackerScanException;
 use App\Models\QcTransitItem;
+use App\Models\ResiImportBatch;
 use App\Models\StockMutation;
 use App\Support\StockService;
 use Illuminate\Http\Request;
@@ -24,6 +25,7 @@ class PickingListController extends Controller
         return view('admin.inventory.picking-list.index', [
             'dataUrl' => route('admin.inventory.picking-list.data'),
             'dataUrlExceptions' => route('admin.inventory.picking-list.exceptions'),
+            'batchesUrl' => route('admin.inventory.picking-list.batches'),
             'today' => now()->toDateString(),
         ]);
     }
@@ -84,6 +86,177 @@ class PickingListController extends Controller
             'summary' => $summary,
             'data' => $data,
         ]);
+    }
+
+    /**
+     * Picking list per batch import resi, for one date.
+     *
+     * The main picking list stays aggregated per date and SKU. This view splits the
+     * same need by the import batch that brought each resi in. A resi re-imported in a
+     * later batch belongs to that later batch. Resis without a batch (imported before
+     * batches existed) are grouped as "Tanpa Batch".
+     *
+     * Picking itself is not recorded per batch, so the picked qty per SKU for the date
+     * is shared out to batches in upload order (earliest batch first).
+     */
+    public function batches(Request $request)
+    {
+        $date = $this->resolveDate($request);
+        $groups = $this->buildBatchBreakdown($date);
+
+        $search = mb_strtolower(trim((string) $request->input('q', '')));
+        $status = (string) $request->input('status', '');
+
+        $batches = array_map(function ($group) use ($search, $status) {
+            $rows = array_values(array_filter($group['rows'], function ($row) use ($search, $status) {
+                if ($search !== ''
+                    && !str_contains(mb_strtolower($row['sku']), $search)
+                    && !str_contains(mb_strtolower($row['name']), $search)) {
+                    return false;
+                }
+                if ($status === 'ongoing' && $row['remaining_qty'] <= 0) {
+                    return false;
+                }
+                if ($status === 'done' && $row['remaining_qty'] > 0) {
+                    return false;
+                }
+                return true;
+            }));
+            $group['rows'] = $rows;
+            return $group;
+        }, $groups);
+
+        return response()->json([
+            'date' => $date,
+            'data' => array_values($batches),
+        ]);
+    }
+
+    private function buildBatchBreakdown(string $date): array
+    {
+        $resiIdsOnDate = DB::table('resis')
+            ->whereDate('tanggal_upload', $date)
+            ->where(function ($q) {
+                $q->whereNull('status')->orWhere('status', '!=', 'canceled');
+            })
+            ->select('id');
+
+        // The latest active batch that touched each resi owns it.
+        $owners = DB::table('resi_import_batch_items as bi')
+            ->join('resi_import_batches as b', 'b.id', '=', 'bi.resi_import_batch_id')
+            ->where(function ($q) {
+                $q->whereNull('b.status')->orWhere('b.status', '!=', 'deleted');
+            })
+            ->whereIn('bi.resi_id', $resiIdsOnDate)
+            ->groupBy('bi.resi_id')
+            ->select('bi.resi_id', DB::raw('MAX(bi.resi_import_batch_id) as batch_id'))
+            ->pluck('batch_id', 'resi_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $excludedSkus = PackerScanException::query()->pluck('sku')->map(fn ($sku) => trim((string) $sku))->flip()->all();
+
+        $details = DB::table('resi_details as rd')
+            ->whereIn('rd.resi_id', $resiIdsOnDate)
+            ->select('rd.resi_id', 'rd.sku', 'rd.qty')
+            ->get();
+
+        $need = [];      // batchKey => sku => qty
+        $resiCount = []; // batchKey => resi_id => true
+        foreach ($details as $detail) {
+            $sku = trim((string) ($detail->sku ?? ''));
+            $qty = (int) ($detail->qty ?? 0);
+            if ($sku === '' || $qty <= 0 || isset($excludedSkus[$sku])) {
+                continue;
+            }
+            $key = (int) ($owners[$detail->resi_id] ?? 0);
+            $need[$key][$sku] = ($need[$key][$sku] ?? 0) + $qty;
+            $resiCount[$key][$detail->resi_id] = true;
+        }
+
+        if (empty($need)) {
+            return [];
+        }
+
+        $batchModels = ResiImportBatch::query()
+            ->with('uploader:id,name')
+            ->whereIn('id', array_filter(array_keys($need)))
+            ->get()
+            ->keyBy('id');
+
+        // Upload order: resis without a batch came first, then batches by upload time.
+        $keys = array_keys($need);
+        usort($keys, function ($a, $b) use ($batchModels) {
+            if ($a === 0 || $b === 0) {
+                return $a === 0 ? -1 : 1;
+            }
+            $ta = $batchModels->get($a)?->uploaded_at?->timestamp ?? 0;
+            $tb = $batchModels->get($b)?->uploaded_at?->timestamp ?? 0;
+            return $ta <=> $tb ?: $a <=> $b;
+        });
+
+        $picked = [];
+        foreach (PickingList::whereDate('list_date', $date)->get(['sku', 'qty', 'remaining_qty']) as $row) {
+            $picked[trim((string) $row->sku)] = max(0, (int) $row->qty - (int) $row->remaining_qty);
+        }
+
+        $allSkus = array_unique(array_merge(...array_map('array_keys', array_values($need))));
+        $names = Item::whereIn('sku', $allSkus)->pluck('name', 'sku')->all();
+
+        $groups = [];
+        $number = 0;
+        foreach ($keys as $key) {
+            $rows = [];
+            $totalQty = 0;
+            $totalRemaining = 0;
+            ksort($need[$key]);
+            foreach ($need[$key] as $sku => $qty) {
+                $sku = (string) $sku;
+                $take = min($qty, $picked[$sku] ?? 0);
+                $picked[$sku] = ($picked[$sku] ?? 0) - $take;
+                $remaining = $qty - $take;
+                $totalQty += $qty;
+                $totalRemaining += $remaining;
+                $rows[] = [
+                    'sku' => $sku,
+                    'name' => $names[$sku] ?? '-',
+                    'qty' => $qty,
+                    'picked_qty' => $take,
+                    'remaining_qty' => $remaining,
+                ];
+            }
+
+            $batch = $key ? $batchModels->get($key) : null;
+            if ($key) {
+                $number++;
+            }
+            $groups[] = [
+                'id' => $key ?: null,
+                'number' => $key ? $number : null,
+                'batch_code' => $batch?->batch_code ?? 'Tanpa Batch',
+                'file_name' => $batch?->file_name,
+                'uploaded_at' => $batch?->uploaded_at?->format('H:i'),
+                'uploaded_by' => $batch?->uploader?->name,
+                'total_resis' => count($resiCount[$key] ?? []),
+                'total_sku' => count($rows),
+                'total_qty' => $totalQty,
+                'picked_qty' => $totalQty - $totalRemaining,
+                'remaining_qty' => $totalRemaining,
+                'sku_done' => count(array_filter($rows, fn ($r) => $r['remaining_qty'] <= 0)),
+                'rows' => $rows,
+            ];
+        }
+
+        return $groups;
+    }
+
+    private function resolveDate(Request $request): string
+    {
+        try {
+            return Carbon::parse($request->input('date') ?: now()->toDateString())->toDateString();
+        } catch (\Throwable) {
+            return now()->toDateString();
+        }
     }
 
     public function dataExceptions(Request $request)

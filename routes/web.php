@@ -278,6 +278,7 @@ Route::middleware(['auth', 'verified', 'menu.permission'])->prefix('admin')->as(
         // Picking List
         Route::get('/picking-list', [PickingListController::class, 'index'])->name('picking-list.index');
         Route::get('/picking-list/data', [PickingListController::class, 'data'])->name('picking-list.data');
+        Route::get('/picking-list/batches', [PickingListController::class, 'batches'])->name('picking-list.batches');
         Route::get('/picking-list/exceptions', [PickingListController::class, 'dataExceptions'])->name('picking-list.exceptions');
         Route::get('/picking-list/export', [PickingListController::class, 'export'])->name('picking-list.export');
         Route::post('/picking-list/add-qty', [PickingListController::class, 'storeQty'])->name('picking-list.store-qty');
